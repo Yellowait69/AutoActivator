@@ -253,7 +253,7 @@ namespace AutoActivator.Services
                             .FundEvents
                             .EventDateUsesRunDate
                             ? formattedRunDate
-                            : formattedRunDate
+                            : FormatJclDate(DateTime.Today)
                 };
 
             for (int index = 0;

@@ -48,7 +48,7 @@ namespace AutoActivator.Services
 
         public string DatabaseName { get; } = string.Empty;
 
-        private static void AddParameters(SqlCommand command, Dictionary<string, object> parameters)
+        private static void AddParameters(SqlCommand command, Dictionary<string, object>? parameters)
         {
             if (parameters == null) return;
 
@@ -132,7 +132,7 @@ namespace AutoActivator.Services
             }
         }
 
-        public async Task<DataTable> GetDataAsync(string query, Dictionary<string, object> parameters = null, CancellationToken token = default)
+        public async Task<DataTable> GetDataAsync(string query, Dictionary<string, object>? parameters = null, CancellationToken token = default)
         {
             DataTable dataTable = new DataTable();
 
@@ -217,70 +217,13 @@ namespace AutoActivator.Services
 
         #endregion
 
-        #region SYNCHRONOUS METHODS (KEPT FOR BACKWARD COMPATIBILITY)
+        #region SYNCHRONOUS WRAPPERS (FOR BACKWARD COMPATIBILITY)
 
-        public bool TestConnection()
-        {
-            try
-            {
-                using (SqlConnection connection = new SqlConnection(_connectionString))
-                {
-                    connection.Open();
-                    using (SqlCommand command = new SqlCommand("SELECT 1", connection) { CommandTimeout = 15 })
-                    {
-                        var result = command.ExecuteScalar();
-                        if (result != null && result.ToString() == "1")
-                        {
-                            Console.WriteLine($"[INFO] Successful connection to the database (Environment: {EnvironmentName})");
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-            catch (SqlException ex)
-            {
-                Console.WriteLine($"[ERROR] SQL connection failure (Code: {ex.Number}) : {ex.Message}");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ERROR] Connection failure (General error) : {ex.Message}");
-                return false;
-            }
-        }
+        public bool TestConnection() =>
+            TestConnectionAsync(CancellationToken.None).GetAwaiter().GetResult();
 
-        public DataTable GetData(string query, Dictionary<string, object> parameters = null)
-        {
-            DataTable dataTable = new DataTable();
-
-            try
-            {
-                using (SqlConnection connection = new SqlConnection(_connectionString))
-                using (SqlCommand command = new SqlCommand(query, connection) { CommandTimeout = DefaultCommandTimeoutSeconds })
-                {
-                    AddParameters(command, parameters);
-
-                    connection.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
-                    {
-                        dataTable.Load(reader);
-                    }
-                }
-            }
-            catch (SqlException ex)
-            {
-                Console.WriteLine($"[ERROR] SQL Error (Code {ex.Number}) on query: {query}\nDetails: {ex.Message}");
-                throw new Exception($"DB Error ({ex.Number}) : {ex.Message}", ex);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ERROR] System Error on query: {query}\nDetails: {ex.Message}");
-                throw new Exception($"System Error : {ex.Message}", ex);
-            }
-
-            return dataTable;
-        }
+        public DataTable GetData(string query, Dictionary<string, object>? parameters = null) =>
+            GetDataAsync(query, parameters, CancellationToken.None).GetAwaiter().GetResult();
 
         public bool InjectPayment(
             string contractInternalId,
@@ -292,36 +235,12 @@ namespace AutoActivator.Services
             string simulatedIban = "BE47001304609580",
             string simulatedBic = "GEBABEBB",
             string bureauNumber = "12831",
-            string authorId = "AUTO_TEST")
-        {
-            try
-            {
-                using (SqlConnection connection = new SqlConnection(_connectionString))
-                using (SqlCommand command = new SqlCommand(InsertPaymentQuery, connection))
-                {
-                    ConfigurePaymentCommand(
-                        command, contractInternalId, amount, paymentDate,
-                        simulatedName, simulatedAddress1, simulatedAddress2,
-                        simulatedIban, simulatedBic, bureauNumber, authorId);
-
-                    connection.Open();
-                    command.ExecuteNonQuery();
-
-                    Console.WriteLine($"[INFO] Payment of {amount} EUR successfully injected (Contract: {contractInternalId} | Env: {EnvironmentName})");
-                    return true;
-                }
-            }
-            catch (SqlException ex)
-            {
-                Console.WriteLine($"[ERROR] SQL FAILURE during payment injection (Code: {ex.Number}) : {ex.Message}");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ERROR] System FAILURE during payment injection : {ex.Message}");
-                return false;
-            }
-        }
+            string authorId = "AUTO_TEST") =>
+            InjectPaymentAsync(
+                contractInternalId, amount, paymentDate,
+                simulatedName, simulatedAddress1, simulatedAddress2,
+                simulatedIban, simulatedBic, bureauNumber, authorId,
+                CancellationToken.None).GetAwaiter().GetResult();
 
         #endregion
     }

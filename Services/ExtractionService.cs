@@ -58,21 +58,21 @@ namespace AutoActivator.Services
 
                     if (dtContext.Columns.Contains("ContractNumber") && ctxRow["ContractNumber"] != DBNull.Value)
                     {
-                        string cNum = ctxRow["ContractNumber"]?.ToString()?.Trim();
+                        string? cNum = ctxRow["ContractNumber"]?.ToString()?.Trim();
                         if (!string.IsNullOrEmpty(cNum))
                             cleanedContract = cNum;
                     }
 
                     if (dtContext.Columns.Contains("UconId") && ctxRow["UconId"] != DBNull.Value)
                     {
-                        string uId = ctxRow["UconId"]?.ToString()?.Trim();
+                        string? uId = ctxRow["UconId"]?.ToString()?.Trim();
                         if (!string.IsNullOrEmpty(uId))
                             eliaUconId = uId;
                     }
 
                     if (dtContext.Columns.Contains("DemandId") && ctxRow["DemandId"] != DBNull.Value)
                     {
-                        string dId = ctxRow["DemandId"]?.ToString()?.Trim();
+                        string? dId = ctxRow["DemandId"]?.ToString()?.Trim();
                         if (!string.IsNullOrEmpty(dId))
                             eliaDemandId = dId;
                     }
@@ -85,7 +85,7 @@ namespace AutoActivator.Services
 
                     if (dtContext.Columns.Contains("GrossPremium") && ctxRow["GrossPremium"] != DBNull.Value)
                     {
-                        string gPrem = ctxRow["GrossPremium"]?.ToString()?.Trim();
+                        string? gPrem = ctxRow["GrossPremium"]?.ToString()?.Trim();
                         if (!string.IsNullOrEmpty(gPrem))
                             premiumAmount = gPrem;
                     }
@@ -167,7 +167,7 @@ namespace AutoActivator.Services
                     {
                         foreach (DataRow row in dtDemand.Rows)
                         {
-                            string dId = row["IT5HDMDAIDN"]?.ToString()?.Trim();
+                            string? dId = row["IT5HDMDAIDN"]?.ToString()?.Trim();
                             if (!string.IsNullOrWhiteSpace(dId))
                                 demandIds.Add(dId);
                         }
@@ -191,7 +191,7 @@ namespace AutoActivator.Services
                             dt.Rows.Count > 0 &&
                             dt.Columns.Contains("IT5UPRPUBRU"))
                         {
-                            string rawPrem = dt.Rows[0]["IT5UPRPUBRU"]?.ToString()?.Trim();
+                            string? rawPrem = dt.Rows[0]["IT5UPRPUBRU"]?.ToString()?.Trim();
                             if (!string.IsNullOrEmpty(rawPrem))
                                 premiumAmount = rawPrem;
                         }
@@ -292,7 +292,7 @@ namespace AutoActivator.Services
             string parameterName,
             object parameterValue,
             StringBuilder sb,
-            Action<string, DataTable> onTableExtracted,
+            Action<string, DataTable>? onTableExtracted,
             CancellationToken token = default)
         {
             string[] resultsArray = new string[tablesList.Count];
@@ -303,50 +303,49 @@ namespace AutoActivator.Services
                 var db = new DatabaseManager(envSuffix);
                 var queryParams = new Dictionary<string, object> { { parameterName, parameterValue } };
 
-                for (int i = 0; i < tablesList.Count; i++)
+                async Task ExtractSingleTableAsync(int index, string table)
                 {
-                    int index = i;
-                    string table = tablesList[index];
-
-                    tasks.Add(Task.Run(async () =>
+                    try
                     {
+                        token.ThrowIfCancellationRequested();
+
+                        await semaphore.WaitAsync(token).ConfigureAwait(false);
                         try
                         {
                             token.ThrowIfCancellationRequested();
 
-                            await semaphore.WaitAsync(token).ConfigureAwait(false);
-                            try
+                            if (envQueries.TryGetValue(table, out string? sql) && !string.IsNullOrEmpty(sql))
                             {
-                                token.ThrowIfCancellationRequested();
-
-                                if (envQueries.TryGetValue(table, out string sql))
+                                using (var dt = await db.GetDataAsync(sql, queryParams, token).ConfigureAwait(false))
                                 {
-                                    using (var dt = await db.GetDataAsync(sql, queryParams, token).ConfigureAwait(false))
-                                    {
-                                        token.ThrowIfCancellationRequested();
+                                    token.ThrowIfCancellationRequested();
 
-                                        onTableExtracted?.Invoke(table, dt);
+                                    onTableExtracted?.Invoke(table, dt);
 
-                                        var tempSb = new StringBuilder();
-                                        CsvFormatter.AddTableToBuffer(tempSb, table, dt);
-                                        resultsArray[index] = tempSb.ToString();
-                                    }
+                                    var tempSb = new StringBuilder();
+                                    CsvFormatter.AddTableToBuffer(tempSb, table, dt);
+                                    resultsArray[index] = tempSb.ToString();
                                 }
                             }
-                            finally
-                            {
-                                semaphore.Release();
-                            }
                         }
-                        catch (OperationCanceledException)
+                        finally
                         {
-                            throw;
+                            semaphore.Release();
                         }
-                        catch (Exception ex)
-                        {
-                            resultsArray[index] = $"### TABLE : {table} | EXTRACTION ERROR\nSQL Error: {ex.Message}\n";
-                        }
-                    }, token));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        resultsArray[index] = $"### TABLE : {table} | EXTRACTION ERROR\nSQL Error: {ex.Message}\n";
+                    }
+                }
+
+                for (int i = 0; i < tablesList.Count; i++)
+                {
+                    tasks.Add(ExtractSingleTableAsync(i, tablesList[i]));
                 }
 
                 await Task.WhenAll(tasks).ConfigureAwait(false);

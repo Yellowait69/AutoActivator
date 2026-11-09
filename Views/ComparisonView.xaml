@@ -207,6 +207,7 @@
                           RowBackground="White" AlternatingRowBackground="#F8FAFC" GridLinesVisibility="Horizontal"
                           HorizontalGridLinesBrush="#E2E8F0" Visibility="Collapsed"
                           MinHeight="260" MaxHeight="520"
+                          MouseDoubleClick="GridResults_MouseDoubleClick"
                           ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <DataGrid.Resources>
                         <Style TargetType="DataGridColumnHeader">

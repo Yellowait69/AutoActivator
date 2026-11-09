@@ -1,4 +1,4 @@
-﻿using AutoActivator.Config;
+using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Services;
 using AutoActivator.Utils;
@@ -239,11 +239,16 @@ namespace AutoActivator.Gui.Views
             string fullDetails =
                 _activationDataService.FormatSingleActivationReport(selected.FullTrace);
 
-            MessageBox.Show(
-                fullDetails,
-                $"Activation Diagnostic - {selected.ContractId} ({selected.Status})",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            var reportWindow = new DiagnosticReportWindow(
+                title: $"Activation Diagnostic — {selected.ContractId}",
+                subtitle: $"Demand: {selected.FullTrace.DemandId} | Product: {selected.FullTrace.ProductCode} | Process: {selected.FullTrace.ProcessCode} | Routing: {selected.RoutingRule}",
+                status: selected.Status,
+                reportContent: fullDetails,
+                contractReference: selected.ContractId)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            reportWindow.ShowDialog();
         }
 
         // =============================================================
@@ -746,13 +751,20 @@ namespace AutoActivator.Gui.Views
                                 isBranch23))
                         .ConfigureAwait(false);
 
+                    string effectiveBucp = !string.IsNullOrWhiteSpace(plan.Bucp)
+                        ? plan.Bucp
+                        : paymentRouting.Bucp;
+                    string effectiveCmdpmt = !string.IsNullOrWhiteSpace(plan.PaymentCommand)
+                        ? plan.PaymentCommand
+                        : paymentRouting.PaymentCommand;
+
                     await _activationDataService.ExecuteActivationSequenceAsync(
                             formattedContract,
                             amount,
                             effectiveEnvironment,
                             input.Cus,
-                            paymentRouting.Bucp,
-                            paymentRouting.PaymentCommand,
+                            effectiveBucp,
+                            effectiveCmdpmt,
                             effectiveProcess,
                             skipPrime,
                             skipLogon: false,
@@ -1271,43 +1283,43 @@ namespace AutoActivator.Gui.Views
                 ? (double)_batchProcessedCount / _batchPlannedCount * 100.0
                 : 0.0;
 
-            if (FindName("TxtBatchProcessedCount") is TextBlock processedText)
+            if (TxtBatchProcessedCount != null)
             {
-                processedText.Text =
+                TxtBatchProcessedCount.Text =
                     _batchProcessedCount.ToString(CultureInfo.InvariantCulture);
             }
 
-            if (FindName("TxtBatchPlannedCount") is TextBlock plannedText)
+            if (TxtBatchPlannedCount != null)
             {
-                plannedText.Text =
+                TxtBatchPlannedCount.Text =
                     _batchPlannedCount.ToString(CultureInfo.InvariantCulture);
             }
 
-            if (FindName("TxtBatchRemainingCount") is TextBlock remainingText)
+            if (TxtBatchRemainingCount != null)
             {
-                remainingText.Text = remaining.ToString(CultureInfo.InvariantCulture);
+                TxtBatchRemainingCount.Text = remaining.ToString(CultureInfo.InvariantCulture);
             }
 
-            if (FindName("TxtBatchCurrentContract") is TextBlock currentText)
+            if (TxtBatchCurrentContract != null)
             {
-                currentText.Text = string.IsNullOrWhiteSpace(currentContract)
+                TxtBatchCurrentContract.Text = string.IsNullOrWhiteSpace(currentContract)
                     ? "-"
                     : currentContract;
             }
 
-            if (FindName("TxtBatchProgressPercentage") is TextBlock percentageText)
+            if (TxtBatchProgressPercentage != null)
             {
-                percentageText.Text = $"{percentage:F0}%";
+                TxtBatchProgressPercentage.Text = $"{percentage:F0}%";
             }
 
             string normalizedStatus = string.IsNullOrWhiteSpace(status)
                 ? "RUNNING"
                 : status.Trim().ToUpperInvariant();
 
-            if (FindName("TxtBatchProgressStatus") is TextBlock statusText)
+            if (TxtBatchProgressStatus != null)
             {
-                statusText.Text = normalizedStatus;
-                statusText.Foreground = normalizedStatus switch
+                TxtBatchProgressStatus.Text = normalizedStatus;
+                TxtBatchProgressStatus.Foreground = normalizedStatus switch
                 {
                     "COMPLETED" => Brushes.DarkGreen,
                     "CANCELLED" => Brushes.DarkOrange,
@@ -1317,14 +1329,14 @@ namespace AutoActivator.Gui.Views
                 };
             }
 
-            if (FindName("ProgressBatchActivation") is ProgressBar progressBar)
+            if (ProgressBatchActivation != null)
             {
-                progressBar.Minimum = 0;
-                progressBar.Maximum = Math.Max(1, _batchPlannedCount);
-                progressBar.Value = Math.Min(
+                ProgressBatchActivation.Minimum = 0;
+                ProgressBatchActivation.Maximum = Math.Max(1, _batchPlannedCount);
+                ProgressBatchActivation.Value = Math.Min(
                     _batchProcessedCount,
                     _batchPlannedCount);
-                progressBar.Foreground = normalizedStatus switch
+                ProgressBatchActivation.Foreground = normalizedStatus switch
                 {
                     "COMPLETED" => Brushes.MediumSeaGreen,
                     "CANCELLED" => Brushes.DarkOrange,

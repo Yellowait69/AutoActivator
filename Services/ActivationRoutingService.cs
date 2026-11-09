@@ -1,4 +1,4 @@
-﻿using AutoActivator.Models;
+using AutoActivator.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -146,14 +146,16 @@ namespace AutoActivator.Services
         private static readonly HashSet<string> BankChannelCodes =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                "01", "02", "04", "05", "13", "18", "22", "23", "24"
+                "01", "02", "04", "05", "13", "18", "22", "23", "24",
+                "C02", "BANK"
             };
 
         private static readonly HashSet<string> BrokerChannelCodes =
             new(StringComparer.OrdinalIgnoreCase)
             {
                 "03", "06", "07", "08", "09", "10", "11", "12",
-                "14", "15", "16", "17", "19", "20", "21"
+                "14", "15", "16", "17", "19", "20", "21",
+                "C01", "C03", "BROKER_NEW_GEN"
             };
 
         private static readonly ReadOnlyCollection<string> ReadOnlyBankChannelCodes =

@@ -1,4 +1,4 @@
-﻿using AutoActivator.Config;
+using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Sql;
 using System;

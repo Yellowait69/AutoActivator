@@ -1,4 +1,4 @@
-﻿using AutoActivator.Models;
+using AutoActivator.Models;
 using AutoActivator.Services.Branch23Activation;
 using System;
 using System.Collections.Generic;

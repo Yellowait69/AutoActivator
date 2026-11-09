@@ -370,6 +370,7 @@ namespace AutoActivator.Services
 
                 ActivationLookupResult lookup;
                 PreActivationRoutingInfo? routing = null;
+                AutomaticActivationPlan? automaticPlan = null;
 
                 await databaseSemaphore
                     .WaitAsync(token)
@@ -396,33 +397,37 @@ namespace AutoActivator.Services
                                     token)
                                 .ConfigureAwait(false);
                     }
+
+                    if (inputMode.UsesSqlAutocomplete())
+                    {
+                        IReadOnlyDictionary<string, string> rowOverrides =
+                            inputMode.AllowsManualOverrides()
+                                ? item.Overrides
+                                : new Dictionary<string, string>(
+                                    StringComparer.OrdinalIgnoreCase);
+
+                        automaticPlan =
+                            await _dataService.ResolveAutomaticActivationPlanAsync(
+                                    item.RawInput,
+                                    isDemandId,
+                                    environmentSuffix,
+                                    cus,
+                                    item.Branch23Override ?? markAllAsBranch23,
+                                    inputMode,
+                                    rowOverrides,
+                                    token,
+                                    lookup,
+                                    routing)
+                                .ConfigureAwait(false);
+                    }
                 }
                 finally
                 {
                     databaseSemaphore.Release();
                 }
 
-                AutomaticActivationPlan? automaticPlan = null;
-                if (inputMode.UsesSqlAutocomplete())
+                if (automaticPlan != null)
                 {
-                    IReadOnlyDictionary<string, string> rowOverrides =
-                        inputMode.AllowsManualOverrides()
-                            ? item.Overrides
-                            : new Dictionary<string, string>(
-                                StringComparer.OrdinalIgnoreCase);
-
-                    automaticPlan =
-                        await _dataService.ResolveAutomaticActivationPlanAsync(
-                                item.RawInput,
-                                isDemandId,
-                                environmentSuffix,
-                                cus,
-                                item.Branch23Override ?? markAllAsBranch23,
-                                inputMode,
-                                rowOverrides,
-                                token)
-                            .ConfigureAwait(false);
-
                     if (automaticPlan.ResumeStrategy ==
                         ActivationResumeStrategy.AlreadyActive)
                     {
@@ -987,7 +992,7 @@ namespace AutoActivator.Services
             if (PreActivationRoutingService.IsSupportedActivationProcess(
                     routing.ProcessCode))
             {
-                trace.Channel = routing.ProcessCode.Trim().ToUpperInvariant();
+                trace.Channel = routing.ProcessCode!.Trim().ToUpperInvariant();
             }
 
             if (routing.PremiumSequence.HasValue)

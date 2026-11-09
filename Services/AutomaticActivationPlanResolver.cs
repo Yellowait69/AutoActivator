@@ -1,4 +1,4 @@
-﻿using AutoActivator.Config;
+using AutoActivator.Config;
 using AutoActivator.Models;
 using System;
 using System.Collections.Generic;

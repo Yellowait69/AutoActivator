@@ -18,10 +18,10 @@ namespace AutoActivator.Gui
         private static readonly SolidColorBrush ActiveNavBrush = CreateFrozenBrush("#10B981");
         private static readonly SolidColorBrush HelpNavBrush = CreateFrozenBrush("#7C3AED");
 
-        private CancellationTokenSource _cts;
+        private CancellationTokenSource? _cts;
         private bool _isProcessRunning;
 
-        public string LastGeneratedPath { get; set; } = "";
+        public string LastGeneratedPath { get; set; } = string.Empty;
 
         public MainWindow()
         {
@@ -29,13 +29,13 @@ namespace AutoActivator.Gui
             InitializeDirectories();
             UpdateSessionBadge();
 
-            BtnMenu_Click(BtnActivation, null);
+            BtnMenu_Click(BtnActivation, new RoutedEventArgs());
         }
 
         private static SolidColorBrush CreateFrozenBrush(string hex)
         {
-            var brush = (SolidColorBrush)new BrushConverter().ConvertFrom(hex);
-            if (brush != null && brush.CanFreeze)
+            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+            if (brush.CanFreeze)
             {
                 brush.Freeze();
             }
@@ -46,9 +46,12 @@ namespace AutoActivator.Gui
         {
             if (TxtSidebarUser != null)
             {
-                string uid = !string.IsNullOrWhiteSpace(Settings.DbConfig.Uid) ? Settings.DbConfig.Uid : Environment.UserName;
+                string uid = !string.IsNullOrWhiteSpace(Settings.DbConfig.Uid)
+                    ? Settings.DbConfig.Uid
+                    : Environment.UserName;
                 TxtSidebarUser.Text = $"User: {uid}";
             }
+
             if (TxtSidebarServer != null)
             {
                 string srv = !string.IsNullOrWhiteSpace(MicroFocusApiService.ActiveServer)
@@ -69,7 +72,11 @@ namespace AutoActivator.Gui
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"[ERROR] Failed to create directories: {ex.Message}", "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(
+                    $"[ERROR] Failed to create directories: {ex.Message}",
+                    "Initialization Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
         }
 
@@ -99,17 +106,33 @@ namespace AutoActivator.Gui
             }
         }
 
+        protected override void OnClosed(EventArgs e)
+        {
+            try
+            {
+                _cts?.Cancel();
+                _cts?.Dispose();
+                _cts = null;
+            }
+            catch
+            {
+                // Ignore disposal exceptions on window close
+            }
+
+            base.OnClosed(e);
+        }
+
         /// <summary>
         /// Routes the user to the Help view and opens a specific internal tab.
         /// Called by the "?" buttons located in the individual views.
         /// </summary>
         public void OpenHelpTargetingTab(int tabIndex)
         {
-            BtnMenu_Click(BtnHelp, null);
-            ViewHelp.SelectTab(tabIndex);
+            BtnMenu_Click(BtnHelp, new RoutedEventArgs());
+            ViewHelp?.SelectTab(tabIndex);
         }
 
-        private void BtnMenu_Click(object sender, RoutedEventArgs e)
+        private void BtnMenu_Click(object? sender, RoutedEventArgs? e)
         {
             if (ViewActivation != null) ViewActivation.Visibility = Visibility.Collapsed;
             if (ViewExtraction != null) ViewExtraction.Visibility = Visibility.Collapsed;
@@ -123,25 +146,25 @@ namespace AutoActivator.Gui
 
             var clickedButton = sender as System.Windows.Controls.Button;
 
-            if (clickedButton == BtnActivation)
+            if (clickedButton == BtnActivation && ViewActivation != null && BtnActivation != null)
             {
                 ViewActivation.Visibility = Visibility.Visible;
                 BtnActivation.Background = ActiveNavBrush;
                 BtnActivation.Foreground = Brushes.White;
             }
-            else if (clickedButton == BtnExtraction)
+            else if (clickedButton == BtnExtraction && ViewExtraction != null && BtnExtraction != null)
             {
                 ViewExtraction.Visibility = Visibility.Visible;
                 BtnExtraction.Background = ActiveNavBrush;
                 BtnExtraction.Foreground = Brushes.White;
             }
-            else if (clickedButton == BtnComparison)
+            else if (clickedButton == BtnComparison && ViewComparison != null && BtnComparison != null)
             {
                 ViewComparison.Visibility = Visibility.Visible;
                 BtnComparison.Background = ActiveNavBrush;
                 BtnComparison.Foreground = Brushes.White;
             }
-            else if (clickedButton == BtnHelp)
+            else if (clickedButton == BtnHelp && ViewHelp != null && BtnHelp != null)
             {
                 ViewHelp.Visibility = Visibility.Visible;
                 BtnHelp.Background = HelpNavBrush;
@@ -149,7 +172,7 @@ namespace AutoActivator.Gui
             }
         }
 
-        private static void ResetNavButton(System.Windows.Controls.Button btn)
+        private static void ResetNavButton(System.Windows.Controls.Button? btn)
         {
             if (btn == null) return;
             btn.Background = InactiveNavBrush;
@@ -164,8 +187,11 @@ namespace AutoActivator.Gui
         {
             if (_isProcessRunning)
             {
-                MessageBox.Show("An operation is already in progress. Please wait for it to finish or cancel it first.",
-                    "Operation in Progress", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(
+                    "An operation is already in progress. Please wait for it to finish or cancel it first.",
+                    "Operation in Progress",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
                 return;
             }
 
@@ -235,15 +261,26 @@ namespace AutoActivator.Gui
             {
                 if (File.Exists(LastGeneratedPath))
                 {
-                    Process.Start("explorer.exe", $"/select,\"{LastGeneratedPath}\"");
+                    Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{Path.GetFullPath(LastGeneratedPath)}\"")
+                    {
+                        UseShellExecute = true
+                    });
                 }
                 else if (Directory.Exists(LastGeneratedPath))
                 {
-                    Process.Start("explorer.exe", LastGeneratedPath);
+                    Process.Start(new ProcessStartInfo(Path.GetFullPath(LastGeneratedPath))
+                    {
+                        UseShellExecute = true,
+                        Verb = "open"
+                    });
                 }
                 else
                 {
-                    MessageBox.Show("File or folder not found. It might have been moved or deleted.", "Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(
+                        "File or folder not found. It might have been moved or deleted.",
+                        "Not Found",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
                 }
             }
             catch (Exception ex)

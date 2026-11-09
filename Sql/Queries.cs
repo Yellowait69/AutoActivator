@@ -1,4 +1,4 @@
-﻿using AutoActivator.Config;
+using AutoActivator.Config;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -912,15 +912,12 @@ SELECT TOP (1)
 FROM [LV].[SCNTT0]
 WITH (NOLOCK)
 
-WHERE REPLACE(
-          LTRIM(RTRIM(NO_CNT_EXTENDED)),
-          '-',
-          ''
-      ) =
-      REPLACE(
-          LTRIM(RTRIM(@ContractNumber)),
-          '-',
-          ''
+WHERE REPLACE(REPLACE(LTRIM(RTRIM(NO_CNT_EXTENDED)), '-', ''), ' ', '') =
+      REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
+   OR (
+          LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 9
+      AND SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(NO_CNT_EXTENDED)), '-', ''), ' ', ''), 2, 9) =
+          REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
       )
 
 ORDER BY
@@ -933,16 +930,13 @@ SELECT TOP (1)
 FROM {fj1}.[TB5UCON]
 WITH (NOLOCK)
 
-WHERE REPLACE(
-          LTRIM(RTRIM(IT5UCONLREFEXN)),
-          '-',
-          ''
-      ) LIKE
-      REPLACE(
-          LTRIM(RTRIM(@ContractNumber)),
-          '-',
-          ''
-      ) + '%'
+WHERE REPLACE(REPLACE(LTRIM(RTRIM(IT5UCONLREFEXN)), '-', ''), ' ', '') LIKE
+      REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '') + '%'
+   OR (
+          LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 9
+      AND SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(IT5UCONLREFEXN)), '-', ''), ' ', ''), 2, 9) =
+          REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
+      )
 
 ORDER BY
     IT5UCONAIDN DESC;";
@@ -1287,16 +1281,13 @@ OUTER APPLY
             h.IT5HDMDAIDN DESC
     ) AS demand
 
-    WHERE REPLACE(
-              LTRIM(RTRIM(u.IT5UCONLREFEXN)),
-              '-',
-              ''
-          ) LIKE
-          REPLACE(
-              LTRIM(RTRIM(@ContractNumber)),
-              '-',
-              ''
-          ) + '%'
+    WHERE REPLACE(REPLACE(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '-', ''), ' ', '') LIKE
+          REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '') + '%'
+       OR (
+              LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 9
+          AND SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '-', ''), ' ', ''), 2, 9) =
+              REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
+          )
 
     ORDER BY
         u.IT5UCONAIDN DESC

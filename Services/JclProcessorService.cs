@@ -64,7 +64,7 @@ namespace AutoActivator.Services
         /// <summary>
         /// Pre-loads and caches all standard activation JCL templates in parallel from the network share.
         /// </summary>
-        public async Task PreloadTemplatesAsync(IEnumerable<string> jobNames = null)
+        public async Task PreloadTemplatesAsync(IEnumerable<string>? jobNames = null)
         {
             var targets = jobNames ?? StandardActivationJobs;
             var tasks = targets.Select(job => GetCleanedTemplateAsync(job));
@@ -76,7 +76,7 @@ namespace AutoActivator.Services
             string cleanJobName = jobName.Trim().ToUpperInvariant().Replace(".JCL", "");
             string cacheKey = $"{_jclDirectory}|{cleanJobName}";
 
-            if (_cleanedJclCache.TryGetValue(cacheKey, out string cachedContent))
+            if (_cleanedJclCache.TryGetValue(cacheKey, out string? cachedContent) && cachedContent != null)
             {
                 return cachedContent;
             }
@@ -216,9 +216,9 @@ namespace AutoActivator.Services
                 localVars.Add("JOBNAM", cleanJobName);
             }
 
-            string env = localVars.TryGetValue("ENV", out string envVal) ? envVal : "D";
-            string jobClass = localVars.TryGetValue("CLASS", out string clsVal) ? clsVal : "A";
-            string username = localVars.TryGetValue("USERNAME", out string usrVal) && !string.IsNullOrEmpty(usrVal)
+            string env = localVars.TryGetValue("ENV", out string? envVal) && !string.IsNullOrEmpty(envVal) ? envVal : "D";
+            string jobClass = localVars.TryGetValue("CLASS", out string? clsVal) && !string.IsNullOrEmpty(clsVal) ? clsVal : "A";
+            string username = localVars.TryGetValue("USERNAME", out string? usrVal) && !string.IsNullOrEmpty(usrVal)
                 ? usrVal
                 : Environment.UserName;
 
@@ -228,7 +228,7 @@ namespace AutoActivator.Services
             else if (env == "A") schenv = "IM7Q";
             else if (env == "P") schenv = "IM7P";
 
-            string jobHeaderName = localVars.TryGetValue("JOBNAM", out string jn) && !string.IsNullOrEmpty(jn)
+            string jobHeaderName = localVars.TryGetValue("JOBNAM", out string? jn) && !string.IsNullOrEmpty(jn)
                 ? jn.Trim().ToUpperInvariant()
                 : username + count;
 

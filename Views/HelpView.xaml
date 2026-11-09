@@ -99,13 +99,33 @@
                             <StackPanel>
                                 <TextBlock Text="Batch Input File Rules (Excel / CSV)" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#0F172A" Margin="0,0,0,8"/>
                                 <TextBlock Text="1. Search by Contract ID: The file must contain a column header named 'LISA Contract'." TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,8"/>
-                                <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Margin="14,0,0,16" HorizontalAlignment="Left" Padding="4" Background="White">
-                                    <Image Source="/Images/TemplateContractLisa.png" Width="380" Stretch="Uniform"/>
+                                <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Margin="14,0,0,16" HorizontalAlignment="Left" Padding="10" Background="White">
+                                    <StackPanel Width="360">
+                                        <Border Background="#166534" CornerRadius="4,4,0,0" Padding="10,6">
+                                            <TextBlock Text="A1 : LISA Contract" FontFamily="Consolas" FontWeight="Bold" Foreground="White" FontSize="12"/>
+                                        </Border>
+                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="#F8FAFC">
+                                            <TextBlock Text="001-2345678-90" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
+                                        </Border>
+                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="White">
+                                            <TextBlock Text="001-9876543-21" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
+                                        </Border>
+                                    </StackPanel>
                                 </Border>
 
                                 <TextBlock Text="2. Search by Demand ID: The file must contain a column header named 'Value' (typically on Row 2 in Testing Team Excel sheets)." TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,8"/>
-                                <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Margin="14,0,0,6" HorizontalAlignment="Left" Padding="4" Background="White">
-                                    <Image Source="/Images/TemplateDemandValue.png" Width="380" Stretch="Uniform"/>
+                                <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Margin="14,0,0,6" HorizontalAlignment="Left" Padding="10" Background="White">
+                                    <StackPanel Width="360">
+                                        <Border Background="#1D4ED8" CornerRadius="4,4,0,0" Padding="10,6">
+                                            <TextBlock Text="Row 2 : Value (ELIA Demand ID)" FontFamily="Consolas" FontWeight="Bold" Foreground="White" FontSize="12"/>
+                                        </Border>
+                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="#F8FAFC">
+                                            <TextBlock Text="100458921" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
+                                        </Border>
+                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="White">
+                                            <TextBlock Text="100458922" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
+                                        </Border>
+                                    </StackPanel>
                                 </Border>
                             </StackPanel>
                         </Border>

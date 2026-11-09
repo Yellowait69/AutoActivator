@@ -1,4 +1,4 @@
-﻿using AutoActivator.Services.Branch23Activation;
+using AutoActivator.Services.Branch23Activation;
 using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Sql;
@@ -123,7 +123,9 @@ namespace AutoActivator.Services
                 ActivationInputMode inputMode =
                     ActivationInputMode.SqlAutocomplete,
                 IReadOnlyDictionary<string, string>? overrides = null,
-                CancellationToken token = default)
+                CancellationToken token = default,
+                ActivationLookupResult? existingLookup = null,
+                PreActivationRoutingInfo? existingRouting = null)
         {
             inputMode.EnsureDefined();
             string input = CleanInput(rawInput);
@@ -139,7 +141,7 @@ namespace AutoActivator.Services
                 overrides ?? new Dictionary<string, string>(),
                 StringComparer.OrdinalIgnoreCase);
 
-            ActivationLookupResult lookup =
+            ActivationLookupResult lookup = existingLookup ??
                 await ResolveContractForActivationAsync(
                     input, isDemandId, environment, token).ConfigureAwait(false);
 
@@ -177,8 +179,8 @@ namespace AutoActivator.Services
                 TryParsePositiveAmount(amountOverride, out decimal manualAmount))
                 grossPremium = manualAmount;
 
-            PreActivationRoutingInfo? planRouting = null;
-            if (!IsMissingValue(lookup.DemandId))
+            PreActivationRoutingInfo? planRouting = existingRouting;
+            if (planRouting == null && !IsMissingValue(lookup.DemandId))
             {
                 try
                 {
@@ -1434,6 +1436,54 @@ namespace AutoActivator.Services
                 result.RawPremium != "0"
                     ? "OK (FALLBACK)"
                     : "CONTRACT FOUND - PREMIUM NOT FOUND";
+
+            if (IsMissingValue(result.EliaUconId) || IsMissingValue(result.DemandId))
+            {
+                try
+                {
+                    var database = new DatabaseManager(environment);
+                    if (IsMissingValue(result.EliaUconId))
+                    {
+                        using DataTable uconTable = await database.GetDataAsync(
+                                SqlQueries.GetQuery("GET_ELIA_ID", environment),
+                                new Dictionary<string, object> { ["@ContractNumber"] = resolvedContract },
+                                token)
+                            .ConfigureAwait(false);
+                        if (uconTable.Rows.Count > 0)
+                        {
+                            string? uconId = GetString(uconTable.Rows[0], "IT5UCONAIDN");
+                            if (!string.IsNullOrWhiteSpace(uconId))
+                            {
+                                result.EliaUconId = uconId.Trim();
+                            }
+                        }
+                    }
+
+                    if (IsMissingValue(result.DemandId) &&
+                        !IsMissingValue(result.EliaUconId) &&
+                        decimal.TryParse(result.EliaUconId, NumberStyles.Integer, CultureInfo.InvariantCulture, out decimal numericUconId))
+                    {
+                        using DataTable demandTable = await database.GetDataAsync(
+                                SqlQueries.GetQuery("GET_ELIA_DEMAND_IDS", environment),
+                                new Dictionary<string, object> { ["@EliaId"] = numericUconId },
+                                token)
+                            .ConfigureAwait(false);
+                        if (demandTable.Rows.Count > 0)
+                        {
+                            DataRow lastRow = demandTable.Rows[demandTable.Rows.Count - 1];
+                            string? demandId = GetString(lastRow, "IT5HDMDAIDN");
+                            if (!string.IsNullOrWhiteSpace(demandId))
+                            {
+                                result.DemandId = demandId.Trim();
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Debug.WriteLine($"[ActivationLookup] Fallback demand resolution warning: {ex.Message}");
+                }
+            }
 
             await TryCompleteDirectDemandRoutingAsync(
                     result,
@@ -2746,6 +2796,80 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                     ? "T"
                     : "C";
 
+            string normalizedBucpInput = (bucp ?? string.Empty).Trim();
+            if (normalizedBucpInput == "00000")
+            {
+                normalizedBucpInput = string.Empty;
+            }
+
+            string normalizedCmdpmtInput = (cmdpmt ?? string.Empty).Trim().ToUpperInvariant();
+
+            if (string.IsNullOrWhiteSpace(normalizedBucpInput) || string.IsNullOrWhiteSpace(normalizedCmdpmtInput))
+            {
+                if (!string.IsNullOrWhiteSpace(trace?.Bucp) && trace.Bucp.Trim() != "00000")
+                {
+                    normalizedBucpInput = trace.Bucp.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(trace?.Cmdpmt))
+                {
+                    normalizedCmdpmtInput = trace.Cmdpmt.Trim().ToUpperInvariant();
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedBucpInput) || string.IsNullOrWhiteSpace(normalizedCmdpmtInput))
+            {
+                string? candidateChannel = !IsMissingValue(trace?.EliaChannelCode)
+                    ? trace!.EliaChannelCode
+                    : !IsMissingValue(trace?.BusinessChannel)
+                        ? trace!.BusinessChannel
+                        : channel;
+
+                var confirmedRouting = PreActivationRoutingService.ResolveConfirmedPaymentRouting(candidateChannel);
+                if (!string.IsNullOrWhiteSpace(confirmedRouting.Bucp) && !string.IsNullOrWhiteSpace(confirmedRouting.Cmdpmt))
+                {
+                    if (string.IsNullOrWhiteSpace(normalizedBucpInput))
+                    {
+                        normalizedBucpInput = confirmedRouting.Bucp;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(normalizedCmdpmtInput))
+                    {
+                        normalizedCmdpmtInput = confirmedRouting.Cmdpmt;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedBucpInput) || string.IsNullOrWhiteSpace(normalizedCmdpmtInput))
+            {
+                ActivationLookupResult fallbackLookup = await ResolveContractForActivationAsync(
+                        contract,
+                        isDemandId: false,
+                        normalizedEnvironment,
+                        token)
+                    .ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(fallbackLookup.Bucp) && fallbackLookup.Bucp.Trim() != "00000")
+                {
+                    normalizedBucpInput = fallbackLookup.Bucp.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(fallbackLookup.Cmdpmt))
+                {
+                    normalizedCmdpmtInput = fallbackLookup.Cmdpmt.Trim().ToUpperInvariant();
+                }
+
+                if (trace != null && IsMissingValue(trace.EliaChannelCode) && !IsMissingValue(fallbackLookup.ChannelCode))
+                {
+                    trace.EliaChannelCode = fallbackLookup.ChannelCode;
+                }
+            }
+
+            string paddedBucp = string.IsNullOrWhiteSpace(normalizedBucpInput)
+                ? string.Empty
+                : normalizedBucpInput.PadLeft(5, '0');
+            cmdpmt = normalizedCmdpmtInput;
+
             if (useBranch23ActivationOnly)
             {
                 ContractActivationTrace branch23Trace =
@@ -2764,12 +2888,12 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                         q2,
                         envImsValue,
                         fastCtrl,
-                        cus,
-                        bucp,
+                        cus ?? string.Empty,
+                        paddedBucp,
                         cmdpmt,
                         skipLogon,
-                        username,
-                        password,
+                        username ?? string.Empty,
+                        password ?? string.Empty,
                         onProgress,
                         branch23Trace,
                         token)
@@ -2778,11 +2902,6 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                 // Critical: never fall through to the legacy BR23 funds/LVDQ workflow.
                 return;
             }
-
-            string paddedBucp =
-                (bucp ?? string.Empty)
-                    .Trim()
-                    .PadLeft(5, '0');
 
             amount =
                 ValidateAndFormatAmount(
@@ -2846,6 +2965,8 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                     ["ENV"] = normalizedEnvValue,
                     ["ENVIMS"] = envImsValue,
                     ["CUS"] = cus ?? string.Empty,
+                    ["BUCP"] = paddedBucp,
+                    ["CMDPMT"] = (cmdpmt ?? string.Empty).Trim().ToUpperInvariant(),
                     ["YYMMDD"] = now.ToString("yyMMdd"),
                     ["YYYY"] = now.ToString("yyyy"),
                     ["MM"] = now.ToString("MM"),
@@ -3045,8 +3166,8 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                 .RunActivationSequenceAsync(
                     generalVariables,
                     addprctVariables,
-                    username,
-                    password,
+                    username ?? string.Empty,
+                    password ?? string.Empty,
                     channel,
                     skipPrime,
                     skipLogon,

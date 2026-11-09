@@ -11,9 +11,9 @@ using AutoActivator.Utils;
 
 namespace AutoActivator
 {
-    class Program
+    public static class Program
     {
-        static async Task Main(string[] args)
+        public static async Task RunCliAsync(string[] args)
         {
             try
             {
@@ -72,7 +72,7 @@ namespace AutoActivator
             bool isDemandId = Console.ReadLine()?.Trim() == "2";
 
             Console.Write(isDemandId ? "Enter Demand ID: " : "Enter the contract number (e.g., 182-2728195-31): ");
-            string input = Console.ReadLine()?.Trim();
+            string? input = Console.ReadLine()?.Trim();
 
             if (string.IsNullOrWhiteSpace(input)) return;
 
@@ -104,7 +104,7 @@ namespace AutoActivator
         {
             Console.WriteLine("\n--- Starting Batch Extraction ---");
             Console.Write("Path to CSV/Excel file: ");
-            string filePath = Console.ReadLine()?.Trim('\"', ' ');
+            string? filePath = Console.ReadLine()?.Trim('\"', ' ');
 
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             {
@@ -155,24 +155,24 @@ namespace AutoActivator
             string envLetter = envSuffix.Substring(0, 1);
 
             Console.Write("Username Mainframe (e.g., XA3894): ");
-            string username = Console.ReadLine()?.Trim();
-            if (string.IsNullOrWhiteSpace(username)) username = Settings.DbConfig.Uid;
+            string? usernameInput = Console.ReadLine()?.Trim();
+            string username = string.IsNullOrWhiteSpace(usernameInput) ? Settings.DbConfig.Uid : usernameInput;
 
             Console.Write("Password Mainframe: ");
-            string password = Console.ReadLine()?.Trim();
+            string password = Console.ReadLine()?.Trim() ?? string.Empty;
 
             Console.WriteLine("\nHow do you want to load the contracts?");
             Console.WriteLine("1. Enter a single contract manually");
             Console.WriteLine($"2. Load a list from a text file (located in '{Settings.InputDir}')");
             Console.Write("Choice: ");
-            string inputChoice = Console.ReadLine()?.Trim();
+            string? inputChoice = Console.ReadLine()?.Trim();
 
             var contractsToProcess = new List<string>();
 
             if (inputChoice == "1")
             {
                 Console.Write("Enter contract number (e.g., 182-2728195-31): ");
-                string contract = Console.ReadLine()?.Trim();
+                string? contract = Console.ReadLine()?.Trim();
                 if (!string.IsNullOrWhiteSpace(contract))
                 {
                     contractsToProcess.Add(contract);
@@ -210,6 +210,10 @@ namespace AutoActivator
                 return;
             }
 
+            Console.Write("Enter CUS [Default: MDEEM]: ");
+            string? cusInput = Console.ReadLine()?.Trim();
+            string cus = string.IsNullOrWhiteSpace(cusInput) ? "MDEEM" : cusInput.ToUpperInvariant();
+
             string tempCsvPath = Path.Combine(Settings.InputDir, $"temp_batch_{Guid.NewGuid():N}.csv");
 
             try
@@ -225,7 +229,7 @@ namespace AutoActivator
                     filePath: tempCsvPath,
                     isDemandId: false,
                     envValue: envLetter,
-                    cus: "XXX",
+                    cus: cus,
                     bucp: "80819",
                     cmdpmt: "H",
                     channel: "C01",
@@ -263,12 +267,12 @@ namespace AutoActivator
         {
             Console.WriteLine("\n--- Starting Comparator ---");
             Console.Write("Path to Base File (e.g., ExtractionLISA_...): ");
-            string baseFile = Console.ReadLine()?.Trim('\"', ' ');
+            string? baseFile = Console.ReadLine()?.Trim('\"', ' ');
 
             Console.Write("Path to Target File (e.g., snapshot/ExtractionLISA_...): ");
-            string targetFile = Console.ReadLine()?.Trim('\"', ' ');
+            string? targetFile = Console.ReadLine()?.Trim('\"', ' ');
 
-            if (!File.Exists(baseFile) || !File.Exists(targetFile))
+            if (string.IsNullOrWhiteSpace(baseFile) || string.IsNullOrWhiteSpace(targetFile) || !File.Exists(baseFile) || !File.Exists(targetFile))
             {
                 Console.WriteLine("[ERROR] One or both files do not exist.");
                 return;

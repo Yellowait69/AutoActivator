@@ -94,12 +94,12 @@ namespace AutoActivator.Services
                 try
                 {
                     string product = "UNKNOWN";
-                    if (baseTables.TryGetValue("FJ1.TB5UCON", out DataTable uconTable) &&
+                    if (baseTables.TryGetValue("FJ1.TB5UCON", out DataTable? uconTable) &&
                         uconTable != null &&
                         uconTable.Rows.Count > 0 &&
                         uconTable.Columns.Contains("IT5UCONCASU"))
                     {
-                        string rawProduct = uconTable.Rows[0]["IT5UCONCASU"]?.ToString()?.Trim();
+                        string? rawProduct = uconTable.Rows[0]["IT5UCONCASU"]?.ToString()?.Trim();
                         if (!string.IsNullOrWhiteSpace(rawProduct))
                             product = rawProduct;
                     }
@@ -119,8 +119,8 @@ namespace AutoActivator.Services
 
                         string displayTableName = $"[{testId}] {tableName}";
 
-                        baseTables.TryGetValue(tableName, out DataTable df1);
-                        targetTables.TryGetValue(tableName, out DataTable df2);
+                        baseTables.TryGetValue(tableName, out DataTable? df1);
+                        targetTables.TryGetValue(tableName, out DataTable? df2);
 
                         CompareAndAppendToReport(
                             df1 ?? new DataTable(tableName),

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -178,7 +178,7 @@ namespace AutoActivator.Gui.Views
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
 
-            string rawInput = TxtExtContract?.Text.Trim();
+            string? rawInput = TxtExtContract?.Text.Trim();
             bool isDemandId = RbSearchDemand?.IsChecked == true;
             string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
 
@@ -304,7 +304,7 @@ namespace AutoActivator.Gui.Views
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
 
-            string filePath = TxtBatchExtCsv?.Text.Trim();
+            string? filePath = TxtBatchExtCsv?.Text.Trim();
             bool isDemandId = RbBatchSearchDemand?.IsChecked == true;
             string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
 
@@ -403,7 +403,7 @@ namespace AutoActivator.Gui.Views
             if (TxtTotalCount != null) TxtTotalCount.Text = "0";
         }
 
-        private void UpdateMainWindowStatus(MainWindow mainWindow, string text, Brush color = null)
+        private void UpdateMainWindowStatus(MainWindow mainWindow, string text, Brush? color = null)
         {
             Dispatcher.Invoke(() =>
             {

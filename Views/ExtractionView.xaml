@@ -115,6 +115,7 @@
                             <TextBlock Text="Target Process / Channel:" Style="{StaticResource LabelStyle}"/>
                             <ComboBox x:Name="CmbExtChannel" Style="{StaticResource InputStyle}" Margin="0" SelectedIndex="0" SelectionChanged="CmbExtChannel_SelectionChanged">
                                 <ComboBoxItem Content="C01 — Standard Life / UL" Tag="C01"/>
+                                <ComboBoxItem Content="C02 — Bank Distribution" Tag="C02"/>
                                 <ComboBoxItem Content="C03 — Classic / Pension" Tag="C03"/>
                                 <ComboBoxItem Content="C05 — Direct IMS" Tag="C05"/>
                             </ComboBox>

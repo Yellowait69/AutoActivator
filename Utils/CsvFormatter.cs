@@ -38,7 +38,7 @@ namespace AutoActivator.Utils
             sb.AppendLine();
         }
 
-        public static string EscapeCsvField(string field)
+        public static string EscapeCsvField(string? field)
         {
             if (string.IsNullOrEmpty(field)) return string.Empty;
             field = field.Trim();
@@ -142,7 +142,7 @@ namespace AutoActivator.Utils
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
             {
-                string line;
+                string? line;
                 while ((line = reader.ReadLine()) != null)
                 {
                     if (line.StartsWith("### GLOBAL CONTRACT REPORT:", StringComparison.Ordinal))
@@ -224,7 +224,7 @@ namespace AutoActivator.Utils
         private static List<string> GetAllTableNamesFromReader(TextReader reader)
         {
             var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string line;
+            string? line;
             while ((line = reader.ReadLine()) != null)
             {
                 if (line.StartsWith("### TABLE : ", StringComparison.Ordinal))
@@ -250,7 +250,7 @@ namespace AutoActivator.Utils
 
             using (var reader = new StringReader(fileContent))
             {
-                string line;
+                string? line;
                 while ((line = reader.ReadLine()) != null)
                 {
                     if (line.StartsWith("### TABLE : ", StringComparison.Ordinal))
@@ -302,7 +302,7 @@ namespace AutoActivator.Utils
         {
             var dt = new DataTable(tableName);
             string searchString = $"### TABLE : {tableName} |";
-            string line;
+            string? line;
             bool tableFound = false;
 
             while ((line = reader.ReadLine()) != null)

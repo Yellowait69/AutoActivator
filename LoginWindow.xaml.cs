@@ -151,7 +151,7 @@ namespace AutoActivator.Gui
             finally
             {
                 BtnLogin.IsEnabled = true;
-                BtnLogin.Content = "Login";
+                BtnLogin.Content = "Sign In to Mainframe";
             }
         }
     }

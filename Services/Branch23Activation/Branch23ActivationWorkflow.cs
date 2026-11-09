@@ -120,7 +120,7 @@ namespace AutoActivator.Services.Branch23Activation
             b.AppendLine($"CO interne LISA      : {LisaInternalNumber} (Start = End)");
             b.AppendLine($"Run Date             : {RunDate} (source {RunDateSource}; {RunDateReason})");
             b.AppendLine($"Dates ELIA           : {EliaDates}");
-            b.AppendLine($"Prime brute          : {Amount} -> AMOUNT inject  {AmountInjected}");
+            b.AppendLine($"Prime brute          : {Amount} -> AMOUNT injecté {AmountInjected}");
             b.AppendLine($"Ligne TB5UPRP        : {SelectedPremiumRow}");
             b.AppendLine($"Canal / BUCP / CMDPMT: {Channel} / {Bucp} / {Cmdpmt}");
             b.AppendLine($"SCNTT0 avant         : {ScnttBeforeDetail}");
@@ -393,7 +393,7 @@ namespace AutoActivator.Services.Branch23Activation
                 MarkPending(report, "NotExecuted");
                 Finish(report, Branch23FinalDiagnostic.TECHNICAL_FAILURE,
                     ex is Branch23ActivationException b ? b.Code : "BR23_TECHNICAL_FAILURE",
-                    ex.Message + " Rapport partiel conserv ; aucun job suivant soumis.");
+                    ex.Message + " Rapport partiel conservé ; aucun job suivant soumis.");
             }
             return report;
         }
@@ -462,9 +462,9 @@ namespace AutoActivator.Services.Branch23Activation
                 if (before.Count == 1 && IsActiveScnttRow(before[0]))
                 {
                     report.ScnttFinalStatus = ContractActivationStatus.ACTIVATED;
-                    report.ScnttFinalDetail = "Contrat déjà actif et non bloqu ; aucun job soumis.";
+                    report.ScnttFinalDetail = "Contrat déjà actif et non bloqué ; aucun job soumis.";
                     report.ScnttFinalRow = RowText(before[0]);
-                    report.BeforeAfterComparison = "C_ETAT_CNT déjà   4";
+                    report.BeforeAfterComparison = "C_ETAT_CNT déjà à 4";
                     MarkPending(report, "SkippedAlreadyActive");
                     Finish(report, Branch23FinalDiagnostic.ACTIVATED, string.Empty,
                         "Contrat déjà actif dans SCNTT0; workflow idempotent, aucun job soumis.");
@@ -474,7 +474,7 @@ namespace AutoActivator.Services.Branch23Activation
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 report.ScnttBeforeDetail = "NON LISIBLE: " + ex.Message;
-                report.Warnings.Add("SCNTT0 avant workflow non lisible: la comparaison avant/après sera incompl te.");
+                report.Warnings.Add("SCNTT0 avant workflow non lisible: la comparaison avant/après sera incomplète.");
             }
 
             // ---------------- PRCTT0 before ADDPRCT
@@ -499,7 +499,7 @@ namespace AutoActivator.Services.Branch23Activation
                             .ConfigureAwait(false);
                         report.AssignmentDetail =
                             $"PRIST0 lignes={existingAssignment.PremiumCount}; " +
-                            $"PECHT0 lignes={existingAssignment.ReceiptCount} (pr -contrôle reprise)";
+                            $"PECHT0 lignes={existingAssignment.ReceiptCount} (pré-contrôle reprise)";
 
                         if (existingAssignment.PremiumCount > 0 &&
                             existingAssignment.ReceiptCount > 0)
@@ -514,7 +514,7 @@ namespace AutoActivator.Services.Branch23Activation
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         report.Warnings.Add(
-                            "Pr -contrôle de reprise PRIST0/PECHT0 indisponible: " +
+                            "Pré-contrôle de reprise PRIST0/PECHT0 indisponible: " +
                             ex.Message + ". Les jobs prime restent nécessaires.");
                     }
                     break;
@@ -524,7 +524,7 @@ namespace AutoActivator.Services.Branch23Activation
                         var addprct = await RunJobAsync(report.Jobs[0], variables, token).ConfigureAwait(false);
                         if (addprct.ReturnCode == 8)
                         {
-                            report.Warnings.Add("ADDPRCT RC=0008: diagnostic DB2TIAD conserv ; non interpr t  comme ALREADY_ACTIVE; PRCTT0 d cide.");
+                            report.Warnings.Add("ADDPRCT RC=0008: diagnostic DB2TIAD conservé ; non interprété comme ALREADY_ACTIVE ; PRCTT0 décide.");
                             foreach (string line in _spool.Analyze(addprct.Spool).DiagnosticLines) Log("ADDPRCT spool: " + line);
                         }
 
@@ -543,7 +543,7 @@ namespace AutoActivator.Services.Branch23Activation
                                         ? Branch23FinalDiagnostic.AMBIGUOUS
                                         : Branch23FinalDiagnostic.BLOCKED,
                                 "BR23_" + prctAfter.Status,
-                                $"PRCTT0 non confirm  après ADDPRCT (RC={addprct.ReturnCode:0000}); LVPP06U non soumis.");
+                                $"PRCTT0 non confirmé après ADDPRCT (RC={addprct.ReturnCode:0000}); LVPP06U non soumis.");
                             return;
                         }
                         break;
@@ -575,9 +575,9 @@ namespace AutoActivator.Services.Branch23Activation
             try
             {
                 var presence = await _verifier.GetPremiumAssignmentPresenceAsync(start, token).ConfigureAwait(false);
-                report.AssignmentDetail = $"PRIST0 lignes={presence.PremiumCount}; PECHT0 lignes={presence.ReceiptCount} (pr sence seule, colonnes NON CONFIRMÉES)";
+                report.AssignmentDetail = $"PRIST0 lignes={presence.PremiumCount}; PECHT0 lignes={presence.ReceiptCount} (présence seule, colonnes NON CONFIRMÉES)";
                 if (presence.PremiumCount == 0 || presence.ReceiptCount == 0)
-                    report.Warnings.Add("PRIST0/PECHT0: aucune ligne détectée après LVPG22U (non bloquant, signification NON CONFIRM E).");
+                    report.Warnings.Add("PRIST0/PECHT0: aucune ligne détectée après LVPG22U (non bloquant, signification NON CONFIRMÉE).");
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

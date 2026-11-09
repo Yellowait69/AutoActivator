@@ -141,7 +141,17 @@ namespace AutoActivator.Services
                     DecompressionMethods.GZip |
                     DecompressionMethods.Deflate,
                 ServerCertificateCustomValidationCallback =
-                    (_, _, _, _) => true,
+                    (requestMessage, certificate, _, sslPolicyErrors) =>
+                    {
+                        if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+                        {
+                            return true;
+                        }
+
+                        string host = requestMessage?.RequestUri?.Host ?? string.Empty;
+                        return certificate != null
+                            && host.EndsWith(".aginsurance.intranet", StringComparison.OrdinalIgnoreCase);
+                    },
                 MaxConnectionsPerServer = 500
             };
 
@@ -1005,10 +1015,12 @@ namespace AutoActivator.Services
                 }
 
                 JObject?[] documents = await Task.WhenAll(reads).ConfigureAwait(false);
+                bool anyJobFoundInBatch = false;
                 for (int i = 0; i < documents.Length; i++)
                 {
                     JObject? child = documents[i];
                     if (child == null) continue;
+                    anyJobFoundInBatch = true;
                     string candidate = numbers[i];
                     string childName = GetValueCaseInsensitive(child, "JobName") ?? string.Empty;
                     if (!string.Equals(childName.Trim(), expectedName, StringComparison.OrdinalIgnoreCase))
@@ -1026,6 +1038,11 @@ namespace AutoActivator.Services
                         .ConfigureAwait(false);
                     if (referencesParent) exact.Add(candidate);
                     else if (parentMentionsChild) supported.Add(candidate);
+                }
+
+                if (exact.Count == 1 || !anyJobFoundInBatch)
+                {
+                    break;
                 }
             }
 

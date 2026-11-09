@@ -233,7 +233,7 @@ namespace AutoActivator.Services
                     : "Q";
 
             PaymentRoutingContext paymentRouting =
-                ResolveAndValidatePaymentRouting(generalVariables, trace);
+                ResolveAndValidatePaymentRouting(BuildAddprctVariables(generalVariables, addprctSpecificVariables), trace);
 
             bool bypassBilling =
                 skipPrime ||
@@ -250,6 +250,10 @@ namespace AutoActivator.Services
 
             trace.Bucp = paymentRouting.Bucp;
             trace.Cmdpmt = paymentRouting.PaymentCommand;
+            generalVariables["BUCP"] = paymentRouting.Bucp;
+            generalVariables["CMDPMT"] = paymentRouting.PaymentCommand;
+            addprctSpecificVariables["BUCP"] = paymentRouting.Bucp;
+            addprctSpecificVariables["CMDPMT"] = paymentRouting.PaymentCommand;
             trace.RoutingDiagnostic = string.IsNullOrWhiteSpace(
                     trace.RoutingDiagnostic)
                 ? paymentRouting.Diagnostic
@@ -2204,11 +2208,11 @@ namespace AutoActivator.Services
             IReadOnlyDictionary<string, string> variables,
             ContractActivationTrace trace)
         {
-            string bucp = GetRequiredRoutingVariable(variables, "BUCP")
+            string bucp = GetRequiredRoutingVariable(variables, "BUCP", trace)
                 .PadLeft(5, '0');
             string paymentCommand = GetRequiredRoutingVariable(
                     variables,
-                    "CMDPMT")
+                    "CMDPMT", trace)
                 .ToUpperInvariant();
 
             string businessChannel;
@@ -2250,9 +2254,19 @@ namespace AutoActivator.Services
 
         private static string GetRequiredRoutingVariable(
             IReadOnlyDictionary<string, string> variables,
-            string key)
+            string key, ContractActivationTrace? trace = null)
         {
-            if (!variables.TryGetValue(key, out string? value) ||
+            string? fallback = string.Equals(key, "BUCP", StringComparison.OrdinalIgnoreCase)
+                ? (!string.IsNullOrWhiteSpace(trace?.Bucp) ? trace.Bucp : PreActivationRoutingService.ResolveConfirmedPaymentRouting(trace?.EliaChannelCode).Bucp)
+                : string.Equals(key, "CMDPMT", StringComparison.OrdinalIgnoreCase)
+                    ? (!string.IsNullOrWhiteSpace(trace?.Cmdpmt) ? trace.Cmdpmt : PreActivationRoutingService.ResolveConfirmedPaymentRouting(trace?.EliaChannelCode).Cmdpmt)
+                    : null;
+            if ((!variables.TryGetValue(key, out string? value) || string.IsNullOrWhiteSpace(value)) &&
+                !string.IsNullOrWhiteSpace(fallback))
+            {
+                return fallback.Trim();
+            }
+            if (!variables.TryGetValue(key, out value) ||
                 string.IsNullOrWhiteSpace(value))
             {
                 throw new InvalidOperationException(

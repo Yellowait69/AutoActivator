@@ -26,9 +26,9 @@ namespace AutoActivator.Gui.Views
             return brush;
         }
 
-        public string TableName { get; set; }
-        public string Status { get; set; }
-        public string ErrorDetails { get; set; }
+        public string TableName { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string ErrorDetails { get; set; } = string.Empty;
         public bool IsMatch { get; set; }
         public string StatusIcon => IsMatch ? "✔ OK" : "✖ KO";
         public SolidColorBrush StatusColor => IsMatch ? MatchBrush : DiffBrush;
@@ -92,7 +92,7 @@ namespace AutoActivator.Gui.Views
 
                 string envLetter = CmbSmartEnv.SelectedItem is ComboBoxItem item ? item.Tag?.ToString() ?? "D" : "D";
 
-                string targetPath = FindLatestMatchingExtraction(selectedFileName, envLetter);
+                string? targetPath = FindLatestMatchingExtraction(selectedFileName, envLetter);
 
                 if (!string.IsNullOrEmpty(targetPath))
                 {
@@ -114,10 +114,10 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-        private string FindLatestMatchingExtraction(string baselineName, string envLetter)
+        private string? FindLatestMatchingExtraction(string baselineName, string envLetter)
         {
-            string[] channels = { "C01", "C03", "C05" };
-            string foundChannel = channels.FirstOrDefault(c => baselineName.IndexOf(c, StringComparison.OrdinalIgnoreCase) >= 0);
+            string[] channels = { "C01", "C02", "C03", "C05" };
+            string? foundChannel = channels.FirstOrDefault(c => baselineName.IndexOf(c, StringComparison.OrdinalIgnoreCase) >= 0);
 
             if (foundChannel != null && Directory.Exists(Settings.OutputDir))
             {
@@ -438,6 +438,25 @@ namespace AutoActivator.Gui.Views
             return sb.ToString();
         }
 
+        private void GridResults_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (GridResults.SelectedItem is not UIComparisonResult selected)
+            {
+                return;
+            }
+
+            var reportWindow = new DiagnosticReportWindow(
+                title: $"Table Comparison — {selected.TableName}",
+                subtitle: $"Status: {selected.Status} ({selected.StatusIcon})",
+                status: selected.IsMatch ? "SUCCESS" : "FAILED",
+                reportContent: selected.ErrorDetails,
+                contractReference: selected.TableName)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            reportWindow.ShowDialog();
+        }
+
         private void BtnOpenFolder_Click(object sender, RoutedEventArgs e)
         {
             if (Window.GetWindow(this) is MainWindow mainWindow)
@@ -447,19 +466,30 @@ namespace AutoActivator.Gui.Views
                 {
                     if (File.Exists(pathToOpen))
                     {
-                        System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{pathToOpen}\"");
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{Path.GetFullPath(pathToOpen)}\"")
+                        {
+                            UseShellExecute = true
+                        });
                         return;
                     }
                     if (Directory.Exists(pathToOpen))
                     {
-                        System.Diagnostics.Process.Start("explorer.exe", pathToOpen);
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.GetFullPath(pathToOpen))
+                        {
+                            UseShellExecute = true,
+                            Verb = "open"
+                        });
                         return;
                     }
                 }
 
                 if (Directory.Exists(Settings.OutputDir))
                 {
-                    System.Diagnostics.Process.Start("explorer.exe", Settings.OutputDir);
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.GetFullPath(Settings.OutputDir))
+                    {
+                        UseShellExecute = true,
+                        Verb = "open"
+                    });
                 }
                 else
                 {

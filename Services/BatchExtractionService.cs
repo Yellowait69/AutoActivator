@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -46,7 +46,7 @@ namespace AutoActivator.Services
                 using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 using (var reader = new StreamReader(fs, Encoding.UTF8))
                 {
-                    string line;
+                    string? line;
                     char delimiter = ';';
                     int contractIndex = -1, testIdIndex = -1;
                     bool headerFound = false;
@@ -124,7 +124,7 @@ namespace AutoActivator.Services
                 // Capped at 12 concurrent contracts (each running up to 10 table queries) to prevent SQL connection pool exhaustion
                 using (var semaphore = new SemaphoreSlim(12))
                 {
-                    var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
+                    async Task ProcessContractItemAsync((int rowNum, string contractNumber, string rawTestId) item, int index)
                     {
                         try
                         {
@@ -213,7 +213,11 @@ namespace AutoActivator.Services
                                 TotalItems = totalItems
                             });
                         }
-                    }, token)).ToList();
+                    }
+
+                    var tasks = contractsToProcess
+                        .Select((item, index) => ProcessContractItemAsync(item, index))
+                        .ToList();
 
                     try
                     {
@@ -272,8 +276,12 @@ namespace AutoActivator.Services
 
                         using (var tempReader = new StreamReader(tempFile, Encoding.UTF8))
                         {
-                            string content = await tempReader.ReadToEndAsync().ConfigureAwait(false);
-                            await finalWriter.WriteAsync(content).ConfigureAwait(false);
+                            char[] buffer = new char[8192];
+                            int charsRead;
+                            while ((charsRead = await tempReader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                            {
+                                await finalWriter.WriteAsync(buffer, 0, charsRead).ConfigureAwait(false);
+                            }
                         }
                     }
                 }

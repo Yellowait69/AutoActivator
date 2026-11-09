@@ -35,7 +35,7 @@ namespace AutoActivator.Services
 
             if (dfRef.Rows.Count == 0 && dfNew.Rows.Count == 0)
             {
-                return ("OK_EMPTY", null, 0);
+                return ("OK_EMPTY", string.Empty, 0);
             }
 
             if (dfRef.Rows.Count == 0 || dfNew.Rows.Count == 0)
@@ -62,8 +62,8 @@ namespace AutoActivator.Services
                     return ("KO_NO_COMMON_COLS", "No common columns found after applying exclusion filters.", Math.Max(dfRef.Rows.Count, dfNew.Rows.Count));
                 }
 
-                int[] refIndices = commonCols.Select(c => dfRef.Columns[c].Ordinal).ToArray();
-                int[] newIndices = commonCols.Select(c => dfNew.Columns[c].Ordinal).ToArray();
+                int[] refIndices = commonCols.Select(c => dfRef.Columns[c]!.Ordinal).ToArray();
+                int[] newIndices = commonCols.Select(c => dfNew.Columns[c]!.Ordinal).ToArray();
 
                 List<string[]> refRows = ExtractAndNormalize(dfRef, refIndices);
                 List<string[]> newRows = ExtractAndNormalize(dfNew, newIndices);
@@ -107,7 +107,7 @@ namespace AutoActivator.Services
                         continue;
                     }
 
-                    string value = cellValue.ToString().Trim();
+                    string value = (cellValue.ToString() ?? string.Empty).Trim();
 
                     if (value.Length == 0 ||
                         string.Equals(value, "nan", StringComparison.OrdinalIgnoreCase) ||
@@ -137,7 +137,7 @@ namespace AutoActivator.Services
         /// </summary>
         private static bool TryNormalizeNumericValue(string value, out string normalized)
         {
-            normalized = null;
+            normalized = string.Empty;
 
             bool hasDot = value.IndexOf('.') >= 0;
             bool hasComma = value.IndexOf(',') >= 0;
@@ -175,8 +175,11 @@ namespace AutoActivator.Services
         {
             public static readonly StringArrayComparer Instance = new StringArrayComparer();
 
-            public int Compare(string[] x, string[] y)
+            public int Compare(string[]? x, string[]? y)
             {
+                if (ReferenceEquals(x, y)) return 0;
+                if (x == null) return -1;
+                if (y == null) return 1;
                 int len = Math.Min(x.Length, y.Length);
                 for (int i = 0; i < len; i++)
                 {
@@ -200,7 +203,7 @@ namespace AutoActivator.Services
             for (int i = 0; i < refRows.Count; i++)
             {
                 bool rowHasDiff = false;
-                StringBuilder rowDiffs = totalDiffRows < MAX_DIFFS_TO_REPORT ? new StringBuilder() : null;
+                StringBuilder? rowDiffs = totalDiffRows < MAX_DIFFS_TO_REPORT ? new StringBuilder() : null;
 
                 for (int j = 0; j < commonCols.Count; j++)
                 {
@@ -241,7 +244,7 @@ namespace AutoActivator.Services
 
             if (totalDiffRows == 0)
             {
-                return ("OK", null, 0);
+                return ("OK", string.Empty, 0);
             }
 
             if (truncatedMessageAdded)
