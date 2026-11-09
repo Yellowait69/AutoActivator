@@ -1,0 +1,191 @@
+<Window x:Class="AutoActivator.Gui.Views.DiagnosticReportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Activation Diagnostic Report"
+        Width="980"
+        Height="720"
+        MinWidth="680"
+        MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header Card -->
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="18,14"
+                Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock x:Name="TxtReportTitle"
+                               Text="Activation Diagnostic Report"
+                               FontSize="17"
+                               FontWeight="Bold"
+                               Foreground="#0F172A" />
+                    <TextBlock x:Name="TxtReportSubtitle"
+                               Text="Detailed execution trace, SQL routing and JES spool diagnostics"
+                               FontSize="12"
+                               Foreground="#64748B"
+                               Margin="0,3,0,0" />
+                </StackPanel>
+
+                <Border x:Name="StatusBadge"
+                        Grid.Column="1"
+                        Background="#EFF6FF"
+                        BorderBrush="#BFDBFE"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="12,6"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="TxtStatusBadge"
+                               Text="DIAGNOSTIC"
+                               FontSize="12"
+                               FontWeight="Bold"
+                               Foreground="#1D4ED8" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Filter / Search Bar -->
+        <Border Grid.Row="1"
+                Background="White"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="12,8"
+                Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="Filter lines:"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="#475569"
+                           VerticalAlignment="Center"
+                           Margin="4,0,10,0" />
+
+                <TextBox x:Name="TxtSearchFilter"
+                         Grid.Column="1"
+                         Height="30"
+                         VerticalContentAlignment="Center"
+                         Padding="8,0"
+                         FontSize="12"
+                         BorderBrush="#CBD5E1"
+                         BorderThickness="1"
+                         TextChanged="TxtSearchFilter_TextChanged" />
+
+                <Button x:Name="BtnClearFilter"
+                        Grid.Column="2"
+                        Content="Clear"
+                        Margin="8,0,0,0"
+                        Padding="12,5"
+                        FontSize="12"
+                        Background="#F1F5F9"
+                        Foreground="#334155"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        Cursor="Hand"
+                        Click="BtnClearFilter_Click" />
+            </Grid>
+        </Border>
+
+        <!-- Monospace Diagnostic Viewer -->
+        <Border Grid.Row="2"
+                Background="#0F172A"
+                BorderBrush="#1E293B"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="2">
+            <TextBox x:Name="TxtReportContent"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"
+                     FontSize="12.5"
+                     Background="#0F172A"
+                     Foreground="#E2E8F0"
+                     BorderThickness="0"
+                     Padding="14" />
+        </Border>
+
+        <!-- Action Footer -->
+        <Grid Grid.Row="3" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="TxtFooterHint"
+                       Grid.Column="0"
+                       Text="Tip: Use Ctrl+F to focus the filter bar, or export the report for support."
+                       FontSize="12"
+                       Foreground="#64748B"
+                       VerticalAlignment="Center" />
+
+            <Button x:Name="BtnCopyClipboard"
+                    Grid.Column="1"
+                    Content="Copy to Clipboard"
+                    Padding="16,8"
+                    Margin="0,0,10,0"
+                    FontSize="12.5"
+                    FontWeight="SemiBold"
+                    Background="White"
+                    Foreground="#0F172A"
+                    BorderBrush="#CBD5E1"
+                    BorderThickness="1"
+                    Cursor="Hand"
+                    Click="BtnCopyClipboard_Click" />
+
+            <Button x:Name="BtnExportTxt"
+                    Grid.Column="2"
+                    Content="Export .txt"
+                    Padding="16,8"
+                    Margin="0,0,10,0"
+                    FontSize="12.5"
+                    FontWeight="SemiBold"
+                    Background="#2563EB"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="BtnExportTxt_Click" />
+
+            <Button x:Name="BtnClose"
+                    Grid.Column="3"
+                    Content="Close"
+                    Padding="18,8"
+                    FontSize="12.5"
+                    FontWeight="SemiBold"
+                    Background="#E2E8F0"
+                    Foreground="#0F172A"
+                    BorderThickness="0"
+                    IsCancel="True"
+                    Cursor="Hand"
+                    Click="BtnClose_Click" />
+        </Grid>
+    </Grid>
+</Window>
