@@ -1,0 +1,204 @@
+<Window x:Class="AutoActivator.Gui.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:AutoActivator.Gui.Views"
+        Title="AutoActivator — LISA &amp; ELIA E.T.L Suite" Height="860" Width="1240" MinHeight="700" MinWidth="1020"
+        Background="#F1F5F9" WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+
+        <!-- Primary Action Button (Emerald) -->
+        <Style TargetType="Button" x:Key="ActionButtonStyle">
+            <Setter Property="Background" Value="#10B981"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#059669"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#CBD5E1"/>
+                                <Setter Property="Foreground" Value="#64748B"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Cancel / Danger Button (Crimson) -->
+        <Style TargetType="Button" x:Key="CancelButtonStyle">
+            <Setter Property="Background" Value="#EF4444"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="15,10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#DC2626"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#E2E8F0"/>
+                                <Setter Property="Foreground" Value="#94A3B8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Sidebar Navigation Button -->
+        <Style TargetType="Button" x:Key="MenuButtonStyle">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#CBD5E1"/>
+            <Setter Property="Padding" Value="16,12"/>
+            <Setter Property="Margin" Value="14,3"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="MenuBorder" Background="{TemplateBinding Background}" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="MenuBorder" Property="Opacity" Value="0.92"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="245"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- MODERN DARK SLATE SIDEBAR -->
+        <Border Grid.Column="0" Background="#0F172A" BorderBrush="#1E293B" BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Brand Header -->
+                <StackPanel Grid.Row="0" Margin="20,28,20,24">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Background="#10B981" CornerRadius="8" Width="34" Height="34" Margin="0,0,12,0">
+                            <TextBlock Text="⚡" FontSize="18" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="AUTO-ACTIVATOR" Foreground="White" FontSize="17" FontWeight="Bold"/>
+                            <TextBlock Text="LISA &amp; ELIA E.T.L SUITE" Foreground="#38BDF8" FontSize="10.5" FontWeight="Bold" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Navigation Menu -->
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="WORKFLOW MODULES" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
+
+                    <Button x:Name="BtnActivation" Content="⚡   Contract Activation" Style="{StaticResource MenuButtonStyle}" Background="#10B981" Foreground="White" Click="BtnMenu_Click"/>
+                    <Button x:Name="BtnExtraction" Content="📥   Data Extraction" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+                    <Button x:Name="BtnComparison" Content="📊   Deep Comparison" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+
+                    <Border BorderBrush="#1E293B" BorderThickness="0,1,0,0" Margin="20,18,20,18"/>
+
+                    <TextBlock Text="KNOWLEDGE BASE" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
+                    <Button x:Name="BtnHelp" Content="❓   Help &amp; Documentation" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+                </StackPanel>
+
+                <!-- Connected Session Card in Sidebar Footer -->
+                <Border Grid.Row="2" Background="#1E293B" CornerRadius="8" Margin="14,10,14,18" Padding="14,12" BorderBrush="#334155" BorderThickness="1">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#10B981" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="TxtSidebarUser" Text="Session Active" Foreground="White" FontSize="12.5" FontWeight="Bold"/>
+                        </StackPanel>
+                        <TextBlock x:Name="TxtSidebarServer" Text="Mainframe ESCWA Ready" Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- MAIN WORKSPACE -->
+        <Grid Grid.Column="1" Margin="24,20,24,18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- MODULE VIEWS -->
+            <views:ActivationView x:Name="ViewActivation" Grid.Row="0" Visibility="Visible"/>
+            <views:ExtractionView x:Name="ViewExtraction" Grid.Row="0" Visibility="Collapsed"/>
+            <views:ComparisonView x:Name="ViewComparison" Grid.Row="0" Visibility="Collapsed"/>
+            <views:HelpView x:Name="ViewHelp" Grid.Row="0" Visibility="Collapsed"/>
+
+            <!-- ELEVATED STATUS BAR DOCK -->
+            <Border Grid.Row="1" Background="White" CornerRadius="8" Padding="16,12" Margin="0,14,0,0" BorderBrush="#CBD5E1" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <ProgressBar x:Name="PrgLoading" Grid.Row="0" IsIndeterminate="True" Height="4" Margin="0,0,0,10" Visibility="Collapsed" Foreground="#2563EB" BorderThickness="0" Background="#E2E8F0"/>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="●" Foreground="#3B82F6" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="TxtStatus" FontSize="13.5" TextWrapping="Wrap" Foreground="#1E293B" FontWeight="SemiBold" VerticalAlignment="Center" Text="Ready."/>
+                        </StackPanel>
+
+                        <TextBlock x:Name="LnkFile" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Center" Margin="15,0,0,0" FontSize="13.5">
+                            <Hyperlink Click="Hyperlink_Click" Foreground="#2563EB" FontWeight="Bold" TextDecorations="None">
+                                <Hyperlink.Style>
+                                    <Style TargetType="Hyperlink">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="TextDecorations" Value="Underline"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Hyperlink.Style>
+                                <Run Text="📁 Open Generated Report / Output Folder"/>
+                            </Hyperlink>
+                        </TextBlock>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
