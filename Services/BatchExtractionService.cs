@@ -12,9 +12,8 @@ using AutoActivator.Utils;
 namespace AutoActivator.Services
 {
     /// <summary>
-    /// Service responsible for processing bulk contract extractions from a CSV file.
-    /// It uses parallel processing and streams results to temporary files
-    /// to avoid OutOfMemory (RAM) issues on large datasets.
+    /// Service responsible for processing bulk contract extractions from a CSV/Excel file.
+    /// Preserves the exact 1-based Excel row number and resolves Branche 21 / Branche 23.
     /// </summary>
     public class BatchExtractionService
     {
@@ -25,7 +24,7 @@ namespace AutoActivator.Services
             _extractionService = extractionService ?? throw new ArgumentNullException(nameof(extractionService));
         }
 
-        public async Task PerformBatchExtractionAsync(
+        public async Task<string> PerformBatchExtractionAsync(
             string filePath,
             string env,
             Action<BatchProgressInfo> onProgressUpdate,
@@ -40,6 +39,7 @@ namespace AutoActivator.Services
             Directory.CreateDirectory(tempDirPath);
 
             var contractsToProcess = new List<(int rowNum, string contractNumber, string rawTestId)>();
+            string finalMergedPath = Settings.OutputDir;
 
             try
             {
@@ -118,6 +118,19 @@ namespace AutoActivator.Services
                     }
                 }
 
+                string origFileName = Path.GetFileNameWithoutExtension(filePath);
+                if (origFileName.StartsWith("Converted_Ext_", StringComparison.OrdinalIgnoreCase))
+                {
+                    origFileName = origFileName.Substring("Converted_Ext_".Length);
+                }
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                Directory.CreateDirectory(Settings.OutputDir);
+
+                char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpperInvariant(env[0]) : 'U';
+                string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}_{timestamp}.csv");
+                finalMergedPath = combinedPath;
+
                 int totalItems = contractsToProcess.Count;
                 int processedItems = 0;
 
@@ -135,13 +148,16 @@ namespace AutoActivator.Services
                             {
                                 token.ThrowIfCancellationRequested();
 
+                                bool itemIsDemandId = ExcelHelper.IsDemandIdInput(item.contractNumber);
+
                                 ExtractionResult result = await _extractionService
-                                    .PerformExtractionAsync(item.contractNumber, env, false, isDemandId, token)
+                                    .PerformExtractionAsync(item.contractNumber, env, false, itemIsDemandId, token)
                                     .ConfigureAwait(false);
 
                                 token.ThrowIfCancellationRequested();
 
-                                string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
+                                string displayContract = !string.IsNullOrWhiteSpace(result.ContractReference) &&
+                                                         !string.Equals(result.ContractReference, "Not found", StringComparison.OrdinalIgnoreCase)
                                     ? result.ContractReference
                                     : item.contractNumber;
 
@@ -149,7 +165,14 @@ namespace AutoActivator.Services
                                 {
                                     var localReport = new StringBuilder();
                                     localReport.AppendLine(new string('=', 80));
-                                    localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.rawTestId} | ENV: {env} ###");
+                                    localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | JCL: {result.JclContract} | EXCEL ROW: #{item.rowNum} | TEST ID: {item.rawTestId} | ENV: {env} | BRANCH: {result.BranchDisplay} | BUCP/CMD: {result.Bucp}/{result.Cmdpmt} | FONDS: {result.FundsSummary} ###");
+                                    localReport.AppendLine($"Contrat (3-7-2)      : {displayContract} | JCL (9 chiffres / NO_CNT) : {result.JclContract} | LISA ID : {result.InternalId}");
+                                    localReport.AppendLine($"Demand ID / ELIA ID  : {result.DemandId} / UCON {result.UconId} (Statut Demand : {result.DemandStatus})");
+                                    localReport.AppendLine($"Produit / Process    : {result.ProductCode} / {result.ProcessCode} (ChannelCode ELIA : {result.ChannelCode})");
+                                    localReport.AppendLine($"Canal & Paiement     : {result.BusinessChannel} -> BUCP = {result.Bucp} | CMDPMT = {result.Cmdpmt} ({result.RoutingRule})");
+                                    localReport.AppendLine($"Prime Brute / JCL    : {result.Premium} € -> AMOUNT = {result.AmountJcl}");
+                                    localReport.AppendLine($"Date N (Run Date)    : {result.RunDate} ({result.RunDateSource}) | Date N+2 (Consolidation BR23) : {result.ConsolidationDate}");
+                                    localReport.AppendLine($"Branche & Fonds      : {result.BranchDisplay} ({result.BranchDetectionReason}) | Fonds : {result.FundsSummary}");
                                     localReport.AppendLine(new string('=', 80));
 
                                     if (!string.IsNullOrWhiteSpace(result.LisaContent))
@@ -172,17 +195,41 @@ namespace AutoActivator.Services
                                 }
 
                                 int current = Interlocked.Increment(ref processedItems);
+                                string itemStatus = result.InternalId != "Not found"
+                                    ? "OK"
+                                    : (result.UconId != "Not found" ? "ELIA ONLY" : "KO");
 
                                 onProgressUpdate?.Invoke(new BatchProgressInfo
                                 {
                                     RowNum = item.rowNum,
+                                    Environment = env,
+                                    TestId = item.rawTestId,
                                     ContractId = displayContract,
+                                    JclContract = string.IsNullOrWhiteSpace(result.JclContract) ? "-" : result.JclContract,
                                     InternalId = result.InternalId,
-                                    Product = env,
+                                    Product = string.IsNullOrWhiteSpace(result.ProductCode) ? "-" : result.ProductCode,
+                                    ProductCode = string.IsNullOrWhiteSpace(result.ProductCode) ? "-" : result.ProductCode,
+                                    ProcessCode = string.IsNullOrWhiteSpace(result.ProcessCode) ? "-" : result.ProcessCode,
+                                    ChannelCode = string.IsNullOrWhiteSpace(result.ChannelCode) ? "-" : result.ChannelCode,
+                                    BusinessChannel = string.IsNullOrWhiteSpace(result.BusinessChannel) ? "-" : result.BusinessChannel,
+                                    Bucp = string.IsNullOrWhiteSpace(result.Bucp) ? "-" : result.Bucp,
+                                    Cmdpmt = string.IsNullOrWhiteSpace(result.Cmdpmt) ? "-" : result.Cmdpmt,
+                                    RoutingRule = string.IsNullOrWhiteSpace(result.RoutingRule) ? "-" : result.RoutingRule,
+                                    RunDate = string.IsNullOrWhiteSpace(result.RunDate) ? "-" : result.RunDate,
+                                    RunDateSource = string.IsNullOrWhiteSpace(result.RunDateSource) ? "-" : result.RunDateSource,
+                                    ConsolidationDate = string.IsNullOrWhiteSpace(result.ConsolidationDate) ? "-" : result.ConsolidationDate,
+                                    AmountJcl = string.IsNullOrWhiteSpace(result.AmountJcl) ? "-" : result.AmountJcl,
+                                    BranchDetectionReason = string.IsNullOrWhiteSpace(result.BranchDetectionReason) ? "-" : result.BranchDetectionReason,
+                                    DemandStatus = string.IsNullOrWhiteSpace(result.DemandStatus) ? "-" : result.DemandStatus,
+                                    FundsSummary = string.IsNullOrWhiteSpace(result.FundsSummary) ? "-" : result.FundsSummary,
+                                    IsBranch23 = result.IsBranch23,
+                                    BranchDisplay = result.BranchDisplay,
                                     Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
                                     UconId = result.UconId,
                                     DemandId = result.DemandId,
-                                    Status = "OK",
+                                    FilePath = combinedPath,
+                                    Status = itemStatus,
+                                    TablesExtractedCount = result.TablesExtractedCount,
                                     CurrentItem = current,
                                     TotalItems = totalItems
                                 });
@@ -202,12 +249,21 @@ namespace AutoActivator.Services
                             onProgressUpdate?.Invoke(new BatchProgressInfo
                             {
                                 RowNum = item.rowNum,
+                                Environment = env,
+                                TestId = item.rawTestId,
                                 ContractId = $"{item.contractNumber} (FAILED)",
                                 InternalId = "Error",
-                                Product = env,
+                                Product = "-",
+                                ProductCode = "-",
+                                ProcessCode = "-",
+                                ChannelCode = "-",
+                                BusinessChannel = "-",
+                                IsBranch23 = false,
+                                BranchDisplay = "N/A",
                                 Premium = "0",
                                 UconId = "Error",
                                 DemandId = "Error",
+                                FilePath = combinedPath,
                                 Status = ex.Message.IndexOf("not found", StringComparison.OrdinalIgnoreCase) >= 0 ? "Not found in DB" : "SQL Error",
                                 CurrentItem = current,
                                 TotalItems = totalItems
@@ -229,13 +285,12 @@ namespace AutoActivator.Services
                     }
                 }
 
-                string origFileName = Path.GetFileNameWithoutExtension(filePath);
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                Directory.CreateDirectory(Settings.OutputDir);
-
-                char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpperInvariant(env[0]) : 'U';
                 string partialSuffix = token.IsCancellationRequested ? "_PARTIAL_CANCELLED" : string.Empty;
-                string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}{partialSuffix}_{timestamp}.csv");
+                if (!string.IsNullOrEmpty(partialSuffix))
+                {
+                    combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}{partialSuffix}_{timestamp}.csv");
+                    finalMergedPath = combinedPath;
+                }
 
                 try
                 {
@@ -245,6 +300,7 @@ namespace AutoActivator.Services
                 {
                     string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}{partialSuffix}_{timestamp}_{Guid.NewGuid().ToString("N").Substring(0, 4)}.csv");
                     await WriteMergedBatchOutputAsync(alternativePath, tempDirPath, totalItems, token.IsCancellationRequested).ConfigureAwait(false);
+                    finalMergedPath = alternativePath;
                 }
             }
             finally
@@ -258,6 +314,8 @@ namespace AutoActivator.Services
                     catch { /* Ignore temporary directory lock by antivirus */ }
                 }
             }
+
+            return finalMergedPath;
         }
 
         private static async Task WriteMergedBatchOutputAsync(string outputPath, string tempDirPath, int totalItems, bool isCancelled)

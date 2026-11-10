@@ -188,7 +188,8 @@ namespace AutoActivator.Services.Branch23Activation
         public string BusinessChannelName => Channel switch
         {
             Branch23PaymentChannel.Bank => "BANK",
-            Branch23PaymentChannel.BrokerNewGeneration => "BROKER_NEW_GEN",
+            Branch23PaymentChannel.BrokerNewGeneration =>
+                NormalizedBucp == "49797" ? "BROKER_LEGACY" : "BROKER_NEW_GEN",
             _ => "UNKNOWN"
         };
 
@@ -283,16 +284,18 @@ namespace AutoActivator.Services.Branch23Activation
             string code = NormalizeChannelCode(channelCode);
 
             Branch23PaymentChannel channel =
-                normalizedBucp == "00382" && normalizedCommand == "8"
+                (normalizedBucp == "00382" || normalizedBucp == "00182") && normalizedCommand == "8"
                     ? Branch23PaymentChannel.Bank
-                    : normalizedBucp == "80819" && normalizedCommand == "H"
+                    : (normalizedBucp == "80819" && normalizedCommand == "H") ||
+                      (normalizedBucp == "49797" && (normalizedCommand == "X" || normalizedCommand == "H"))
                         ? Branch23PaymentChannel.BrokerNewGeneration
                         : Branch23PaymentChannel.Unknown;
 
             string channelName = channel switch
             {
                 Branch23PaymentChannel.Bank => "BANK",
-                Branch23PaymentChannel.BrokerNewGeneration => "BROKER_NEW_GEN",
+                Branch23PaymentChannel.BrokerNewGeneration =>
+                    normalizedBucp == "49797" ? "BROKER_LEGACY" : "BROKER_NEW_GEN",
                 _ => "UNKNOWN"
             };
 
@@ -345,9 +348,10 @@ namespace AutoActivator.Services.Branch23Activation
             return channel switch
             {
                 Branch23PaymentChannel.Bank =>
-                    bucp == "00382" && cmdpmt == "8",
+                    (bucp == "00382" || bucp == "00182") && cmdpmt == "8",
                 Branch23PaymentChannel.BrokerNewGeneration =>
-                    bucp == "80819" && cmdpmt == "H",
+                    (bucp == "80819" && cmdpmt == "H") ||
+                    (bucp == "49797" && (cmdpmt == "X" || cmdpmt == "H")),
                 _ => false
             };
         }

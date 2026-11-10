@@ -12,8 +12,8 @@ namespace AutoActivator.Services
     {
         private const int DefaultCommandTimeoutSeconds = 60;
 
-        private const string InsertPaymentQuery = @"
-            INSERT INTO LV.PRCTT0 (
+        private string BuildInsertPaymentQuery() => $@"
+            INSERT INTO {Settings.DbConfig.GetLisaPaymentTable(EnvironmentName, "PRCTT0")} (
                 C_STE, NO_CNT, C_MD_PMT, D_REF_PRM, NO_ORD_RCP, TSTAMP_CRT_RCT,
                 C_TY_RCT, D_BISM_DVA, D_BISM_DCOR, M_PAY, NM_CP,
                 T_ADR_1_CP, T_ADR_2_CP, C_ETAT_RCP, T_COMMU, NO_BUR_SERV,
@@ -185,7 +185,7 @@ namespace AutoActivator.Services
             try
             {
                 using (SqlConnection connection = new SqlConnection(_connectionString))
-                using (SqlCommand command = new SqlCommand(InsertPaymentQuery, connection))
+                using (SqlCommand command = new SqlCommand(BuildInsertPaymentQuery(), connection))
                 {
                     ConfigurePaymentCommand(
                         command, contractInternalId, amount, paymentDate,

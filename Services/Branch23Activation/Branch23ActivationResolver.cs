@@ -21,17 +21,30 @@ namespace AutoActivator.Services.Branch23Activation
 
         /// <summary>
         /// 182-2867013-42 -> 182286701342 -> drop 1st digit and 2 check digits -> 822867013.
+        /// Also accepts an already formatted 7-to-9 digit technical contract number (NO_CNT).
         /// </summary>
         public static Branch23StartEnd ResolveStartEnd(string? fullContractNumber)
         {
             string raw = (fullContractNumber ?? string.Empty).Trim();
-            string digits = raw.Replace("-", string.Empty).Replace(" ", string.Empty);
+            string digits = raw.Replace("-", string.Empty).Replace(" ", string.Empty).Replace(".", string.Empty);
+
+            if (digits.Length is >= 7 and <= 9 && digits.All(char.IsAsciiDigit))
+            {
+                return new Branch23StartEnd
+                {
+                    FullContractNumber = raw,
+                    DigitsOnly = digits,
+                    Start = digits,
+                    End = digits,
+                    Rule = "Technical contract number (NO_CNT) used directly (Start = End)"
+                };
+            }
 
             if (digits.Length != 12 || !digits.All(char.IsAsciiDigit))
             {
                 throw new Branch23ActivationException(
                     "BR23_INVALID_CONTRACT_NUMBER",
-                    $"Contract number '{raw}' is not a 3-7-2 number with exactly 12 digits.");
+                    $"Contract number '{raw}' is not a valid 12-digit (3-7-2) or 9-digit (NO_CNT) contract number.");
             }
 
             string technical = digits.Substring(1, 9);
@@ -63,7 +76,8 @@ namespace AutoActivator.Services.Branch23Activation
         public static Branch23RunDate ResolveRunDate(
             DateTime? paymentDate,
             DateTime? firstPremiumDate,
-            DateTime? contractStartDate)
+            DateTime? contractStartDate,
+            DateTime? demandCreationDate = null)
         {
             string rejection = GetPaymentDateRejection(paymentDate, firstPremiumDate, contractStartDate);
             var warnings = new List<string>();
@@ -93,9 +107,15 @@ namespace AutoActivator.Services.Branch23Activation
                     $"DateVersement {Display(paymentDate)} rejected: {rejection}; DatePremierePrime {Display(firstPremiumDate)} is technical/absent; DateDebutContrat used.");
             }
 
+            if (IsValidBusinessDate(demandCreationDate))
+            {
+                return Build(demandCreationDate!.Value, "TB5HDMD.IT5HDMDDCRE",
+                    $"DateVersement {Display(paymentDate)}, DatePremierePrime {Display(firstPremiumDate)} and DateDebutContrat {Display(contractStartDate)} are technical/absent; DemandCreationDate (IT5HDMDDCRE) used.");
+            }
+
             throw new Branch23ActivationException(
                 "BR23_RUN_DATE_UNRESOLVED",
-                $"No valid business date: DVRS={Display(paymentDate)}, DPMRPAI={Display(firstPremiumDate)}, DDEB={Display(contractStartDate)}. " +
+                $"No valid business date: DVRS={Display(paymentDate)}, DPMRPAI={Display(firstPremiumDate)}, DDEB={Display(contractStartDate)}, DCRE={Display(demandCreationDate)}. " +
                 "The current date is never used as a fallback.");
 
             Branch23RunDate Build(DateTime date, string source, string reason) => new Branch23RunDate
@@ -183,20 +203,38 @@ namespace AutoActivator.Services.Branch23Activation
                 else rejected.Add($"{row} -> rejected: {reason}");
             }
 
+            string selectionReason = "Single TB5UPRP row with IT5UPRPUBRU > 0, group 01, type 02.";
+
             if (candidates.Count == 0)
             {
-                throw new Branch23ActivationException(
-                    "BR23_PREMIUM_MISSING",
-                    "No conclusion premium candidate (group 01, type 02, gross > 0). Rows: " +
-                    string.Join(" | ", rejected));
-            }
+                var fallbackCandidates = rows
+                    .Where(r => r.GrossPremium.HasValue && r.GrossPremium.Value > 0m)
+                    .OrderByDescending(r => NormalizeCode(r.PremiumGroup) == Settings.Branch23Activation.ConclusionPremiumGroup)
+                    .ThenByDescending(r => int.TryParse(r.AmendmentSequence, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seq) ? seq : 0)
+                    .ToList();
 
-            if (candidates.Count > 1)
+                if (fallbackCandidates.Count == 0)
+                {
+                    throw new Branch23ActivationException(
+                        "BR23_PREMIUM_MISSING",
+                        "No conclusion premium candidate (gross > 0) found in FJ1.TB5UPRP. Rows: " +
+                        string.Join(" | ", rejected));
+                }
+
+                candidates.Add(fallbackCandidates[0]);
+                selectionReason = $"Fallback TB5UPRP row with IT5UPRPUBRU > 0 (group {fallbackCandidates[0].PremiumGroup}, type {fallbackCandidates[0].PremiumType}, avt {fallbackCandidates[0].AmendmentSequence}).";
+            }
+            else if (candidates.Count > 1)
             {
-                throw new Branch23ActivationException(
-                    "BR23_PREMIUM_AMBIGUOUS",
-                    $"{candidates.Count} conclusion premium candidates; none is chosen arbitrarily. Candidates: " +
-                    string.Join(" | ", candidates.Select(c => c.ToString())));
+                var orderedCandidates = candidates
+                    .OrderByDescending(r => int.TryParse(r.AmendmentSequence, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seq) ? seq : 0)
+                    .ThenByDescending(r => r.PaymentDate ?? DateTime.MinValue)
+                    .ThenByDescending(r => r.FirstPremiumDate ?? DateTime.MinValue)
+                    .ToList();
+
+                var latest = orderedCandidates[0];
+                selectionReason = $"Selected latest amendment TB5UPRP candidate (avt {latest.AmendmentSequence}) among {candidates.Count} group 01 / type 02 candidates.";
+                candidates = new List<Branch23PremiumRow> { latest };
             }
 
             var selected = candidates[0];
@@ -208,7 +246,7 @@ namespace AutoActivator.Services.Branch23Activation
                 Candidates = candidates.Select(c => c.ToString()).ToList(),
                 Rejected = rejected,
                 Amount = FormatAmount(selected.GrossPremium!.Value),
-                Reason = "Single TB5UPRP row with IT5UPRPUBRU > 0, group 01, type 02."
+                Reason = selectionReason
             };
         }
 

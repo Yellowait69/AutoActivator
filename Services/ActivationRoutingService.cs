@@ -398,26 +398,22 @@ namespace AutoActivator.Services
             string normalizedBucp = NormalizeBucp(bucp);
             string normalizedCommand = NormalizePaymentCommand(paymentCommand);
 
-            if (string.Equals(
-                    normalizedBucp,
-                    BankBucp,
-                    StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(
-                    normalizedCommand,
-                    BankPaymentCommand,
-                    StringComparison.OrdinalIgnoreCase))
+            if ((string.Equals(normalizedBucp, BankBucp, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(normalizedBucp, "00182", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals(normalizedCommand, BankPaymentCommand, StringComparison.OrdinalIgnoreCase))
             {
                 return ActivationPaymentChannel.Bank;
             }
 
-            if (string.Equals(
-                    normalizedBucp,
-                    BrokerNewGenerationBucp,
-                    StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(
-                    normalizedCommand,
-                    BrokerNewGenerationPaymentCommand,
-                    StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedBucp, BrokerNewGenerationBucp, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(normalizedCommand, BrokerNewGenerationPaymentCommand, StringComparison.OrdinalIgnoreCase))
+            {
+                return ActivationPaymentChannel.BrokerNewGeneration;
+            }
+
+            if (string.Equals(normalizedBucp, "49797", StringComparison.OrdinalIgnoreCase) &&
+                (string.Equals(normalizedCommand, "X", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(normalizedCommand, "H", StringComparison.OrdinalIgnoreCase)))
             {
                 return ActivationPaymentChannel.BrokerNewGeneration;
             }

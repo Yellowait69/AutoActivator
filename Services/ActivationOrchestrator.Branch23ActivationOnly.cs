@@ -274,13 +274,19 @@ namespace AutoActivator.Services
                 ValidatePaymentRouting(normalizedVariables);
                 RecordPaymentRouting(normalizedVariables);
 
+                string jclTemplateName = ResolveBranch23JclTemplateName(normalizedJobName);
+
                 var step = new JobStepExecutionInfo
                 {
                     StepOrder = _trace.Steps.Count + 1,
                     JobName = normalizedJobName,
+                    JclName = jclTemplateName,
                     SubJobName = normalizedSubJobName,
                     PhaseDescription =
-                        "Branch23ActivationOnly: " + normalizedJobName +
+                        "Branch23: " + normalizedJobName +
+                        (string.Equals(jclTemplateName, normalizedJobName, StringComparison.OrdinalIgnoreCase)
+                            ? string.Empty
+                            : $" ({jclTemplateName})") +
                         (normalizedSubJobName == "-"
                             ? string.Empty
                             : " -> " + normalizedSubJobName),
@@ -319,6 +325,17 @@ namespace AutoActivator.Services
                 };
             }
 
+            private static string ResolveBranch23JclTemplateName(string jobName)
+            {
+                return jobName.Trim().ToUpperInvariant() switch
+                {
+                    "LVDQFG03" => Config.Settings.Branch23.FundEvents.JclName,
+                    "LVDQFG01" => Config.Settings.Branch23.Consolidation.JclName,
+                    "LVD1PE01" => Config.Settings.Branch23.Fp01.JclName,
+                    _ => jobName.Trim()
+                };
+            }
+
             private void ValidatePaymentRouting(
                 IReadOnlyDictionary<string, string> variables)
             {
@@ -326,17 +343,13 @@ namespace AutoActivator.Services
                 string command = GetVariable(variables, "CMDPMT")
                     .ToUpperInvariant();
 
-                bool isBank = bucp == "00382" && command == "8";
-                bool isBrokerNewGeneration =
-                    bucp == "80819" && command == "H";
-
-                if (!isBank && !isBrokerNewGeneration)
+                if (!Config.Settings.ActivationAutomation.IsSupportedManualPair(bucp, command))
                 {
                     throw new InvalidOperationException(
                         "Unsupported Branch 23 payment routing. " +
                         $"BUCP/CMDPMT={bucp}/{command}. " +
-                        "Supported routes are BANK 00382/8 and " +
-                        "BROKER_NEW_GEN 80819/H.");
+                        "Supported routes are BANK 00382/8 (or 00182/8), " +
+                        "BROKER_NEW_GEN 80819/H and BROKER_LEGACY 49797/X or 49797/H.");
                 }
             }
 
@@ -346,9 +359,11 @@ namespace AutoActivator.Services
                 string bucp = GetVariable(variables, "BUCP").PadLeft(5, '0');
                 string command = GetVariable(variables, "CMDPMT")
                     .ToUpperInvariant();
-                string businessChannel = bucp == "00382"
+                string businessChannel = (bucp == "00382" || bucp == "00182")
                     ? "BANK"
-                    : "BROKER_NEW_GEN";
+                    : bucp == "49797"
+                        ? "BROKER_LEGACY"
+                        : "BROKER_NEW_GEN";
 
                 _trace.Bucp = bucp;
                 _trace.Cmdpmt = command;

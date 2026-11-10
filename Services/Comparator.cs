@@ -25,23 +25,74 @@ namespace AutoActivator.Services
         /// <summary>
         /// Compares two DataTables and returns the status, detailed diff report, and the exact count of differing rows.
         /// </summary>
-        public static (string Status, string Details, int ErrorRows) CompareDataTablesDetailed(DataTable dfRef, DataTable dfNew, string tableName)
+        public static (string Status, string Details, int ErrorRows) CompareDataTablesDetailed(
+            DataTable dfRef,
+            DataTable dfNew,
+            string tableName)
+        {
+            var ext = CompareDataTablesExtended(dfRef, dfNew, tableName, ignoreTechnicalColumns: false);
+            return (ext.Status, ext.Details, ext.ErrorRows);
+        }
+
+        /// <summary>
+        /// Extended comparison returning column-level discrepancy summaries and supporting optional technical/timestamp column filtering.
+        /// </summary>
+        public static (string Status, string Details, int ErrorRows, int DiffColsCount, string DiffColsSummary) CompareDataTablesExtended(
+            DataTable dfRef,
+            DataTable dfNew,
+            string tableName,
+            bool ignoreTechnicalColumns = false)
         {
             if (dfRef == null || dfNew == null)
             {
                 int fallbackErrors = Math.Max(dfRef?.Rows.Count ?? 0, dfNew?.Rows.Count ?? 0);
-                return ("KO_NULL_DATA", $"One or both DataTables are null for table {tableName}.", fallbackErrors);
+                return ("KO_NULL_DATA", $"One or both DataTables are null for table {tableName}.", fallbackErrors, 0, "Table NULL");
             }
 
             if (dfRef.Rows.Count == 0 && dfNew.Rows.Count == 0)
             {
-                return ("OK_EMPTY", string.Empty, 0);
+                return ("OK_EMPTY", string.Empty, 0, 0, "✓ Vide (0/0)");
             }
 
             if (dfRef.Rows.Count == 0 || dfNew.Rows.Count == 0)
             {
                 int missingRows = Math.Max(dfRef.Rows.Count, dfNew.Rows.Count);
-                return ("KO_MISSING_DATA", $"Discrepancy: Source has {dfRef.Rows.Count} rows, Target has {dfNew.Rows.Count} rows for table {tableName}.", missingRows);
+                var missingSb = new StringBuilder();
+                missingSb.AppendLine(
+                    $"⚠️ ÉCART DE PRÉSENCE DE DONNÉES : BASELINE = {dfRef.Rows.Count} ligne(s) vs TARGET = {dfNew.Rows.Count} ligne(s) pour {tableName}.");
+                DataTable populated = dfRef.Rows.Count > 0 ? dfRef : dfNew;
+                string sideLabel = dfRef.Rows.Count > 0
+                    ? "📘 Lignes présentes uniquement dans BASELINE (absentes de TARGET) :"
+                    : "🎯 Lignes présentes uniquement dans TARGET (absentes de BASELINE) :";
+                missingSb.AppendLine(sideLabel);
+
+                int previewCount = Math.Min(5, populated.Rows.Count);
+                for (int r = 0; r < previewCount; r++)
+                {
+                    DataRow row = populated.Rows[r];
+                    var nonEmptyCells = new List<string>();
+                    foreach (DataColumn col in populated.Columns)
+                    {
+                        string val = row[col]?.ToString()?.Trim() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(val) &&
+                            !string.Equals(val, "NULL", StringComparison.OrdinalIgnoreCase))
+                        {
+                            nonEmptyCells.Add($"{col.ColumnName}='{val}'");
+                            if (nonEmptyCells.Count >= 8) break;
+                        }
+                    }
+                    missingSb.AppendLine($"  • Ligne #{r + 1} : {string.Join(" | ", nonEmptyCells)}");
+                }
+                if (populated.Rows.Count > previewCount)
+                {
+                    missingSb.AppendLine($"  ... (+{populated.Rows.Count - previewCount} autre(s) ligne(s))");
+                }
+
+                string summary = dfRef.Rows.Count == 0
+                    ? $"Absent de Base (0 vs {dfNew.Rows.Count} lig.)"
+                    : $"Absent de Target ({dfRef.Rows.Count} vs 0 lig.)";
+
+                return ("KO_MISSING_DATA", missingSb.ToString().TrimEnd(), missingRows, populated.Columns.Count, summary);
             }
 
             try
@@ -54,12 +105,13 @@ namespace AutoActivator.Services
                 var commonCols = allColsRef
                     .Intersect(allColsNew, StringComparer.OrdinalIgnoreCase)
                     .Except(exclusions, StringComparer.OrdinalIgnoreCase)
+                    .Where(c => !ignoreTechnicalColumns || !IsTechnicalAuditColumn(c))
                     .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
                 if (commonCols.Count == 0)
                 {
-                    return ("KO_NO_COMMON_COLS", "No common columns found after applying exclusion filters.", Math.Max(dfRef.Rows.Count, dfNew.Rows.Count));
+                    return ("KO_NO_COMMON_COLS", "No common columns found after applying exclusion filters.", Math.Max(dfRef.Rows.Count, dfNew.Rows.Count), 0, "Aucune colonne commune");
                 }
 
                 int[] refIndices = commonCols.Select(c => dfRef.Columns[c]!.Ordinal).ToArray();
@@ -75,15 +127,62 @@ namespace AutoActivator.Services
                 if (refRows.Count != newRows.Count)
                 {
                     int rowCountDiff = Math.Abs(refRows.Count - newRows.Count);
-                    return ("KO_ROW_COUNT", $"Discrepancy in data volume: Source = {refRows.Count} rows vs Target = {newRows.Count} rows.", Math.Max(rowCountDiff, 1));
+                    var countReport = new StringBuilder();
+                    countReport.AppendLine(
+                        $"⚠️ ÉCART DE VOLUME DE LIGNES : BASELINE = {refRows.Count} ligne(s) vs TARGET = {newRows.Count} ligne(s) (Écart : {rowCountDiff} ligne(s)).");
+
+                    int commonRowCount = Math.Min(refRows.Count, newRows.Count);
+                    string colSummary = $"Volume ({refRows.Count} vs {newRows.Count} lig.)";
+                    int diffColCount = 0;
+
+                    if (commonRowCount > 0)
+                    {
+                        var (_, previewDetails, _, pDiffCols, pSummary) = GenerateDiffReport(
+                            refRows.Take(commonRowCount).ToList(),
+                            newRows.Take(commonRowCount).ToList(),
+                            commonCols);
+                        diffColCount = pDiffCols;
+                        if (pDiffCols > 0)
+                        {
+                            colSummary = $"{colSummary} | {pSummary}";
+                        }
+                        if (!string.IsNullOrWhiteSpace(previewDetails))
+                        {
+                            countReport.AppendLine();
+                            countReport.AppendLine("--- Comparaison des lignes communes ---");
+                            countReport.Append(previewDetails);
+                        }
+                    }
+
+                    return ("KO_ROW_COUNT", countReport.ToString().TrimEnd(), Math.Max(rowCountDiff, 1), diffColCount, colSummary);
                 }
 
                 return GenerateDiffReport(refRows, newRows, commonCols);
             }
             catch (Exception e)
             {
-                return ("KO_ERROR", $"Technical error while generating the differential for {tableName}: {e.Message}", Math.Max(dfRef.Rows.Count, dfNew.Rows.Count));
+                return ("KO_ERROR", $"Technical error while generating the differential for {tableName}: {e.Message}", Math.Max(dfRef.Rows.Count, dfNew.Rows.Count), 0, "Erreur technique");
             }
+        }
+
+        private static bool IsTechnicalAuditColumn(string columnName)
+        {
+            if (string.IsNullOrWhiteSpace(columnName))
+            {
+                return false;
+            }
+
+            string upper = columnName.Trim().ToUpperInvariant();
+            return upper.StartsWith("TSTAMP_", StringComparison.Ordinal) ||
+                   upper.StartsWith("D_JOB_", StringComparison.Ordinal) ||
+                   upper.StartsWith("NM_JOB_", StringComparison.Ordinal) ||
+                   upper.Equals("D_GEST_DMOD", StringComparison.Ordinal) ||
+                   upper.Equals("C_ID_GEST_DMOD", StringComparison.Ordinal) ||
+                   upper.Equals("TY_DMOD", StringComparison.Ordinal) ||
+                   upper.Contains("DTISMAJ", StringComparison.Ordinal) ||
+                   upper.Contains("CUSMAJ", StringComparison.Ordinal) ||
+                   upper.Contains("PGMMAJ", StringComparison.Ordinal) ||
+                   upper.Contains("TIMMAJ", StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -194,11 +293,16 @@ namespace AutoActivator.Services
         /// Compares cell by cell from the lightweight lists and generates a report.
         /// Counts all differing rows accurately while capping the text report at MAX_DIFFS_TO_REPORT.
         /// </summary>
-        private static (string Status, string Details, int ErrorRows) GenerateDiffReport(List<string[]> refRows, List<string[]> newRows, List<string> commonCols)
+        private static (string Status, string Details, int ErrorRows, int DiffColsCount, string DiffColsSummary) GenerateDiffReport(
+            List<string[]> refRows,
+            List<string[]> newRows,
+            List<string> commonCols)
         {
-            var diffReport = new StringBuilder();
+            var bodyReport = new StringBuilder();
             int totalDiffRows = 0;
+            int totalCellDiffs = 0;
             bool truncatedMessageAdded = false;
+            var diffColumnsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             for (int i = 0; i < refRows.Count; i++)
             {
@@ -213,14 +317,12 @@ namespace AutoActivator.Services
                     if (!string.Equals(val1, val2, StringComparison.Ordinal))
                     {
                         rowHasDiff = true;
+                        totalCellDiffs++;
+                        diffColumnsSet.Add(commonCols[j]);
                         if (rowDiffs != null)
                         {
-                            rowDiffs.AppendLine($"    -> {commonCols[j]} : Source = '{val1}' | Target = '{val2}'");
-                        }
-                        else
-                        {
-                            // Once report output is capped, a single column mismatch is enough to count the row as erroneous
-                            break;
+                            rowDiffs.AppendLine(
+                                $"    🔸 [{commonCols[j]}] : 📘 BASELINE = '{val1}'  |  🎯 TARGET = '{val2}'");
                         }
                     }
                 }
@@ -231,9 +333,13 @@ namespace AutoActivator.Services
 
                     if (rowDiffs != null)
                     {
-                        diffReport.AppendLine($"Row #{i + 1} is different:");
-                        diffReport.Append(rowDiffs.ToString());
-                        diffReport.AppendLine();
+                        string rowContext = BuildRowContextKey(refRows[i], newRows[i], commonCols);
+                        bodyReport.AppendLine(
+                            string.IsNullOrWhiteSpace(rowContext)
+                                ? $"  ▶ Ligne #{i + 1} en écart :"
+                                : $"  ▶ Ligne #{i + 1} ({rowContext}) :");
+                        bodyReport.Append(rowDiffs.ToString());
+                        bodyReport.AppendLine();
                     }
                     else if (!truncatedMessageAdded)
                     {
@@ -244,15 +350,53 @@ namespace AutoActivator.Services
 
             if (totalDiffRows == 0)
             {
-                return ("OK", string.Empty, 0);
+                return ("OK", string.Empty, 0, 0, "✓ Identique");
             }
+
+            var orderedDiffCols = diffColumnsSet.OrderBy(c => c, StringComparer.OrdinalIgnoreCase).ToList();
+            string colsSummary = orderedDiffCols.Count <= 4
+                ? string.Join(", ", orderedDiffCols)
+                : $"{string.Join(", ", orderedDiffCols.Take(4))} (+{orderedDiffCols.Count - 4})";
+
+            var finalReport = new StringBuilder();
+            finalReport.AppendLine(
+                $"📊 SYNTHÈSE : {totalDiffRows} ligne(s) en écart sur {refRows.Count} | " +
+                $"{orderedDiffCols.Count} colonne(s) impactée(s) ({totalCellDiffs} cellule(s) différente(s))");
+            finalReport.AppendLine($"📋 Colonnes modifiées : {string.Join(", ", orderedDiffCols)}");
+            finalReport.AppendLine("--------------------------------------------------------------------------------");
+            finalReport.Append(bodyReport.ToString());
 
             if (truncatedMessageAdded)
             {
-                diffReport.AppendLine($"\n[WARNING] Maximum number of reportable differences ({MAX_DIFFS_TO_REPORT}) reached ({totalDiffRows} total differing rows). Truncating report...");
+                finalReport.AppendLine($"\n[WARNING] Maximum number of reportable differences ({MAX_DIFFS_TO_REPORT}) reached ({totalDiffRows} total differing rows). Truncating report...");
             }
 
-            return ("KO", diffReport.ToString(), totalDiffRows);
+            return ("KO", finalReport.ToString().TrimEnd(), totalDiffRows, orderedDiffCols.Count, colsSummary);
+        }
+
+        private static string BuildRowContextKey(string[] refRow, string[] newRow, List<string> commonCols)
+        {
+            var keys = new List<string>();
+            for (int j = 0; j < commonCols.Count && keys.Count < 3; j++)
+            {
+                string col = commonCols[j];
+                string val = !string.IsNullOrWhiteSpace(refRow[j]) ? refRow[j] : newRow[j];
+                if (string.IsNullOrWhiteSpace(val)) continue;
+
+                if (col.Contains("IDN", StringComparison.OrdinalIgnoreCase) ||
+                    col.Contains("CNT", StringComparison.OrdinalIgnoreCase) ||
+                    col.Contains("FONDS", StringComparison.OrdinalIgnoreCase) ||
+                    col.Contains("FND", StringComparison.OrdinalIgnoreCase) ||
+                    col.Contains("ORD", StringComparison.OrdinalIgnoreCase) ||
+                    col.Contains("SEQ", StringComparison.OrdinalIgnoreCase) ||
+                    col.Contains("COURS", StringComparison.OrdinalIgnoreCase) ||
+                    col.Contains("PRD", StringComparison.OrdinalIgnoreCase))
+                {
+                    keys.Add($"{col}={val}");
+                }
+            }
+
+            return string.Join(", ", keys);
         }
     }
 }

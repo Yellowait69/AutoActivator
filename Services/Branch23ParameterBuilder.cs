@@ -93,18 +93,25 @@ namespace AutoActivator.Services
                 .Trim()
                 .ToUpperInvariant();
 
-            if (normalizedBucp == BankBucp && command == BankPaymentCommand)
+            if ((normalizedBucp == BankBucp || normalizedBucp == Settings.ActivationAutomation.BankLegacyBucp) &&
+                command == BankPaymentCommand)
                 return "BANK";
 
             if (normalizedBucp == BrokerNewGenerationBucp &&
                 command == BrokerNewGenerationPaymentCommand)
                 return "BROKER_NEW_GEN";
 
+            if (normalizedBucp == Settings.ActivationAutomation.BrokerLegacyBucp &&
+                (command == Settings.ActivationAutomation.BrokerLegacyCmdpmtX ||
+                 command == Settings.ActivationAutomation.BrokerLegacyCmdpmtH))
+                return "BROKER_LEGACY";
+
             throw new InvalidOperationException(
                 $"Unsupported Branch 23 BUCP/CMDPMT pair " +
                 $"'{normalizedBucp}/{command}'. Supported routes are " +
-                $"BANK {BankBucp}/{BankPaymentCommand} and BROKER_NEW_GEN " +
-                $"{BrokerNewGenerationBucp}/{BrokerNewGenerationPaymentCommand}.");
+                $"BANK {BankBucp}/{BankPaymentCommand} (or 00182/8), BROKER_NEW_GEN " +
+                $"{BrokerNewGenerationBucp}/{BrokerNewGenerationPaymentCommand} " +
+                "and BROKER_LEGACY 49797/X or 49797/H.");
         }
 
         public static Dictionary<string, string> MergePaymentRoutingVariables(
@@ -245,9 +252,13 @@ namespace AutoActivator.Services
                 new Dictionary<string, string>(
                     StringComparer.OrdinalIgnoreCase)
                 {
-                    ["DRUN"] =
-                        formattedRunDate,
-
+                    ["DRUN"] = formattedRunDate,
+                    ["CYMD"] = formattedRunDate,
+                    ["YYMMDD"] = normalizedRunDate.ToString("yyMMdd", CultureInfo.InvariantCulture),
+                    ["MMDD"] = normalizedRunDate.ToString("MMdd", CultureInfo.InvariantCulture),
+                    ["YYYY"] = normalizedRunDate.ToString("yyyy", CultureInfo.InvariantCulture),
+                    ["MM"] = normalizedRunDate.ToString("MM", CultureInfo.InvariantCulture),
+                    ["DD"] = normalizedRunDate.ToString("dd", CultureInfo.InvariantCulture),
                     ["DEVN"] =
                         Settings.Branch23
                             .FundEvents
@@ -294,12 +305,18 @@ namespace AutoActivator.Services
                     consolidationDate,
                     nameof(consolidationDate));
 
+            string formattedConsolidation = FormatJclDate(normalizedConsolidationDate);
+
             return new Dictionary<string, string>(
                 StringComparer.OrdinalIgnoreCase)
             {
-                ["DRUN"] =
-                    FormatJclDate(
-                        normalizedConsolidationDate),
+                ["DRUN"] = formattedConsolidation,
+                ["CYMD"] = formattedConsolidation,
+                ["YYMMDD"] = normalizedConsolidationDate.ToString("yyMMdd", CultureInfo.InvariantCulture),
+                ["MMDD"] = normalizedConsolidationDate.ToString("MMdd", CultureInfo.InvariantCulture),
+                ["YYYY"] = normalizedConsolidationDate.ToString("yyyy", CultureInfo.InvariantCulture),
+                ["MM"] = normalizedConsolidationDate.ToString("MM", CultureInfo.InvariantCulture),
+                ["DD"] = normalizedConsolidationDate.ToString("dd", CultureInfo.InvariantCulture),
 
                 ["RESTART"] =
                     NormalizeRequiredValue(
@@ -346,6 +363,8 @@ namespace AutoActivator.Services
                     consolidationDate,
                     nameof(consolidationDate));
 
+            string formattedConsolidation = FormatJclDate(normalizedConsolidationDate);
+
             (
                 DateTime dueMonth,
                 DateTime pivotMonth
@@ -355,9 +374,13 @@ namespace AutoActivator.Services
             return new Dictionary<string, string>(
                 StringComparer.OrdinalIgnoreCase)
             {
-                ["DRUN"] =
-                    FormatJclDate(
-                        normalizedConsolidationDate),
+                ["DRUN"] = formattedConsolidation,
+                ["CYMD"] = formattedConsolidation,
+                ["YYMMDD"] = normalizedConsolidationDate.ToString("yyMMdd", CultureInfo.InvariantCulture),
+                ["MMDD"] = normalizedConsolidationDate.ToString("MMdd", CultureInfo.InvariantCulture),
+                ["YYYY"] = normalizedConsolidationDate.ToString("yyyy", CultureInfo.InvariantCulture),
+                ["MM"] = normalizedConsolidationDate.ToString("MM", CultureInfo.InvariantCulture),
+                ["DD"] = normalizedConsolidationDate.ToString("dd", CultureInfo.InvariantCulture),
 
                 ["N1MCY"] =
                     FormatMonthYear(

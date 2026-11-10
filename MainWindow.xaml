@@ -133,6 +133,12 @@
 
                     <TextBlock Text="KNOWLEDGE BASE" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
                     <Button x:Name="BtnHelp" Content="❓   Help &amp; Documentation" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+
+                    <Border BorderBrush="#1E293B" BorderThickness="0,1,0,0" Margin="20,18,20,18"/>
+
+                    <TextBlock Text="QUICK FOLDERS" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
+                    <Button x:Name="BtnSidebarOutput" Content="📂   Output Reports Folder" Style="{StaticResource MenuButtonStyle}" Click="BtnSidebarOutput_Click"/>
+                    <Button x:Name="BtnSidebarBaselines" Content="📂   Golden Baselines Folder" Style="{StaticResource MenuButtonStyle}" Click="BtnSidebarBaselines_Click"/>
                 </StackPanel>
 
                 <!-- Connected Session Card in Sidebar Footer -->

@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="750">
+             mc:Ignorable="d" d:DesignWidth="1020" d:DesignHeight="820">
 
     <UserControl.Resources>
         <SolidColorBrush x:Key="TextPrimary" Color="#0F172A"/>
@@ -77,8 +77,8 @@
             <!-- HEADER -->
             <Grid Grid.Row="0" Margin="0,0,0,18">
                 <StackPanel HorizontalAlignment="Left">
-                    <TextBlock Text="Multi-Table Data Extraction" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
-                    <TextBlock Text="Extract 50+ LISA &amp; ELIA database tables in parallel with automatic Demand ID resolution and CSV snapshot generation." FontSize="13" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,0"/>
+                    <TextBlock Text="Multi-Table SQL Data Extraction" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                    <TextBlock Text="Extract 50+ LISA &amp; ELIA database tables in parallel with automatic Branche 21/23 detection, exact Excel row tracking and CSV snapshot generation." FontSize="13" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <Button Content="❓ Help &amp; Docs" Background="#EFF6FF" Foreground="#2563EB" BorderBrush="#BFDBFE" BorderThickness="1" Padding="14,7" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="Bold" Click="BtnHelp_Click">
@@ -124,84 +124,156 @@
                 </StackPanel>
             </Border>
 
-            <!-- EXTRACTION MODES TAB CONTROL -->
-            <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0" Margin="0,0,0,16">
-
-                <TabItem Header="📄 Single Contract Extraction">
-                    <Border Style="{StaticResource CardStyle}" CornerRadius="0,10,10,10">
-                        <StackPanel>
-                            <TextBlock Text="Extract all LISA and ELIA tables for a single Contract Number or Demand ID from the selected environment." Margin="0,0,0,14" Foreground="{StaticResource TextSecondary}"/>
-
-                            <StackPanel Margin="0,0,0,14" Orientation="Horizontal">
-                                <TextBlock Text="Search Mode:" FontWeight="Bold" Foreground="#334155" Margin="0,0,14,0" VerticalAlignment="Center"/>
-                                <RadioButton x:Name="RbSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,18,0" VerticalAlignment="Center" Cursor="Hand" FontWeight="SemiBold" Checked="InputType_Checked"/>
-                                <RadioButton x:Name="RbSearchDemand" Content="ELIA Demand ID" VerticalAlignment="Center" Cursor="Hand" FontWeight="SemiBold" Checked="InputType_Checked"/>
-                            </StackPanel>
-
-                            <TextBlock Text="Contract Number / Demand ID:" Style="{StaticResource LabelStyle}"/>
-                            <TextBox x:Name="TxtExtContract" Style="{StaticResource InputStyle}"/>
-
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Button x:Name="BtnCancelSingleExt" Content="🛑 Cancel" Click="BtnCancelExtraction_Click" Style="{DynamicResource CancelButtonStyle}" Width="125" Margin="0,0,10,0" IsEnabled="False"/>
-                                <Button x:Name="BtnRunSingle" Content="🚀 Run Single Extraction" Click="BtnRunSingle_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
-                            </StackPanel>
+            <!-- 2. UNIFIED SINGLE & BATCH EXTRACTION CARD (AUTO-DETECT CONTRACT vs DEMAND ID) -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock Text="2. Extraction Unitaire ou Batch Excel (Détection automatique Contrat / Demand ID)" FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="Insérez directement un numéro ci-dessous (Contrat 12 chiffres / 3-7-2 ou Demand ID ELIA) pour une extraction unitaire, ou sélectionnez un fichier Excel / CSV juste en dessous pour un lancement en Batch. Cliquez sur une ligne du tableau en bas pour afficher la synthèse complète d'Autocomplete SQL." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,2,0,0"/>
                         </StackPanel>
-                    </Border>
-                </TabItem>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BtnCompareLatestExt" Content="📊 Compare Latest" Click="BtnCompareLatestExt_Click" Background="#7C3AED" Foreground="White" Padding="11,6" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" FontWeight="Bold" ToolTip="Open Deep Comparison with the latest extracted CSV pre-loaded">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Button x:Name="BtnAddBaselineExt" Content="➕ Promote to Baseline" Click="BtnAddBaseline_Click" Background="{StaticResource SecondaryAction}" Foreground="White" Padding="11,6" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" FontWeight="Bold">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Button x:Name="BtnOpenBaselineExt" Content="📂 Open Baselines" Click="BtnOpenBaselineFolder_Click" Background="{StaticResource PrimaryAction}" Foreground="White" Padding="11,6" BorderThickness="0" Cursor="Hand" FontWeight="Bold">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
 
-                <TabItem Header="📁 Batch Extraction (CSV / Excel)">
-                    <Border Style="{StaticResource CardStyle}" CornerRadius="0,10,10,10">
-
+                    <!-- LIGNE 1 : EXTRACTION UNITAIRE -->
+                    <Border Background="#F8FAFC"
+                            BorderBrush="#CBD5E1"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,10"
+                            Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Select a CSV or Excel file to extract multiple contracts concurrently across LISA and ELIA." Margin="0,0,0,14" Foreground="{StaticResource TextSecondary}"/>
-
-                            <Border Background="{StaticResource BackgroundLight}" CornerRadius="8" Padding="14,12" Margin="0,0,0,18" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
-                                        <TextBlock Text="📌 Golden Baseline Management" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
-                                        <TextBlock Text="Promote your latest extraction to the Baseline folder or open your reference snapshots before running tests." Foreground="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button x:Name="BtnAddBaselineExt" Content="➕ Promote Latest to Baseline" Click="BtnAddBaseline_Click" Background="{StaticResource SecondaryAction}" Foreground="White" Padding="12,7" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0" FontWeight="Bold">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
-                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-                                                    </Border>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                        <Button x:Name="BtnOpenBaselineExt" Content="📂 Open Baselines" Click="BtnOpenBaselineFolder_Click" Background="{StaticResource PrimaryAction}" Foreground="White" Padding="12,7" BorderThickness="0" Cursor="Hand" FontWeight="Bold">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
-                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-                                                    </Border>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-
-                            <StackPanel Margin="0,0,0,14" Orientation="Horizontal">
-                                <TextBlock Text="Input File Mode:" FontWeight="Bold" Foreground="#334155" Margin="0,0,14,0" VerticalAlignment="Center"/>
-                                <RadioButton x:Name="RbBatchSearchContract" Content="Contract Number (LISA Contract)" IsChecked="True" Margin="0,0,18,0" VerticalAlignment="Center" Cursor="Hand" FontWeight="SemiBold" Checked="BatchInputType_Checked"/>
-                                <RadioButton x:Name="RbBatchSearchDemand" Content="Demand ID (Testing Team Network Path)" VerticalAlignment="Center" Cursor="Hand" FontWeight="SemiBold" Checked="BatchInputType_Checked"/>
-                            </StackPanel>
-
-                            <TextBlock Text="Source Data File Path (CSV / XLS / XLSX):" Style="{StaticResource LabelStyle}"/>
-                            <Grid Margin="0,0,0,20">
+                            <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Name="TxtBatchExtCsv" IsReadOnly="True" Style="{StaticResource InputStyle}" Background="#F8FAFC" Margin="0,0,10,0"/>
-                                <Button Content="📂 Browse..." Grid.Column="1" Padding="16,8" Background="#334155" Foreground="White" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Click="BtnBrowseExtCsv_Click">
+                                <TextBlock Grid.Column="0"
+                                           Text="📄 Extraction Unitaire — Numéro de Contrat (ex: 582-2437921-78) ou Demand ID ELIA (ex: 100458921) :"
+                                           FontWeight="Bold"
+                                           FontSize="12.5"
+                                           Foreground="#0F172A"
+                                           VerticalAlignment="Center"/>
+                                <Border Grid.Column="1"
+                                        Background="#EFF6FF"
+                                        BorderBrush="#BFDBFE"
+                                        BorderThickness="1"
+                                        CornerRadius="5"
+                                        Padding="8,2">
+                                    <TextBlock x:Name="TxtExtDetectedTypeBadge"
+                                               Text="Auto-détection : Contrat (12 chiffres / 3-7-2) ou Demand ID"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#1D4ED8"/>
+                                </Border>
+                            </Grid>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtExtContract"
+                                         Grid.Column="0"
+                                         Style="{StaticResource InputStyle}"
+                                         Margin="0,0,10,0"
+                                         FontSize="14"
+                                         FontWeight="SemiBold"
+                                         TextChanged="TxtExtContract_TextChanged"
+                                         KeyDown="TxtExtContract_KeyDown"
+                                         ToolTip="Saisissez un Numéro de Contrat (12 chiffres ou 3-7-2) ou un Demand ID ELIA (6 à 10 chiffres). Appuyez sur Entrée pour lancer l'extraction unitaire."/>
+                                <Button x:Name="BtnRunSingle"
+                                        Grid.Column="1"
+                                        Content="🚀 Run Single Extraction"
+                                        Click="BtnRunSingle_Click"
+                                        Style="{DynamicResource ActionButtonStyle}"
+                                        Width="205"
+                                        Margin="0,0,8,0"/>
+                                <Button x:Name="BtnCancelSingleExt"
+                                        Grid.Column="2"
+                                        Content="🛑 Cancel"
+                                        Click="BtnCancelExtraction_Click"
+                                        Style="{DynamicResource CancelButtonStyle}"
+                                        Width="110"
+                                        IsEnabled="False"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- LIGNE 2 : EXTRACTION BATCH (EXCEL / CSV) -->
+                    <Border Background="#F8FAFC"
+                            BorderBrush="#CBD5E1"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,10">
+                        <StackPanel>
+                            <TextBlock Text="📁 Extraction Batch par Fichier Excel / CSV (Détection auto Contrat / Demand ID par ligne &amp; N° de ligne Excel exact) :"
+                                       FontWeight="Bold"
+                                       FontSize="12.5"
+                                       Foreground="#0F172A"
+                                       Margin="0,0,0,6"/>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtBatchExtCsv"
+                                         Grid.Column="0"
+                                         IsReadOnly="True"
+                                         Style="{StaticResource InputStyle}"
+                                         Background="White"
+                                         Margin="0,0,8,0"
+                                         ToolTip="Chemin du fichier Excel (.xlsx/.xls) ou CSV de batch."/>
+                                <Button x:Name="BtnUseDefaultQcExtFile"
+                                        Content="📋 Default QC Excel"
+                                        Grid.Column="1"
+                                        Padding="10,8"
+                                        Margin="0,0,6,0"
+                                        Background="#0F766E"
+                                        Foreground="White"
+                                        FontWeight="Bold"
+                                        BorderThickness="0"
+                                        Cursor="Hand"
+                                        ToolTip="Charger automatiquement le fichier Excel QC par défaut selon l'Environnement et le Process."
+                                        Click="BtnUseDefaultQcExtFile_Click">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Border Background="{TemplateBinding Background}" CornerRadius="6">
@@ -210,22 +282,125 @@
                                         </ControlTemplate>
                                     </Button.Template>
                                 </Button>
+                                <Button Content="📂 Browse..."
+                                        Grid.Column="2"
+                                        Padding="12,8"
+                                        Margin="0,0,6,0"
+                                        Background="#334155"
+                                        Foreground="White"
+                                        FontWeight="Bold"
+                                        BorderThickness="0"
+                                        Cursor="Hand"
+                                        Click="BtnBrowseExtCsv_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <Button x:Name="BtnPreviewExtFile"
+                                        Content="🔍 Preview"
+                                        Grid.Column="3"
+                                        Padding="12,8"
+                                        Margin="0,0,8,0"
+                                        Background="#2563EB"
+                                        Foreground="White"
+                                        FontWeight="Bold"
+                                        BorderThickness="0"
+                                        Cursor="Hand"
+                                        ToolTip="Inspecter les lignes et numéros de lignes Excel du fichier avant lancement."
+                                        Click="BtnPreviewExtFile_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <Button x:Name="BtnRunBatch"
+                                        Grid.Column="4"
+                                        Content="🚀 Run Batch Extraction"
+                                        Click="BtnRunBatch_Click"
+                                        Style="{DynamicResource ActionButtonStyle}"
+                                        Width="195"
+                                        Margin="0,0,8,0"/>
+                                <Button x:Name="BtnCancelBatchExt"
+                                        Grid.Column="5"
+                                        Content="🛑 Cancel"
+                                        Click="BtnCancelExtraction_Click"
+                                        Style="{DynamicResource CancelButtonStyle}"
+                                        Width="105"
+                                        IsEnabled="False"/>
                             </Grid>
 
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Button x:Name="BtnCancelBatchExt" Content="🛑 Cancel" Click="BtnCancelExtraction_Click" Style="{DynamicResource CancelButtonStyle}" Width="125" Margin="0,0,10,0" IsEnabled="False"/>
-                                <Button x:Name="BtnRunBatch" Content="🚀 Run Batch Extraction" Click="BtnRunBatch_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
-                            </StackPanel>
+                            <!-- BARRE DE PROGRESSION UNIFIÉE (UNITAIRE & BATCH) -->
+                            <Border Background="#EFF6FF"
+                                    BorderBrush="#BFDBFE"
+                                    BorderThickness="1.5"
+                                    CornerRadius="8"
+                                    Padding="14,10">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <WrapPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
+                                        <Border Background="#DBEAFE" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="4" Padding="7,1" Margin="0,0,10,0">
+                                            <TextBlock x:Name="TxtExtProgressMode" Text="PRÊT (UNITAIRE / BATCH)" FontWeight="Bold" Foreground="#1E40AF" FontSize="11"/>
+                                        </Border>
+                                        <TextBlock Text="Progression : " FontWeight="Bold" Foreground="#1E3A8A" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtExtBatchProcessedCount" Text="0" FontWeight="Bold" Foreground="#047857" FontSize="12.5" VerticalAlignment="Center"/>
+                                        <TextBlock Text=" / " Foreground="#64748B" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtExtBatchPlannedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="12.5" VerticalAlignment="Center"/>
+                                        <TextBlock Text="   Restant : " Margin="10,0,0,0" Foreground="#475569" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtExtBatchRemainingCount" Text="0" FontWeight="Bold" Foreground="#D97706" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtExtElapsedTime" Text="   ⏱️ 0.0s" Margin="12,0,0,0" FontWeight="SemiBold" Foreground="#334155" FontSize="12" VerticalAlignment="Center"/>
+                                    </WrapPanel>
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Padding="8,1" Margin="0,0,10,0">
+                                            <TextBlock x:Name="TxtExtBatchProgressStatus" Text="READY" FontWeight="Bold" Foreground="#64748B" FontSize="11.5"/>
+                                        </Border>
+                                        <TextBlock x:Name="TxtExtBatchProgressPercentage" Text="0%" FontWeight="Bold" FontSize="14" Foreground="#2563EB" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Row="1"
+                                               Grid.ColumnSpan="2"
+                                               Margin="0,5,0,2"
+                                               FontSize="11.5"
+                                               TextTrimming="CharacterEllipsis">
+                                        <Run Text="En cours : " Foreground="#475569" FontWeight="SemiBold"/>
+                                        <Run x:Name="TxtExtBatchCurrentContract" Text="-" Foreground="#1D4ED8" FontWeight="Bold"/>
+                                    </TextBlock>
+                                    <ProgressBar x:Name="ProgressBatchExtraction"
+                                                 Grid.Row="2"
+                                                 Grid.ColumnSpan="2"
+                                                 Height="9"
+                                                 Margin="0,4,0,0"
+                                                 Minimum="0"
+                                                 Maximum="1"
+                                                 Value="0"
+                                                 Foreground="#2563EB"
+                                                 Background="#DBEAFE"/>
+                                </Grid>
+                            </Border>
                         </StackPanel>
-
                     </Border>
-                </TabItem>
-            </TabControl>
+                </StackPanel>
+            </Border>
 
             <!-- SESSION HISTORY CARD -->
             <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="18,16">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
@@ -236,47 +411,178 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Extraction Session History" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,18,0"/>
+                        <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Extraction Session Monitor" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,16,0"/>
 
-                            <Border Background="{StaticResource DangerLight}" BorderBrush="{StaticResource DangerBorder}" BorderThickness="1" CornerRadius="12" Padding="10,4" ToolTip="Number of inactive/erroneous contracts over total extracted">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="Inactive / Missing (KO):" FontWeight="SemiBold" Foreground="#B91C1C" FontSize="12.5" Margin="0,0,8,0"/>
-                                    <Border Background="{StaticResource Danger}" CornerRadius="10" Padding="8,2" MinWidth="35">
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <TextBlock x:Name="TxtKoCount" Text="0" FontWeight="Bold" Foreground="White" FontSize="12.5"/>
-                                            <TextBlock Text=" / " FontWeight="Bold" Foreground="#FECACA" FontSize="12.5"/>
-                                            <TextBlock x:Name="TxtTotalCount" Text="0" FontWeight="Bold" Foreground="White" FontSize="12.5"/>
-                                        </StackPanel>
-                                    </Border>
+                            <Border Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="12" Padding="10,3" Margin="0,2,8,2">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Total: " FontSize="12" FontWeight="SemiBold" Foreground="#475569"/>
+                                    <TextBlock x:Name="TxtTotalCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#0F172A"/>
                                 </StackPanel>
                             </Border>
-                        </StackPanel>
 
-                        <Button x:Name="BtnClearHistory" Grid.Column="1" Click="BtnClearHistory_Click" Cursor="Hand" BorderThickness="0" Background="Transparent" VerticalAlignment="Center">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border x:Name="BtnBorder" Background="White" BorderBrush="{StaticResource Danger}" BorderThickness="1" CornerRadius="6" Padding="10,5">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="🗑️" Margin="0,0,5,0" FontSize="12"/>
-                                            <TextBlock x:Name="BtnText" Text="Clear History" Foreground="{StaticResource Danger}" FontWeight="Bold" FontSize="12"/>
-                                        </StackPanel>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="BtnBorder" Property="Background" Value="{StaticResource Danger}"/>
-                                            <Setter TargetName="BtnText" Property="Foreground" Value="White"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
+                            <Border Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1" CornerRadius="12" Padding="10,3" Margin="0,2,8,2">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Active (LISA+ELIA): " FontSize="12" FontWeight="SemiBold" Foreground="#047857"/>
+                                    <TextBlock x:Name="TxtOkCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#047857"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="12" Padding="10,3" Margin="0,2,8,2">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Branche 21: " FontSize="12" FontWeight="SemiBold" Foreground="#1D4ED8"/>
+                                    <TextBlock x:Name="TxtExtBranch21Count" Text="0" FontSize="12" FontWeight="Bold" Foreground="#1D4ED8"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="12" Padding="10,3" Margin="0,2,8,2">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Branche 23: " FontSize="12" FontWeight="SemiBold" Foreground="#6D28D9"/>
+                                    <TextBlock x:Name="TxtExtBranch23Count" Text="0" FontSize="12" FontWeight="Bold" Foreground="#6D28D9"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="{StaticResource DangerLight}" BorderBrush="{StaticResource DangerBorder}" BorderThickness="1" CornerRadius="12" Padding="10,3" Margin="0,2,8,2" ToolTip="Contracts not yet active in LISA (ELIA ONLY) or not found (KO)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="ELIA Only / KO: " FontWeight="SemiBold" Foreground="#B91C1C" FontSize="12"/>
+                                    <TextBlock x:Name="TxtKoCount" Text="0" FontWeight="Bold" Foreground="#B91C1C" FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BtnInspectSelectedExt"
+                                    Content="🔍 Inspect SQL"
+                                    Click="BtnInspectSelectedExt_Click"
+                                    Cursor="Hand"
+                                    Padding="10,5"
+                                    Margin="0,0,6,0"
+                                    FontWeight="Bold"
+                                    Background="#0F172A"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    ToolTip="Inspect extracted SQL tables and contract metadata for the selected row"/>
+                            <Button x:Name="BtnSendSelectedToAct"
+                                    Content="⚡ Send to Activation"
+                                    Click="BtnSendSelectedToAct_Click"
+                                    Cursor="Hand"
+                                    Padding="10,5"
+                                    Margin="0,0,6,0"
+                                    FontWeight="Bold"
+                                    Background="#ECFDF5"
+                                    Foreground="#047857"
+                                    BorderBrush="#A7F3D0"
+                                    BorderThickness="1"
+                                    ToolTip="Load the selected contract/demand directly into Contract Activation"/>
+                            <Button x:Name="BtnExportExtHistoryCsv"
+                                    Content="📥 Export CSV"
+                                    Click="BtnExportExtHistoryCsv_Click"
+                                    Cursor="Hand"
+                                    Padding="10,5"
+                                    Margin="0,0,6,0"
+                                    FontWeight="Bold"
+                                    Background="#EFF6FF"
+                                    Foreground="#2563EB"
+                                    BorderBrush="#BFDBFE"
+                                    BorderThickness="1"/>
+                            <Button x:Name="BtnClearHistory"
+                                    Content="🗑️ Clear History"
+                                    Click="BtnClearHistory_Click"
+                                    Cursor="Hand"
+                                    Padding="10,5"
+                                    FontWeight="Bold"
+                                    Background="White"
+                                    Foreground="{StaticResource Danger}"
+                                    BorderBrush="{StaticResource Danger}"
+                                    BorderThickness="1"/>
+                        </StackPanel>
                     </Grid>
 
-                    <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1" AlternationCount="2"
-                              MinHeight="220" MaxHeight="450"
+                    <!-- LIVE SEARCH & FILTER BAR -->
+                    <Border Grid.Row="1"
+                            Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="10,8"
+                            Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="165"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="165"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="🔍 Filter:"
+                                       FontWeight="Bold"
+                                       Foreground="#334155"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"/>
+                            <TextBox x:Name="TxtFilterExtHistory"
+                                     Grid.Column="1"
+                                     Padding="8,5"
+                                     FontSize="12.5"
+                                     BorderBrush="#CBD5E1"
+                                     ToolTip="Filter by Contract ID, Demand ID, LISA ID, UCON ID, Product, Excel Row or Test ID"
+                                     TextChanged="FilterExtHistory_Changed"/>
+                            <ComboBox x:Name="CmbFilterExtBranch"
+                                      Grid.Column="3"
+                                      Padding="8,5"
+                                      FontSize="12.5"
+                                      SelectedIndex="0"
+                                      SelectionChanged="FilterExtHistory_Changed">
+                                <ComboBoxItem Content="All Branches" Tag="ALL"/>
+                                <ComboBoxItem Content="Branche 21" Tag="Branche 21"/>
+                                <ComboBoxItem Content="Branche 23" Tag="Branche 23"/>
+                            </ComboBox>
+                            <ComboBox x:Name="CmbFilterExtStatus"
+                                      Grid.Column="5"
+                                      Padding="8,5"
+                                      FontSize="12.5"
+                                      SelectedIndex="0"
+                                      SelectionChanged="FilterExtHistory_Changed">
+                                <ComboBoxItem Content="All Statuses" Tag="ALL"/>
+                                <ComboBoxItem Content="OK (LISA + ELIA)" Tag="OK"/>
+                                <ComboBoxItem Content="ELIA ONLY" Tag="ELIA ONLY"/>
+                                <ComboBoxItem Content="KO (Inactive/Missing)" Tag="KO"/>
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Grid.Row="2"
+                               Text="💡 Double-click any row to inspect extracted SQL tables and contract metadata, or right-click to send the contract directly to Contract Activation."
+                               FontSize="11.5"
+                               Foreground="{StaticResource TextSecondary}"
+                               Margin="0,0,0,8"
+                               TextWrapping="Wrap"/>
+
+                    <ListView x:Name="ListHistory"
+                              Grid.Row="3"
+                              Background="White"
+                              BorderBrush="{StaticResource BorderDefault}"
+                              BorderThickness="1"
+                              AlternationCount="2"
+                              MinHeight="220"
+                              MaxHeight="460"
+                              MouseDoubleClick="ListHistory_MouseDoubleClick"
                               ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                               ScrollViewer.CanContentScroll="True">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="🔍 Inspect Extracted SQL Data &amp; Metadata" Click="MenuExtInspect_Click" FontWeight="Bold"/>
+                                <MenuItem Header="🔄 Load into Single Extraction Input" Click="MenuExtLoadSingle_Click" FontWeight="SemiBold"/>
+                                <Separator/>
+                                <MenuItem Header="⚡ Send to Contract Activation" Click="MenuExtSendToActivation_Click" FontWeight="Bold"/>
+                                <Separator/>
+                                <MenuItem Header="📋 Copy Contract ID" Click="MenuExtCopyContract_Click"/>
+                                <MenuItem Header="📋 Copy Demand ID" Click="MenuExtCopyDemand_Click"/>
+                                <MenuItem Header="📂 Open Extracted CSV File" Click="MenuExtOpenCsv_Click"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="Padding" Value="5"/>
@@ -284,35 +590,91 @@
                                     <Trigger Property="ItemsControl.AlternationIndex" Value="1">
                                         <Setter Property="Background" Value="#F8FAFC"/>
                                     </Trigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="KO">
+                                        <Setter Property="Background" Value="#FEF2F2"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="ELIA ONLY">
+                                        <Setter Property="Background" Value="#FFFBEB"/>
+                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="Row" DisplayMemberBinding="{Binding RowNum}" Width="45"/>
-                                <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="70"/>
-                                <GridViewColumn Header="Env / Prod" Width="75">
+                            <GridView AllowsColumnReorder="True">
+                                <GridViewColumn Header="Excel Row" Width="74">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Product}" FontWeight="Bold" Foreground="{StaticResource SecondaryAction}"/>
+                                            <Border Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Padding="6,1" HorizontalAlignment="Center">
+                                                <TextBlock Text="{Binding RowNum}" FontWeight="Bold" Foreground="#0F172A" FontSize="11.5" HorizontalAlignment="Center"/>
+                                            </Border>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Contract ID" Width="135">
+                                <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="65"/>
+                                <GridViewColumn Header="Env" DisplayMemberBinding="{Binding Env}" Width="54"/>
+                                <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="105"/>
+                                <GridViewColumn Header="Contract ID" Width="128">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding ContractId}" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Internal ID" Width="95">
+                                <GridViewColumn Header="JCL ID" DisplayMemberBinding="{Binding JclContract}" Width="84"/>
+                                <GridViewColumn Header="LISA ID" Width="88">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding InternalId}" Foreground="{StaticResource PrimaryAction}" FontWeight="SemiBold"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Premium" Width="95">
+                                <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="88"/>
+                                <GridViewColumn Header="Branche" Width="98">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border x:Name="ExtBranchBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="10" Padding="8,2" HorizontalAlignment="Center">
+                                                <TextBlock x:Name="ExtBranchText" Text="{Binding BranchDisplay}" FontWeight="Bold" FontSize="11.5" Foreground="#1D4ED8" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsBranch23}" Value="True">
+                                                    <Setter TargetName="ExtBranchBadge" Property="Background" Value="#F5F3FF"/>
+                                                    <Setter TargetName="ExtBranchBadge" Property="BorderBrush" Value="#DDD6FE"/>
+                                                    <Setter TargetName="ExtBranchText" Property="Foreground" Value="#6D28D9"/>
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Product" Width="68">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding ProductCode}" FontWeight="Bold" Foreground="{StaticResource SecondaryAction}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Process" DisplayMemberBinding="{Binding ProcessCode}" Width="60"/>
+                                <GridViewColumn Header="Ch" DisplayMemberBinding="{Binding ChannelCode}" Width="42"/>
+                                <GridViewColumn Header="Canal" Width="118">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock x:Name="ExtChannelText" Text="{Binding BusinessChannel}" FontWeight="Bold" Foreground="#64748B"/>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding BusinessChannel}" Value="BANK">
+                                                    <Setter TargetName="ExtChannelText" Property="Foreground" Value="#2563EB"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding BusinessChannel}" Value="BROKER_NEW_GEN">
+                                                    <Setter TargetName="ExtChannelText" Property="Foreground" Value="#7C3AED"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding BusinessChannel}" Value="BROKER_LEGACY">
+                                                    <Setter TargetName="ExtChannelText" Property="Foreground" Value="#EA580C"/>
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="BUCP" DisplayMemberBinding="{Binding Bucp}" Width="62"/>
+                                <GridViewColumn Header="CMD" DisplayMemberBinding="{Binding Cmdpmt}" Width="48"/>
+                                <GridViewColumn Header="Prime" Width="90">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
@@ -322,22 +684,30 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="105"/>
-                                <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="105"/>
-                                <GridViewColumn Header="Result" Width="120">
+                                <GridViewColumn Header="Run Date" DisplayMemberBinding="{Binding RunDate}" Width="84"/>
+                                <GridViewColumn Header="Fonds / VNI / Mvt" DisplayMemberBinding="{Binding FundsSummary}" Width="145"/>
+                                <GridViewColumn Header="Test ID" Width="74">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Test}" FontWeight="Bold" Foreground="#475569"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Status" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock x:Name="Icon" Text="🔴 " Visibility="Collapsed" Margin="0,0,5,0"/>
-                                                <TextBlock x:Name="TxtStatus" Text="{Binding Test}" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                <TextBlock x:Name="Icon" Text="🟢 " Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TxtStatus" Text="{Binding Status}" FontWeight="Bold" Foreground="{StaticResource Success}"/>
                                             </StackPanel>
                                             <DataTemplate.Triggers>
-                                                <DataTrigger Binding="{Binding Test}" Value="KO">
-                                                    <Setter TargetName="Icon" Property="Visibility" Value="Visible"/>
+                                                <DataTrigger Binding="{Binding Status}" Value="KO">
+                                                    <Setter TargetName="Icon" Property="Text" Value="🔴 "/>
                                                     <Setter TargetName="TxtStatus" Property="Foreground" Value="#DC2626"/>
                                                 </DataTrigger>
-                                                <DataTrigger Binding="{Binding Test}" Value="OK">
-                                                    <Setter TargetName="TxtStatus" Property="Foreground" Value="{StaticResource Success}"/>
+                                                <DataTrigger Binding="{Binding Status}" Value="ELIA ONLY">
+                                                    <Setter TargetName="Icon" Property="Text" Value="🟠 "/>
+                                                    <Setter TargetName="TxtStatus" Property="Foreground" Value="#D97706"/>
                                                 </DataTrigger>
                                             </DataTemplate.Triggers>
                                         </DataTemplate>

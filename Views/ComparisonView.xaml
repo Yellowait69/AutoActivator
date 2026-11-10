@@ -15,7 +15,7 @@
             <Grid Grid.Row="0" Margin="0,0,0,18">
                 <StackPanel HorizontalAlignment="Left">
                     <TextBlock Text="Deep Non-Regression Comparison" FontSize="24" FontWeight="Bold" Foreground="#0F172A"/>
-                    <TextBlock Text="Cell-by-cell LISA &amp; ELIA matrix comparison with 128-bit decimal normalization and Smart Baseline pairing." FontSize="13" Foreground="#64748B" Margin="0,3,0,0"/>
+                    <TextBlock Text="Cell-by-cell LISA &amp; ELIA matrix comparison with 128-bit decimal normalization, Branche 21/23 tagging and Smart Baseline pairing." FontSize="13" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <Button Content="❓ Help &amp; Docs" Background="#EFF6FF" Foreground="#2563EB" BorderBrush="#BFDBFE" BorderThickness="1" Padding="14,7" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="Bold" Click="BtnHelp_Click">
@@ -89,7 +89,7 @@
                     <Grid Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
@@ -114,6 +114,23 @@
                             </Grid>
                         </StackPanel>
 
+                        <!-- Swap Button -->
+                        <Button x:Name="BtnSwapFiles"
+                                Grid.Column="1"
+                                Content="⇄"
+                                ToolTip="Swap Base and Target CSV files"
+                                Click="BtnSwapFiles_Click"
+                                VerticalAlignment="Bottom"
+                                Margin="12,0,12,0"
+                                Padding="12,7"
+                                FontSize="14"
+                                FontWeight="Bold"
+                                Background="#EFF6FF"
+                                Foreground="#2563EB"
+                                BorderBrush="#BFDBFE"
+                                BorderThickness="1"
+                                Cursor="Hand"/>
+
                         <!-- Target File -->
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="Target Extraction to Validate (CSV):" Margin="0,0,0,6" FontWeight="SemiBold" FontSize="12.5" Foreground="#334155"/>
@@ -136,29 +153,48 @@
                         </StackPanel>
                     </Grid>
 
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button x:Name="BtnOpenComparisonFolder" Content="📁 Open Reports Folder" Click="BtnOpenFolder_Click" Background="#2563EB" Foreground="White" Padding="15,10" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-                                    </Border>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
-                        <Button x:Name="BtnRunComparison" Content="🚀 Run Deep Comparison" Click="BtnRunComparisonAction_Click" Style="{DynamicResource ActionButtonStyle}" Width="230" IsEnabled="False"/>
-                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox x:Name="ChkIgnoreTechColumns"
+                                  Grid.Column="0"
+                                  IsChecked="True"
+                                  VerticalAlignment="Center"
+                                  FontWeight="SemiBold"
+                                  FontSize="12.5"
+                                  Foreground="#334155"
+                                  Cursor="Hand"
+                                  Click="ChkIgnoreTechColumns_Click"
+                                  ToolTip="Exclut automatiquement les colonnes purement techniques d'audit / horodatage (TSTAMP_*, D_JOB_*, NM_JOB_*, D_GEST_DMOD, C_ID_GEST_DMOD, IT5*DTISMAJ*, IT5*CUSMAJ*) pour isoler uniquement les écarts métier réels."
+                                  Content="⚡ Ignorer les colonnes techniques &amp; timestamps d'audit (TSTAMP_*, D_JOB_*, NM_JOB_*, IT5*DTISMAJ*)"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnOpenComparisonFolder" Content="📁 Open Reports Folder" Click="BtnOpenFolder_Click" Background="#2563EB" Foreground="White" Padding="15,10" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Button x:Name="BtnRunComparison" Content="🚀 Run Deep Comparison" Click="BtnRunComparisonAction_Click" Style="{DynamicResource ActionButtonStyle}" Width="230" IsEnabled="False"/>
+                        </StackPanel>
+                    </Grid>
                 </StackPanel>
             </Border>
 
-            <!-- RESULTS DASHBOARD & DATAGRID -->
+            <!-- RESULTS DASHBOARD, DATAGRID & LIVE DIFF INSPECTOR -->
             <Grid Grid.Row="2" Margin="0,0,0,10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Border x:Name="PanelDashboard" Grid.Row="0" Background="White" CornerRadius="10" Padding="22,18" BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,0,0,16" Visibility="Collapsed">
+                <Border x:Name="PanelDashboard" Grid.Row="0" Background="White" CornerRadius="10" Padding="22,18" BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,0,0,12" Visibility="Collapsed">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -179,22 +215,48 @@
                         </Grid>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock x:Name="TxtDashboardTitle" Text="Analysis successfully completed!" FontSize="17" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TxtDashboardTitle" Text="Analysis successfully completed!" FontSize="15.5" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,12" TextWrapping="Wrap"/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0">
+                                <Border Grid.Column="0" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8" Padding="12,9" Margin="0,0,5,0">
                                     <StackPanel>
-                                        <TextBlock Text="TOTAL ROWS ANALYZED" FontSize="11" FontWeight="Bold" Foreground="#64748B"/>
-                                        <TextBlock x:Name="TxtTotalRows" Text="0" FontSize="22" FontWeight="Bold" Foreground="#0F172A" Margin="0,2,0,0"/>
+                                        <TextBlock Text="CONTRATS COMPARÉS" FontSize="10.5" FontWeight="Bold" Foreground="#1E40AF"/>
+                                        <TextBlock x:Name="TxtComparedTests" Text="0" FontSize="19" FontWeight="Bold" Foreground="#1D4ED8" Margin="0,2,0,0"/>
+                                        <TextBlock x:Name="TxtContractsSummary" Text="-" FontSize="11" FontWeight="SemiBold" Foreground="#3B82F6"/>
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="1" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="10,0,0,0">
+                                <Border Grid.Column="1" Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1" CornerRadius="8" Padding="12,9" Margin="5,0,5,0">
                                     <StackPanel>
-                                        <TextBlock Text="DISCREPANCIES FOUND" FontSize="11" FontWeight="Bold" Foreground="#B91C1C"/>
-                                        <TextBlock x:Name="TxtTotalErrors" Text="0" FontSize="22" FontWeight="Bold" Foreground="#DC2626" Margin="0,2,0,0"/>
+                                        <TextBlock Text="TABLES IDENTIQUES" FontSize="10.5" FontWeight="Bold" Foreground="#047857"/>
+                                        <TextBlock x:Name="TxtTablesMatched" Text="0 / 0" FontSize="19" FontWeight="Bold" Foreground="#059669" Margin="0,2,0,0"/>
+                                        <TextBlock x:Name="TxtSystemBreakdown" Text="LISA: - | ELIA: -" FontSize="11" FontWeight="SemiBold" Foreground="#047857"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="12,9" Margin="5,0,5,0">
+                                    <StackPanel>
+                                        <TextBlock Text="BRANCHE 21 vs 23" FontSize="10.5" FontWeight="Bold" Foreground="#5B21B6"/>
+                                        <TextBlock x:Name="TxtBranchBreakdown" Text="BR21: - | BR23: -" FontSize="15" FontWeight="Bold" Foreground="#6D28D9" Margin="0,4,0,2"/>
+                                        <TextBlock Text="Tables par branche" FontSize="11" FontWeight="SemiBold" Foreground="#7C3AED"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="3" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12,9" Margin="5,0,5,0">
+                                    <StackPanel>
+                                        <TextBlock Text="LIGNES ANALYSÉES" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                                        <TextBlock x:Name="TxtTotalRows" Text="0" FontSize="19" FontWeight="Bold" Foreground="#0F172A" Margin="0,2,0,0"/>
+                                        <TextBlock Text="Cellule par cellule" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8" Padding="12,9" Margin="5,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="LIGNES EN ÉCART" FontSize="10.5" FontWeight="Bold" Foreground="#B91C1C"/>
+                                        <TextBlock x:Name="TxtTotalErrors" Text="0" FontSize="19" FontWeight="Bold" Foreground="#DC2626" Margin="0,2,0,0"/>
+                                        <TextBlock x:Name="TxtDiffColsTotal" Text="0 col. modifiée(s)" FontSize="11" FontWeight="SemiBold" Foreground="#EF4444"/>
                                     </StackPanel>
                                 </Border>
                             </Grid>
@@ -202,47 +264,317 @@
                     </Grid>
                 </Border>
 
-                <DataGrid x:Name="GridResults" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
+                <!-- LIVE SEARCH & FILTER BAR FOR COMPARISON GRID -->
+                <Border x:Name="PanelFilterBar"
+                        Grid.Row="1"
+                        Background="White"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="12,10"
+                        Margin="0,0,0,10"
+                        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="210"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="🔍 Filter:"
+                                   FontWeight="Bold"
+                                   Foreground="#334155"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <TextBox x:Name="TxtFilterComparison"
+                                 Grid.Column="1"
+                                 Padding="8,5"
+                                 FontSize="12.5"
+                                 BorderBrush="#CBD5E1"
+                                 ToolTip="Filter by Test ID, Contract Number, SQL Table, Product, Branche, Column name or Discrepancy text"
+                                 TextChanged="FilterComparison_Changed"/>
+                        <ComboBox x:Name="CmbFilterCompContract"
+                                  Grid.Column="3"
+                                  Padding="8,5"
+                                  FontSize="12"
+                                  SelectedIndex="0"
+                                  ToolTip="Filtrer rapidement par Contrat / Test ID"
+                                  SelectionChanged="FilterComparison_Changed">
+                            <ComboBoxItem Content="Tous les Contrats" Tag="ALL"/>
+                        </ComboBox>
+                        <ComboBox x:Name="CmbFilterCompStatus"
+                                  Grid.Column="5"
+                                  Padding="8,5"
+                                  FontSize="12"
+                                  SelectedIndex="0"
+                                  SelectionChanged="FilterComparison_Changed">
+                            <ComboBoxItem Content="All Results" Tag="ALL"/>
+                            <ComboBoxItem Content="✖ KO Only (Diffs)" Tag="KO"/>
+                            <ComboBoxItem Content="✔ OK Only (Match)" Tag="OK"/>
+                        </ComboBox>
+                        <ComboBox x:Name="CmbFilterCompSystem"
+                                  Grid.Column="7"
+                                  Padding="8,5"
+                                  FontSize="12"
+                                  SelectedIndex="0"
+                                  SelectionChanged="FilterComparison_Changed">
+                            <ComboBoxItem Content="All Systems" Tag="ALL"/>
+                            <ComboBoxItem Content="LISA Only" Tag="LISA"/>
+                            <ComboBoxItem Content="ELIA Only" Tag="ELIA"/>
+                        </ComboBox>
+                        <ComboBox x:Name="CmbFilterCompBranch"
+                                  Grid.Column="9"
+                                  Padding="8,5"
+                                  FontSize="12"
+                                  SelectedIndex="0"
+                                  SelectionChanged="FilterComparison_Changed">
+                            <ComboBoxItem Content="All Branches" Tag="ALL"/>
+                            <ComboBoxItem Content="Branche 21" Tag="Branche 21"/>
+                            <ComboBoxItem Content="Branche 23" Tag="Branche 23"/>
+                        </ComboBox>
+                        <StackPanel Grid.Column="11" Orientation="Horizontal">
+                            <Button x:Name="BtnInspectCompRow"
+                                    Content="🔍 Inspect Diff"
+                                    Click="MenuCompInspect_Click"
+                                    Cursor="Hand"
+                                    Padding="10,5"
+                                    Margin="0,0,6,0"
+                                    FontWeight="Bold"
+                                    Background="#0F172A"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    ToolTip="Inspect column-by-column discrepancy details for the selected row"/>
+                            <Button x:Name="BtnSendCompToExt"
+                                    Content="📥 Re-Extract"
+                                    Click="MenuCompSendToExtraction_Click"
+                                    Cursor="Hand"
+                                    Padding="10,5"
+                                    Margin="0,0,6,0"
+                                    FontWeight="Bold"
+                                    Background="#ECFDF5"
+                                    Foreground="#047857"
+                                    BorderBrush="#A7F3D0"
+                                    BorderThickness="1"
+                                    ToolTip="Send the selected contract to SQL Data Extraction"/>
+                            <Button x:Name="BtnSendCompToAct"
+                                    Content="⚡ Activate"
+                                    Click="MenuCompSendToActivation_Click"
+                                    Cursor="Hand"
+                                    Padding="10,5"
+                                    Margin="0,0,6,0"
+                                    FontWeight="Bold"
+                                    Background="#F5F3FF"
+                                    Foreground="#6D28D9"
+                                    BorderBrush="#DDD6FE"
+                                    BorderThickness="1"
+                                    ToolTip="Send the selected contract to Contract Activation"/>
+                            <Button x:Name="BtnExportComparisonCsv"
+                                    Content="📥 Export CSV"
+                                    Click="BtnExportComparisonCsv_Click"
+                                    Cursor="Hand"
+                                    Padding="12,5"
+                                    FontWeight="Bold"
+                                    Background="#EFF6FF"
+                                    Foreground="#2563EB"
+                                    BorderBrush="#BFDBFE"
+                                    BorderThickness="1"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <DataGrid x:Name="GridResults" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="True"
                           Background="White" BorderBrush="#E2E8F0" BorderThickness="1" HeadersVisibility="Column"
                           RowBackground="White" AlternatingRowBackground="#F8FAFC" GridLinesVisibility="Horizontal"
                           HorizontalGridLinesBrush="#E2E8F0" Visibility="Collapsed"
-                          MinHeight="260" MaxHeight="520"
+                          MinHeight="240" MaxHeight="440"
+                          SelectionChanged="GridResults_SelectionChanged"
                           MouseDoubleClick="GridResults_MouseDoubleClick"
                           ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <DataGrid.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="🔍 Inspect Table Discrepancies (Full Window)" Click="MenuCompInspect_Click" FontWeight="Bold"/>
+                            <Separator/>
+                            <MenuItem Header="📥 Re-Extract Contract in SQL Extraction" Click="MenuCompSendToExtraction_Click" FontWeight="SemiBold"/>
+                            <MenuItem Header="⚡ Send Contract to Activation" Click="MenuCompSendToActivation_Click" FontWeight="SemiBold"/>
+                            <Separator/>
+                            <MenuItem Header="📋 Copy Contract Number" Click="MenuCompCopyContract_Click"/>
+                            <MenuItem Header="📋 Copy Discrepancy Details" Click="BtnCopyInlineDiff_Click"/>
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
                     <DataGrid.Resources>
                         <Style TargetType="DataGridColumnHeader">
                             <Setter Property="Background" Value="#0F172A"/>
                             <Setter Property="Foreground" Value="White"/>
-                            <Setter Property="Padding" Value="12,10"/>
+                            <Setter Property="Padding" Value="10,9"/>
                             <Setter Property="FontWeight" Value="Bold"/>
-                            <Setter Property="FontSize" Value="13"/>
+                            <Setter Property="FontSize" Value="12.5"/>
                         </Style>
                         <Style TargetType="DataGridRow">
-                            <Setter Property="Padding" Value="5"/>
+                            <Setter Property="Padding" Value="4"/>
                         </Style>
                     </DataGrid.Resources>
                     <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="Status" Width="90">
+                        <DataGridTemplateColumn Header="Status" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border Background="{Binding StatusColor}" CornerRadius="5" Padding="8,3" Margin="5" HorizontalAlignment="Center">
-                                        <TextBlock Text="{Binding StatusIcon}" Foreground="White" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center"/>
+                                    <Border Background="{Binding StatusColor}" CornerRadius="5" Padding="8,3" Margin="4" HorizontalAlignment="Center">
+                                        <TextBlock Text="{Binding StatusIcon}" Foreground="White" FontWeight="Bold" FontSize="11.5" HorizontalAlignment="Center"/>
                                     </Border>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Test ID &amp; SQL Table" Binding="{Binding TableName}" Width="220" FontWeight="Bold"/>
-                        <DataGridTemplateColumn Header="Cell-by-Cell Discrepancy Details" Width="*">
+                        <DataGridTextColumn Header="Excel #" Binding="{Binding ExcelRowDisplay}" Width="64" FontWeight="Bold"/>
+                        <DataGridTextColumn Header="Test ID" Binding="{Binding TestId}" Width="74" FontWeight="Bold"/>
+                        <DataGridTextColumn Header="Contract" Binding="{Binding ContractNumber}" Width="122" FontWeight="Bold"/>
+                        <DataGridTemplateColumn Header="System" Width="72">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding ErrorDetails}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12.5" Foreground="#334155" Margin="6,4"/>
+                                    <Border x:Name="SysBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="6" Padding="6,2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock x:Name="SysText" Text="{Binding FileType}" FontWeight="Bold" FontSize="11" Foreground="#1D4ED8" HorizontalAlignment="Center"/>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding FileType}" Value="ELIA">
+                                            <Setter TargetName="SysBadge" Property="Background" Value="#ECFDF5"/>
+                                            <Setter TargetName="SysBadge" Property="BorderBrush" Value="#A7F3D0"/>
+                                            <Setter TargetName="SysText" Property="Foreground" Value="#047857"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="Branche" Width="98">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="CompBranchBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="10" Padding="8,2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock x:Name="CompBranchText" Text="{Binding BranchDisplay}" FontWeight="Bold" FontSize="11.5" Foreground="#1D4ED8" HorizontalAlignment="Center"/>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsBranch23}" Value="True">
+                                            <Setter TargetName="CompBranchBadge" Property="Background" Value="#F5F3FF"/>
+                                            <Setter TargetName="CompBranchBadge" Property="BorderBrush" Value="#DDD6FE"/>
+                                            <Setter TargetName="CompBranchText" Property="Foreground" Value="#6D28D9"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Product" Binding="{Binding ProductCode}" Width="70" FontWeight="Bold"/>
+                        <DataGridTextColumn Header="Process" Binding="{Binding ProcessCode}" Width="62"/>
+                        <DataGridTemplateColumn Header="Canal" Width="114">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock x:Name="CompChannelText" Text="{Binding BusinessChannel}" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Center" Margin="6,0"/>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding BusinessChannel}" Value="BANK">
+                                            <Setter TargetName="CompChannelText" Property="Foreground" Value="#2563EB"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding BusinessChannel}" Value="BROKER_NEW_GEN">
+                                            <Setter TargetName="CompChannelText" Property="Foreground" Value="#7C3AED"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding BusinessChannel}" Value="BROKER_LEGACY">
+                                            <Setter TargetName="CompChannelText" Property="Foreground" Value="#EA580C"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="BUCP/CMD" Binding="{Binding BucpCmdpmtDisplay}" Width="88"/>
+                        <DataGridTextColumn Header="Fonds" Binding="{Binding FundsSummary}" Width="105"/>
+                        <DataGridTextColumn Header="SQL Table" Binding="{Binding CleanTableName}" Width="135" FontWeight="Bold"/>
+                        <DataGridTextColumn Header="Rows (OK/Tot)" Binding="{Binding RowsSummary}" Width="98"/>
+                        <DataGridTextColumn Header="Colonnes en écart" Binding="{Binding DifferingColumnsSummary}" Width="175" FontWeight="SemiBold"/>
+                        <DataGridTemplateColumn Header="Aperçu des Écarts (Baseline vs Target)" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding ErrorDetails}" MaxHeight="62" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" FontFamily="Consolas" FontSize="11.5" Foreground="#334155" Margin="6,3"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <Border Grid.Row="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="30" Visibility="{Binding ElementName=TxtComparisonWaiting, Path=Visibility}">
+                <!-- INTERACTIVE INLINE DIFF INSPECTOR PANEL -->
+                <Border x:Name="PanelInlineDiffInspector"
+                        Grid.Row="3"
+                        Background="#0F172A"
+                        BorderBrush="#334155"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16,12"
+                        Margin="0,12,0,0"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock x:Name="TxtInlineDiffHeader"
+                                           Text="🔎 Inspecteur d'Écarts en Direct — Sélectionnez une ligne dans le tableau ci-dessus"
+                                           FontSize="13.5"
+                                           FontWeight="Bold"
+                                           Foreground="#F8FAFC"/>
+                                <TextBlock x:Name="TxtInlineDiffSubHeader"
+                                           Text="-"
+                                           FontSize="11.5"
+                                           Foreground="#94A3B8"
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="📋 Copier les écarts"
+                                        Click="BtnCopyInlineDiff_Click"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"
+                                        Background="#1E293B"
+                                        Foreground="#E2E8F0"
+                                        BorderBrush="#475569"
+                                        BorderThickness="1"
+                                        FontWeight="Bold"
+                                        FontSize="11.5"
+                                        Cursor="Hand"/>
+                                <Button Content="🔍 Plein Écran"
+                                        Click="MenuCompInspect_Click"
+                                        Padding="10,5"
+                                        Background="#2563EB"
+                                        Foreground="White"
+                                        BorderThickness="0"
+                                        FontWeight="Bold"
+                                        FontSize="11.5"
+                                        Cursor="Hand"/>
+                            </StackPanel>
+                        </Grid>
+                        <Border Background="#1E293B"
+                                BorderBrush="#334155"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="12,10">
+                            <TextBox x:Name="TxtInlineDiffContent"
+                                     IsReadOnly="True"
+                                     Background="Transparent"
+                                     Foreground="#E2E8F0"
+                                     BorderThickness="0"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     MinHeight="110"
+                                     MaxHeight="220"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="30" Visibility="{Binding ElementName=TxtComparisonWaiting, Path=Visibility}">
                     <TextBlock x:Name="TxtComparisonWaiting" Text="Select your Baseline and Target CSV files above, then click 'Run Deep Comparison'."
                                Foreground="#94A3B8" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
                 </Border>

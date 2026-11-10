@@ -36,7 +36,7 @@ namespace AutoActivator.Models
         private static readonly HashSet<string> SupportedProcesses =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                "C01", "C03", "C05"
+                "C01", "C02", "C03", "C05"
             };
 
         private static readonly IReadOnlyDictionary<string, ActivationPaymentChannel>
@@ -139,7 +139,19 @@ namespace AutoActivator.Models
         public string RoutingRule { get; init; } = string.Empty;
         public string RoutingStatus { get; init; } = string.Empty;
 
+        public string LisaInternalId { get; init; } = string.Empty;
+        public int FundFeatureCount { get; init; }
+        public IReadOnlyList<string> ResolvedFunds { get; init; } = Array.Empty<string>();
+        public string FundsSource { get; init; } = string.Empty;
+        public ContractBranchClassification BranchClassification { get; init; } =
+            ContractBranchClassification.Unknown;
+        public BranchDetectionSource BranchDetectionSource { get; init; } =
+            BranchDetectionSource.Unknown;
+        public string BranchDetectionReason { get; init; } = string.Empty;
+
         public bool IsBranch23 { get; init; }
+        public string BranchDisplay => IsBranch23 ? "Branche 23" : "Branche 21";
+        public DateTime ConsolidationDate => RunDate == default ? default : RunDate.AddDays(2);
         public bool ReceiptAlreadyExists { get; init; }
         public int ExistingReceiptCount { get; init; }
         public bool IsAlreadyActive { get; init; }
@@ -242,7 +254,10 @@ namespace AutoActivator.Models
             AddRequired(issues, "DEMAND_ID_MISSING", "Demand ID", DemandId);
             AddRequired(issues, "PRODUCT_MISSING", "Product code", ProductCode);
             AddRequired(issues, "PROCESS_MISSING", "Process code", ProcessCode);
-            AddRequired(issues, "CHANNEL_MISSING", "Channel code", ChannelCode);
+            if (!InputMode.AllowsManualOverrides())
+            {
+                AddRequired(issues, "CHANNEL_MISSING", "Channel code", ChannelCode);
+            }
             AddRequired(issues, "BUCP_MISSING", "BUCP", Bucp);
             AddRequired(issues, "CMDPMT_MISSING", "Payment command", PaymentCommand);
             AddRequired(issues, "ROUTING_RULE_MISSING", "Routing rule", RoutingRule);
@@ -284,7 +299,7 @@ namespace AutoActivator.Models
             {
                 issues.Add(new ActivationPlanIssue(
                     "PROCESS_NOT_SUPPORTED",
-                    $"Process '{ProcessCode}' is not supported. Expected C01, C03 or C05.",
+                    $"Process '{ProcessCode}' is not supported. Expected C01, C02, C03 or C05.",
                     true));
             }
 
@@ -342,25 +357,29 @@ namespace AutoActivator.Models
                     $"{(issue.IsBlocking ? "BLOCK" : "INFO")} " +
                     $"{issue.Code}: {issue.Message}"));
 
+            string fundsText = ResolvedFunds != null && ResolvedFunds.Count > 0
+                ? $"{string.Join(", ", ResolvedFunds)} ({FundsSource})"
+                : FundFeatureCount > 0
+                    ? $"Branche 23 ({FundFeatureCount} feature(s) fonds détecté(s))"
+                    : "Aucun (Branche 21 Standard)";
+
+            string lisaStatus = !string.IsNullOrWhiteSpace(LisaInternalId) &&
+                                !string.Equals(LisaInternalId, "N/A", StringComparison.OrdinalIgnoreCase) &&
+                                !string.Equals(LisaInternalId, "Not found", StringComparison.OrdinalIgnoreCase)
+                ? $"DÉJÀ ACTIF EN LISA (NO_CNT = {LisaInternalId})"
+                : "NON ACTIF EN LISA (Prêt pour activation)";
+
             return
-                $"Contract: {ContractNumber}{System.Environment.NewLine}" +
-                $"Demand ID: {DemandId}{System.Environment.NewLine}" +
-                $"ELIA ID: {EliaId}{System.Environment.NewLine}" +
-                $"Mainframe ID: {MainframeContractNumber}{System.Environment.NewLine}" +
-                $"Product / Process: {ProductCode} / {ProcessCode}{System.Environment.NewLine}" +
-                $"ChannelCode: {ChannelCode}{System.Environment.NewLine}" +
-                $"Routing: {ResolvedChannel}{System.Environment.NewLine}" +
-                $"BUCP / CMDPMT: {NormalizeBucp(Bucp)} / {PaymentCommand}{System.Environment.NewLine}" +
-                $"Routing rule: {RoutingRule}{System.Environment.NewLine}" +
-                $"Gross premium / AMOUNT: " +
-                $"{GrossPremium.ToString("0.00", CultureInfo.InvariantCulture)} / " +
-                $"{AmountJcl}{System.Environment.NewLine}" +
-                $"Run date: {(RunDate == default ? "-" : RunDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture))}{System.Environment.NewLine}" +
-                $"Run date source: {RunDateSource}{System.Environment.NewLine}" +
-                $"Branch 23: {(IsBranch23 ? "YES" : "NO")}{System.Environment.NewLine}" +
-                $"Resume strategy: {ResumeStrategy}{System.Environment.NewLine}" +
-                $"Diagnostic: {Diagnostic}{System.Environment.NewLine}" +
-                $"Ready: {(IsReadyForExecution ? "YES" : "NO")}" +
+                $"Contrat (3-7-2)      : {ContractNumber}  |  JCL (9 chiffres / NO_CNT) : {MainframeContractNumber}{System.Environment.NewLine}" +
+                $"Demand ID / ELIA ID  : {DemandId}  /  UCON {EliaId}{System.Environment.NewLine}" +
+                $"État LISA actuel     : {lisaStatus}{System.Environment.NewLine}" +
+                $"Produit / Process    : {ProductCode}  /  {ProcessCode}  (ChannelCode ELIA : {ChannelCode}){System.Environment.NewLine}" +
+                $"Canal & Paiement     : {ResolvedChannel}  ->  BUCP = {NormalizeBucp(Bucp)} | CMDPMT = {PaymentCommand} ({RoutingRule}){System.Environment.NewLine}" +
+                $"Prime Brute / JCL    : {GrossPremium.ToString("0.00", CultureInfo.InvariantCulture)} €  ->  AMOUNT = {AmountJcl}{System.Environment.NewLine}" +
+                $"Date N (Run Date)    : {(RunDate == default ? "-" : RunDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture))} ({RunDateSource}){System.Environment.NewLine}" +
+                $"Date N+2 (Consolid.) : {(ConsolidationDate == default ? "-" : ConsolidationDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture))} (LVDQFG01 / VNI LV000GD0.LV.GFCRT0){System.Environment.NewLine}" +
+                $"Branche & Fonds      : {BranchDisplay}  |  Fonds : {fundsText}{System.Environment.NewLine}" +
+                $"Diagnostic           : {Diagnostic}  |  Prêt : {(IsReadyForExecution ? "OUI" : IsAlreadyActive ? "CONTRAT DÉJÀ ACTIF (ou Consolidation BR23 seule)" : "NON")}" +
                 (issues.Length == 0
                     ? string.Empty
                     : System.Environment.NewLine + issues);
@@ -437,11 +456,29 @@ namespace AutoActivator.Models
 
         private void ValidateRouting(ICollection<ActivationPlanIssue> issues)
         {
+            string normalizedBucp = NormalizeBucp(Bucp);
+            string normalizedCmd = NormalizePaymentCommand(PaymentCommand);
+
+            bool isValidPair =
+                ((normalizedBucp == "00382" || normalizedBucp == "00182") && normalizedCmd == "8") ||
+                (normalizedBucp == "80819" && normalizedCmd == "H") ||
+                (normalizedBucp == "49797" && (normalizedCmd == "X" || normalizedCmd == "H"));
+
+            if (InputMode.AllowsManualOverrides() && isValidPair)
+            {
+                return;
+            }
+
             ActivationPaymentChannel expected =
                 ResolvePaymentChannel(ChannelCode);
 
             if (expected == ActivationPaymentChannel.Unknown)
             {
+                if (isValidPair)
+                {
+                    return;
+                }
+
                 issues.Add(new ActivationPlanIssue(
                     "CHANNEL_NOT_MAPPED",
                     $"ChannelCode '{ChannelCode}' has no confirmed routing rule.",
@@ -462,11 +499,11 @@ namespace AutoActivator.Models
                 ResolveRouting(ChannelCode);
 
             if (!string.Equals(
-                    NormalizeBucp(Bucp),
+                    normalizedBucp,
                     expectedBucp,
                     StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(
-                    NormalizePaymentCommand(PaymentCommand),
+                    normalizedCmd,
                     expectedCommand,
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -474,7 +511,7 @@ namespace AutoActivator.Models
                     "PAYMENT_ROUTING_MISMATCH",
                     $"ChannelCode '{ChannelCode}' expects BUCP/CMDPMT " +
                     $"{expectedBucp}/{expectedCommand}, but the plan contains " +
-                    $"{NormalizeBucp(Bucp)}/{NormalizePaymentCommand(PaymentCommand)}.",
+                    $"{normalizedBucp}/{normalizedCmd}.",
                     true));
             }
         }

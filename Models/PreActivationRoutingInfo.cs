@@ -104,7 +104,7 @@ namespace AutoActivator.Models
 
         private static readonly IReadOnlySet<string> SupportedProcessCodes =
             new HashSet<string>(
-                new[] { "C01", "C03", "C05" },
+                new[] { "C01", "C02", "C03", "C05" },
                 StringComparer.OrdinalIgnoreCase);
 
         private static readonly IReadOnlySet<string> BankChannelCodes =
@@ -166,6 +166,7 @@ namespace AutoActivator.Models
         public decimal? TaxRate { get; init; }
         public DateTime? FirstPaymentDate { get; init; }
         public DateTime? PaymentDate { get; init; }
+        public DateTime? ContractStartDate { get; init; }
         public DateTime? LastPaymentDate { get; init; }
         public bool HasPremium => GrossPremium.HasValue || NetPremium.HasValue;
         public bool HasPositiveGrossPremium => GrossPremium is > 0m;
@@ -201,9 +202,17 @@ namespace AutoActivator.Models
             BranchDetectionSource.Unknown;
         public string BranchDetectionReason { get; init; } = string.Empty;
         public bool IsBranch23 =>
-            BranchClassification == ContractBranchClassification.Branch23;
+            BranchClassification == ContractBranchClassification.Branch23 ||
+            BranchClassification == ContractBranchClassification.CompositeWithFunds ||
+            HasFundFeatures;
         public bool IsStandard =>
             BranchClassification == ContractBranchClassification.Standard;
+        public string BranchDisplay =>
+            IsBranch23
+                ? "Branche 23"
+                : IsStandard || HasProductCode
+                    ? "Branche 21"
+                    : "N/A";
         public bool HasFundComponent =>
             IsBranch23 ||
             BranchClassification == ContractBranchClassification.CompositeWithFunds ||

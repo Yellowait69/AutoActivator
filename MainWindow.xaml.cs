@@ -132,6 +132,67 @@ namespace AutoActivator.Gui
             ViewHelp?.SelectTab(tabIndex);
         }
 
+        /// <summary>
+        /// Navigates directly to the SQL Data Extraction module and pre-fills the contract or Demand ID.
+        /// </summary>
+        public void NavigateToExtractionWithContract(string contractOrDemand, bool isDemandId, string env)
+        {
+            BtnMenu_Click(BtnExtraction, new RoutedEventArgs());
+            ViewExtraction?.LoadContractFromExternal(contractOrDemand, isDemandId, env);
+        }
+
+        /// <summary>
+        /// Navigates directly to the Contract Activation module and pre-fills the contract or Demand ID.
+        /// </summary>
+        public void NavigateToActivationWithContract(string contractOrDemand, bool isDemandId, string env)
+        {
+            BtnMenu_Click(BtnActivation, new RoutedEventArgs());
+            ViewActivation?.LoadContractFromExternal(contractOrDemand, isDemandId, env);
+        }
+
+        /// <summary>
+        /// Navigates directly to the Deep Comparison module and pre-fills the latest extracted CSV.
+        /// </summary>
+        public void NavigateToComparisonWithLatest(string? targetCsvPath)
+        {
+            BtnMenu_Click(BtnComparison, new RoutedEventArgs());
+            ViewComparison?.LoadLatestExtractionForComparison(targetCsvPath);
+        }
+
+        private void BtnSidebarOutput_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Directory.CreateDirectory(Settings.OutputDir);
+                Process.Start(new ProcessStartInfo(Path.GetFullPath(Settings.OutputDir))
+                {
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Unable to open Output folder: {ex.Message}", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void BtnSidebarBaselines_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Directory.CreateDirectory(Settings.BaselineDir);
+                Process.Start(new ProcessStartInfo(Path.GetFullPath(Settings.BaselineDir))
+                {
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Unable to open Baselines folder: {ex.Message}", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void BtnMenu_Click(object? sender, RoutedEventArgs? e)
         {
             if (ViewActivation != null) ViewActivation.Visibility = Visibility.Collapsed;

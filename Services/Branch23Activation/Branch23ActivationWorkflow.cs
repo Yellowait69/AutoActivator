@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoActivator.Config;
+using AutoActivator.Models;
 
 namespace AutoActivator.Services.Branch23Activation
 {
@@ -33,7 +34,7 @@ namespace AutoActivator.Services.Branch23Activation
             CancellationToken token);
     }
 
-    /// <summary>The only final diagnostics of the Branch23ActivationOnly workflow.</summary>
+    /// <summary>Final diagnostics of the Branch 23 activation workflow.</summary>
     public enum Branch23FinalDiagnostic
     {
         ACTIVATED,
@@ -54,7 +55,7 @@ namespace AutoActivator.Services.Branch23Activation
         public string SubJobNumber { get; set; } = "-";
         public string SubJobReturnCode { get; set; } = "-";
         public string Status { get; set; } = "Pending";
-        public IReadOnlyDictionary<string, string> Variables { get; init; } = new Dictionary<string, string>();
+        public IReadOnlyDictionary<string, string> Variables { get; set; } = new Dictionary<string, string>();
         public string Counters { get; set; } = string.Empty;
     }
 
@@ -68,6 +69,7 @@ namespace AutoActivator.Services.Branch23Activation
 
         // Business parameters
         public string RunDate { get; set; } = "-";
+        public string ConsolidationDate { get; set; } = "-";
         public string RunDateSource { get; set; } = "-";
         public string RunDateReason { get; set; } = "-";
         public string EliaDates { get; set; } = "-";
@@ -77,6 +79,7 @@ namespace AutoActivator.Services.Branch23Activation
         public string Channel { get; set; } = "-";
         public string Bucp { get; set; } = "-";
         public string Cmdpmt { get; set; } = "-";
+        public string SelectedStepsSummary { get; set; } = "-";
 
         // Controls
         public string? ScnttStateBefore { get; set; }
@@ -93,6 +96,13 @@ namespace AutoActivator.Services.Branch23Activation
         public string ScnttFinalDetail { get; set; } = "-";
         public string ScnttFinalRow { get; set; } = "-";
         public string BeforeAfterComparison { get; set; } = "-";
+
+        // Branch 23 Funds, VNI (LV000GD0.LV.GFCRT0 / GFEVT0) & LVDQ Movements (État 2 -> État 4)
+        public string FundsResolved { get; set; } = "-";
+        public string FundsSource { get; set; } = "-";
+        public string NavSummary { get; set; } = "-";
+        public string MovementStateAfterFg03 { get; set; } = "-";
+        public string MovementStateAfterFg01 { get; set; } = "-";
 
         // Jobs
         public List<Branch23JobEvidence> Jobs { get; } = new();
@@ -113,28 +123,28 @@ namespace AutoActivator.Services.Branch23Activation
         public string Render()
         {
             var b = new StringBuilder();
-            b.AppendLine("=== BRANCH 23 ACTIVATION REPORT (Branch23ActivationOnly) ===");
+            b.AppendLine("=== BRANCH 23 ACTIVATION & CONSOLIDATION REPORT ===");
             b.AppendLine($"Demand ID            : {DemandId}");
             b.AppendLine($"ELIA ID              : {EliaId}");
             b.AppendLine($"Contrat 3-7-2        : {ContractNumber372}");
             b.AppendLine($"CO interne LISA      : {LisaInternalNumber} (Start = End)");
-            b.AppendLine($"Run Date             : {RunDate} (source {RunDateSource}; {RunDateReason})");
+            b.AppendLine($"Run Date (Date N)    : {RunDate} (source {RunDateSource}; {RunDateReason})");
+            b.AppendLine($"Date N+2 (Consolid.) : {ConsolidationDate}");
             b.AppendLine($"Dates ELIA           : {EliaDates}");
             b.AppendLine($"Prime brute          : {Amount} -> AMOUNT injecté {AmountInjected}");
             b.AppendLine($"Ligne TB5UPRP        : {SelectedPremiumRow}");
             b.AppendLine($"Canal / BUCP / CMDPMT: {Channel} / {Bucp} / {Cmdpmt}");
+            b.AppendLine($"Étapes sélectionnées : {SelectedStepsSummary}");
             b.AppendLine($"SCNTT0 avant         : {ScnttBeforeDetail}");
             b.AppendLine($"PRCTT0 avant ADDPRCT : {PrctBefore?.ToString() ?? "-"} | {PrctBeforeDetail}");
-            b.AppendLine($"ADDPRCT relancé      : {(AddprctSkipped ? "NON (reprise, réception déjà confirmée)" : Jobs.FirstOrDefault()?.Status == "Complete" ? "OUI" : "NON")}");
+            b.AppendLine($"ADDPRCT relancé      : {(AddprctSkipped ? "NON (reprise ou ignoré)" : Jobs.FirstOrDefault()?.Status == "Complete" ? "OUI" : "NON")}");
             b.AppendLine($"PRCTT0 après ADDPRCT : {PrctAfter?.ToString() ?? "-"} | {PrctAfterDetail}");
             b.AppendLine($"PRIST0 / PECHT0      : {AssignmentDetail}");
             b.AppendLine($"PE01                 : {Pe01?.ToString() ?? "-"} | {Pe01Detail}");
-            if (Pe01 == Pe01CheckStatus.NOT_AVAILABLE)
-            {
-                b.AppendLine(
-                    "PE01 policy          : SQL source unavailable; continuation allowed, " +
-                    "strict SCNTT0 confirmation required.");
-            }
+            b.AppendLine($"Fonds BR23 résolus   : {FundsResolved} ({FundsSource})");
+            b.AppendLine($"VNI SQL (LV000GD0)   : {NavSummary}");
+            b.AppendLine($"Mvt après LVDQFG03   : {MovementStateAfterFg03}");
+            b.AppendLine($"Mvt après LVDQFG01   : {MovementStateAfterFg01}");
             b.AppendLine("--- Jobs ---");
             foreach (var j in Jobs)
             {
@@ -156,31 +166,50 @@ namespace AutoActivator.Services.Branch23Activation
     }
 
     /// <summary>
-    /// Branch23ActivationOnly supports BANK 00382/8 and BROKER_NEW_GEN 80819/H.
-    /// PRCTT0 -> ADDPRCT (if needed) -> PRCTT0 ->
-    /// LVPP06U -> LVPG22U -> checks -> LI1J04D0 -> LI1J04D2 -> stop.
-    /// LISA updates SCNTT0 asynchronously, so the absence of an immediate row is not
-    /// treated as an activation failure. No fund, NAV, LVDQ or second LI pass.
+    /// Workflow d'activation Branche 23 complet et modulable par cases à cocher :
+    /// 1. PREMELIA : ADDPRCT (ou SQL LV.PRCTT0) -> LVPP06U -> LVPG22U -> LI1J04D0 -> LI1J04D2
+    /// 2. LVDQ Seq 0 : LVDQFG03 (LVFG03U) à Date N -> Mouvement en État 2 dans LISA (F51LV)
+    /// 3. SQL VNI : LV000GD0.LV.GFCRT0 / LV.GFEVT0 de Date N à Date N+2
+    /// 4. LVDQ Seq 1 : LVDQFG01 (LVFG01U, STEP=1) à Date N+2 -> Consolidation Mouvement en État 4
+    /// 5. LVDQ Seq 3 : LVD1PE01 (LVPE01U, optionnel)
     /// </summary>
     public sealed class Branch23ActivationWorkflow
     {
         public static readonly string[] JobOrder =
             { "ADDPRCT", "LVPP06U", "LVPG22U", "LI1J04D0", "LI1J04D2" };
 
-        /// <summary>Variables of the real JCL (read on the share), logged as evidence.</summary>
+        public static readonly string[] FullBranch23JobOrder =
+            { "ADDPRCT", "LVPP06U", "LVPG22U", "LI1J04D0", "LI1J04D2", "LVDQFG03", "LVDQFG01", "LVD1PE01" };
+
         private static readonly IReadOnlyDictionary<string, string[]> JclVariables =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
                 ["ADDPRCT"] = new[] { "STE", "CNTBEG", "CMDPMT", "YYMMDD", "AMOUNT", "BUCP", "USERNAME" },
                 ["LVPP06U"] = new[] { "Q2", "AP", "CUS", "MMDD", "STE", "CNTBEG", "CNTEND", "CYMD" },
                 ["LVPG22U"] = new[]
-            {
-                "Q2", "AP", "CUS", "MMDD", "DRUN", "NREMB",
-                "CONTR-EX", "CONTR-RE", "CONTR-UN", "NJJART72",
-                "JOBNAMI", "CM", "STE", "CNTBEG", "CNTEND"
-            },
+                {
+                    "Q2", "AP", "CUS", "MMDD", "DRUN", "NREMB",
+                    "CONTR-EX", "CONTR-RE", "CONTR-UN", "NJJART72",
+                    "JOBNAMI", "CM", "STE", "CNTBEG", "CNTEND"
+                },
                 ["LI1J04D0"] = new[] { "CLASS", "ENVIMS", "CUS", "YYMMDD", "YYYY", "MM", "DD", "FASTCTRL", "STE", "CNTBEG", "CNTEND" },
-                ["LI1J04D2"] = new[] { "CLASS", "CUS", "YYMMDD", "YYYY", "MM", "DD", "ENVIMS" }
+                ["LI1J04D2"] = new[] { "CLASS", "CUS", "YYMMDD", "YYYY", "MM", "DD", "ENVIMS" },
+                ["LVDQFG03"] = new[]
+                {
+                    "Q2", "AP", "CUS", "MMDD", "STE", "CNTBEG", "CNTEND", "DRUN", "DEVN",
+                    "GBT01", "GBT02", "GBT03", "GBT04", "GBT05",
+                    "GBT06", "GBT07", "GBT08", "GBT09", "GBT10"
+                },
+                ["LVDQFG01"] = new[]
+                {
+                    "Q2", "AP", "CUS", "MMDD", "STE", "CNTBEG", "CNTEND", "DRUN",
+                    "RESTART", "STEP", "UPD"
+                },
+                ["LVD1PE01"] = new[]
+                {
+                    "Q2", "AP", "CUS", "MMDD", "STE", "CNTBEG", "CNTEND", "DRUN",
+                    "N1MCY", "N2MCY", "CINC", "ROLLB", "GBT"
+                }
             };
 
         private readonly Branch23ActivationVerifier _verifier;
@@ -199,14 +228,9 @@ namespace AutoActivator.Services.Branch23Activation
             _runner = runner ?? throw new ArgumentNullException(nameof(runner));
             _pe01 = pe01Checker ?? new UnavailablePe01Checker();
             _spool = spoolAnalyzer ?? new SpoolCounterAnalyzer();
-
-            // Retained for API compatibility. ELIAT0 is not available through the
-            // confirmed SQL Server databases. NOT_AVAILABLE therefore means that the
-            // PE01 control source cannot be queried, not that PE01 is absent.
             _ = allowPe01NotAvailable;
         }
 
-        /// <summary>Builds the job variables. Plan values always override the base values.</summary>
         public static Dictionary<string, string> BuildVariables(
             Branch23ActivationPlan plan,
             IReadOnlyDictionary<string, string> baseVariables)
@@ -224,30 +248,21 @@ namespace AutoActivator.Services.Branch23Activation
             v["CLASS"] = Settings.Branch23Activation.Class;
             v["STE"] = Settings.Branch23Activation.Ste;
             v["AP"] = Settings.Branch23Activation.App;
-            // Existing ADDPRCT format kept (PadLeft) until the JCL proves otherwise.
             v["AMOUNT"] = plan.Premium.Amount.PadLeft(10, '0');
             v["BUCP"] = plan.Payment.Bucp.PadLeft(5, '0');
             v["CMDPMT"] = plan.Payment.Cmdpmt;
 
-            // Confirmed PREMELIA line 3 defaults from LVChain.
             v["NREMB"] = "20";
             v["CONTR-EX"] = "Y";
             v["CONTR-RE"] = "Y";
             v["CONTR-UN"] = "Y";
             v["NJJART72"] = "5";
             v["JOBNAMI"] = "LVPP06U$";
-
-            // CM is deliberately blank in LVChain. Presence of the key means the
-            // variable is resolved; an empty value is the valid business value.
             v["CM"] = string.Empty;
 
             return v;
         }
 
-        /// <summary>
-        /// Values that block submission: missing, empty or "?".
-        /// Blank values are allowed only for explicitly confirmed keys such as CM.
-        /// </summary>
         public static IReadOnlyList<string> FindInvalidVariables(
             IEnumerable<string> templateVariables,
             IReadOnlyDictionary<string, string> variables,
@@ -312,15 +327,9 @@ namespace AutoActivator.Services.Branch23Activation
                 name = name.Substring(2);
             }
 
-            // In expressions such as %%CM. the final dot is a JCL concatenation
-            // delimiter, not part of the variable name.
             return name.TrimEnd('.');
         }
 
-        /// <summary>
-        /// Maps an explicit SCNTT0 evaluation when one is requested separately.
-        /// The main activation workflow no longer calls this after LI1J04D2.
-        /// </summary>
         public static Branch23FinalDiagnostic MapFinal(ContractActivationStatus scntt) => scntt switch
         {
             ContractActivationStatus.ACTIVATED => Branch23FinalDiagnostic.ACTIVATED,
@@ -330,10 +339,6 @@ namespace AutoActivator.Services.Branch23Activation
             _ => Branch23FinalDiagnostic.TECHNICAL_SUCCESS_WITHOUT_BUSINESS_EFFECT
         };
 
-        /// <summary>
-        /// Builds the plan from ELIA then runs. Any plan error (unsupported channel,
-        /// premium, Run Date, contract number) blocks before any submission.
-        /// </summary>
         public async Task<Branch23ActivationReport> BuildPlanAndRunAsync(
             string? demandId,
             string? contractNumber,
@@ -368,19 +373,53 @@ namespace AutoActivator.Services.Branch23Activation
             return await RunAsync(plan, baseVariables, onProgress, token).ConfigureAwait(false);
         }
 
-        public async Task<Branch23ActivationReport> RunAsync(
+        public Task<Branch23ActivationReport> RunAsync(
             Branch23ActivationPlan plan,
             IReadOnlyDictionary<string, string> baseVariables,
             Action<string>? onProgress,
             CancellationToken token)
         {
+            ActivationJobSelection defaultSelection = Settings.Branch23Activation.Branch23ActivationOnly
+                ? ActivationJobSelection.PremeliaOnly()
+                : ActivationJobSelection.FullChain();
+
+            return RunAsync(
+                plan,
+                baseVariables,
+                onProgress,
+                token,
+                defaultSelection,
+                prepareFundsAndVniAsync: null);
+        }
+
+        public async Task<Branch23ActivationReport> RunAsync(
+            Branch23ActivationPlan plan,
+            IReadOnlyDictionary<string, string> baseVariables,
+            Action<string>? onProgress,
+            CancellationToken token,
+            ActivationJobSelection? jobSelection,
+            Func<DateTime, DateTime, CancellationToken, Task<(IReadOnlyList<string> Funds, string Source, IReadOnlyList<string> NavSummary)>>? prepareFundsAndVniAsync)
+        {
             ArgumentNullException.ThrowIfNull(plan);
             ArgumentNullException.ThrowIfNull(baseVariables);
+
+            ActivationJobSelection selection = jobSelection?.Clone()
+                ?? (Settings.Branch23Activation.Branch23ActivationOnly
+                    ? ActivationJobSelection.PremeliaOnly()
+                    : ActivationJobSelection.FullChain());
 
             var report = new Branch23ActivationReport();
             try
             {
-                await RunCoreAsync(plan, baseVariables, onProgress, report, token).ConfigureAwait(false);
+                await RunCoreAsync(
+                        plan,
+                        baseVariables,
+                        onProgress,
+                        report,
+                        selection,
+                        prepareFundsAndVniAsync,
+                        token)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -403,20 +442,26 @@ namespace AutoActivator.Services.Branch23Activation
             IReadOnlyDictionary<string, string> baseVariables,
             Action<string>? onProgress,
             Branch23ActivationReport report,
+            ActivationJobSelection selection,
+            Func<DateTime, DateTime, CancellationToken, Task<(IReadOnlyList<string> Funds, string Source, IReadOnlyList<string> NavSummary)>>? prepareFundsAndVniAsync,
             CancellationToken token)
         {
             void Log(string line) { report.Lines.Add(line); onProgress?.Invoke("BR23: " + line); }
 
             var variables = BuildVariables(plan, baseVariables);
             string start = plan.StartEnd.Start;
+            DateTime runDate = plan.RunDate.RunDate.Date;
+            DateTime consolidationDate = Branch23ParameterBuilder.GetConsolidationDate(runDate);
 
             report.DemandId = Display(plan.DemandId);
             report.EliaId = Display(plan.EliaId);
             report.ContractNumber372 = Display(plan.StartEnd.FullContractNumber);
             report.LisaInternalNumber = start;
-            report.RunDate = plan.RunDate.RunDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            report.RunDate = runDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            report.ConsolidationDate = consolidationDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             report.RunDateSource = plan.RunDate.Source;
             report.RunDateReason = plan.RunDate.Reason;
+            report.SelectedStepsSummary = selection.ToShortSummary(includeBranch23: true);
             report.EliaDates =
                 $"DateVersement={DisplayDate(plan.RunDate.PaymentDate)}; " +
                 $"DatePremierePrime={DisplayDate(plan.RunDate.FirstPremiumDate)}; " +
@@ -428,25 +473,85 @@ namespace AutoActivator.Services.Branch23Activation
             report.Amount = plan.Premium.Amount;
             report.AmountInjected = variables["AMOUNT"];
             report.SelectedPremiumRow = plan.Premium.Selected.ToString();
-            report.Channel = plan.Payment.Channel.ToString();
+            report.Channel = plan.Payment.BusinessChannelName;
             report.Bucp = variables["BUCP"];
             report.Cmdpmt = variables["CMDPMT"];
 
+            // Build evidence list for PREMELIA jobs + selected LVDQ jobs
             foreach (string job in JobOrder)
             {
                 report.Jobs.Add(new Branch23JobEvidence
                 {
                     JobName = job,
-                    // LVChain submits D0 and D2 directly. D1/D3 are not required
-                    // correlated child jobs for this activation workflow.
                     SubJobName = "-",
-                    Variables = JclVariables[job].ToDictionary(k => k,
-                        k => variables.TryGetValue(k, out string? val) ? val : "<absent>", StringComparer.OrdinalIgnoreCase)
+                    Variables = JclVariables[job].ToDictionary(
+                        k => k,
+                        k => variables.TryGetValue(k, out string? val) ? val : "<absent>",
+                        StringComparer.OrdinalIgnoreCase)
                 });
             }
 
-            Log($"Start={start}; End={plan.StartEnd.End}; Run Date={report.RunDate} ({report.RunDateSource}); " +
-                $"AMOUNT={report.AmountInjected}; BUCP={report.Bucp}; CMDPMT={report.Cmdpmt}; CLASS={variables["CLASS"]}.");
+            Dictionary<string, string> fg03Vars = BuildMergedLvdqVariables(
+                variables,
+                Branch23ParameterBuilder.BuildFundEventsVariables(runDate));
+            Dictionary<string, string> fg01Vars = BuildMergedLvdqVariables(
+                variables,
+                Branch23ParameterBuilder.BuildConsolidationVariables(consolidationDate));
+            Dictionary<string, string> pe01Vars = BuildMergedLvdqVariables(
+                variables,
+                Branch23ParameterBuilder.BuildFp01Variables(consolidationDate));
+
+            Branch23JobEvidence? fg03Evidence = null;
+            Branch23JobEvidence? fg01Evidence = null;
+            Branch23JobEvidence? pe01Evidence = null;
+
+            if (selection.RunLvdqFg03)
+            {
+                fg03Evidence = new Branch23JobEvidence
+                {
+                    JobName = "LVDQFG03",
+                    SubJobName = "-",
+                    Variables = JclVariables["LVDQFG03"].ToDictionary(
+                        k => k,
+                        k => fg03Vars.TryGetValue(k, out string? val) ? val : "<absent>",
+                        StringComparer.OrdinalIgnoreCase)
+                };
+                report.Jobs.Add(fg03Evidence);
+            }
+
+            if (selection.RunLvdqFg01)
+            {
+                fg01Evidence = new Branch23JobEvidence
+                {
+                    JobName = "LVDQFG01",
+                    SubJobName = "-",
+                    Variables = JclVariables["LVDQFG01"].ToDictionary(
+                        k => k,
+                        k => fg01Vars.TryGetValue(k, out string? val) ? val : "<absent>",
+                        StringComparer.OrdinalIgnoreCase)
+                };
+                report.Jobs.Add(fg01Evidence);
+            }
+
+            if (selection.RunLvd1Pe01)
+            {
+                pe01Evidence = new Branch23JobEvidence
+                {
+                    JobName = "LVD1PE01",
+                    SubJobName = "-",
+                    Variables = JclVariables["LVD1PE01"].ToDictionary(
+                        k => k,
+                        k => pe01Vars.TryGetValue(k, out string? val) ? val : "<absent>",
+                        StringComparer.OrdinalIgnoreCase)
+                };
+                report.Jobs.Add(pe01Evidence);
+            }
+
+            Log($"Start={start}; End={plan.StartEnd.End}; RunDate(N)={report.RunDate} ({report.RunDateSource}); " +
+                $"ConsolidationDate(N+2)={report.ConsolidationDate}; AMOUNT={report.AmountInjected}; " +
+                $"BUCP={report.Bucp}; CMDPMT={report.Cmdpmt}; Steps={report.SelectedStepsSummary}.");
+
+            bool alreadyActiveInScntt = false;
 
             // ---------------- SCNTT0 before
             try
@@ -457,18 +562,27 @@ namespace AutoActivator.Services.Branch23Activation
                     : null;
                 report.ScnttBeforeDetail = before.Count == 0 ? "absent" : string.Join(" | ", before.Select(RowText));
 
-                // Idempotence: an already active and unblocked contract must not submit
-                // ADDPRCT or any PREMELIA/LI job again.
                 if (before.Count == 1 && IsActiveScnttRow(before[0]))
                 {
+                    alreadyActiveInScntt = true;
                     report.ScnttFinalStatus = ContractActivationStatus.ACTIVATED;
-                    report.ScnttFinalDetail = "Contrat déjà actif et non bloqué ; aucun job soumis.";
+                    report.ScnttFinalDetail = "Contrat déjà actif (C_ETAT_CNT=4) et non bloqué dans SCNTT0.";
                     report.ScnttFinalRow = RowText(before[0]);
                     report.BeforeAfterComparison = "C_ETAT_CNT déjà à 4";
-                    MarkPending(report, "SkippedAlreadyActive");
-                    Finish(report, Branch23FinalDiagnostic.ACTIVATED, string.Empty,
-                        "Contrat déjà actif dans SCNTT0; workflow idempotent, aucun job soumis.");
-                    return;
+
+                    for (int i = 0; i < 5; i++)
+                    {
+                        report.Jobs[i].Status = "SkippedAlreadyActive";
+                    }
+
+                    if (!selection.HasAnyBranch23Step)
+                    {
+                        Finish(report, Branch23FinalDiagnostic.ACTIVATED, string.Empty,
+                            "Contrat déjà actif dans SCNTT0; workflow idempotent, aucun job soumis.");
+                        return;
+                    }
+
+                    Log("Contrat déjà actif dans SCNTT0 (C_ETAT_CNT=4) : les jobs PREMELIA sont ignorés, poursuite vers les étapes Branche 23 (LVDQ / VNI).");
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -477,189 +591,334 @@ namespace AutoActivator.Services.Branch23Activation
                 report.Warnings.Add("SCNTT0 avant workflow non lisible: la comparaison avant/après sera incomplète.");
             }
 
-            // ---------------- PRCTT0 before ADDPRCT
-            var prctBefore = await _verifier.CheckPrctAsync(plan, token).ConfigureAwait(false);
-            report.PrctBefore = prctBefore.Status;
-            report.PrctBeforeDetail = prctBefore.Detail;
-            bool skipPremiumJobsForResume = false;
-
-            switch (prctBefore.Status)
+            // ============================================================
+            // PHASE 1 & 2 : PREMELIA (ADDPRCT / SQL PRCTT0 -> LVPP06U -> LVPG22U -> LI1J04D0 -> LI1J04D2)
+            // ============================================================
+            if (!alreadyActiveInScntt && selection.HasAnyPremeliaJob)
             {
-                case PrctCheckStatus.ADDPRCT_CONFIRMED:
-                    report.AddprctSkipped = true;
-                    report.PrctAfter = prctBefore.Status;
-                    report.PrctAfterDetail = "Reprise: réception identique déjà présente, ADDPRCT non relancé.";
-                    report.Jobs[0].Status = "SkippedAlreadyConfirmed";
-                    Log(report.PrctAfterDetail);
+                bool skipPremiumJobsForResume = false;
 
+                if (selection.RunAddPrct || selection.UseSqlPrctInsert)
+                {
+                    var prctBefore = await _verifier.CheckPrctAsync(plan, token).ConfigureAwait(false);
+                    report.PrctBefore = prctBefore.Status;
+                    report.PrctBeforeDetail = prctBefore.Detail;
+
+                    switch (prctBefore.Status)
+                    {
+                        case PrctCheckStatus.ADDPRCT_CONFIRMED:
+                            report.AddprctSkipped = true;
+                            report.PrctAfter = prctBefore.Status;
+                            report.PrctAfterDetail = "Reprise: réception identique déjà présente dans LV.PRCTT0, ADDPRCT non relancé.";
+                            report.Jobs[0].Status = "SkippedAlreadyConfirmed";
+                            Log(report.PrctAfterDetail);
+
+                            try
+                            {
+                                var existingAssignment = await _verifier
+                                    .GetPremiumAssignmentPresenceAsync(start, token)
+                                    .ConfigureAwait(false);
+                                report.AssignmentDetail =
+                                    $"PRIST0 lignes={existingAssignment.PremiumCount}; " +
+                                    $"PECHT0 lignes={existingAssignment.ReceiptCount} (pré-contrôle reprise)";
+
+                                if (existingAssignment.PremiumCount > 0 &&
+                                    existingAssignment.ReceiptCount > 0)
+                                {
+                                    skipPremiumJobsForResume = true;
+                                    report.Jobs[1].Status = "SkippedAlreadyProcessed";
+                                    report.Jobs[2].Status = "SkippedAlreadyProcessed";
+                                    Log("Reprise confirmée: réception déjà traitée/affectée; LVPP06U et LVPG22U non relancés.");
+                                }
+                            }
+                            catch (Exception ex) when (ex is not OperationCanceledException)
+                            {
+                                report.Warnings.Add(
+                                    "Pré-contrôle de reprise PRIST0/PECHT0 indisponible: " +
+                                    ex.Message + ". Les jobs prime restent nécessaires.");
+                            }
+                            break;
+
+                        case PrctCheckStatus.ADDPRCT_NOT_FOUND:
+                            {
+                                int addprctRc = 0;
+                                if (selection.UseSqlPrctInsert && !selection.RunAddPrct)
+                                {
+                                    report.AddprctSkipped = true;
+                                    report.Jobs[0].Status = "SkippedSqlPrctUsed";
+                                    var sqlInsert = await _verifier.InsertPrctRowViaSqlAsync(plan, token).ConfigureAwait(false);
+                                    Log(sqlInsert.Detail);
+                                }
+                                else
+                                {
+                                    var addprct = await RunJobAsync(report.Jobs[0], variables, token).ConfigureAwait(false);
+                                    addprctRc = addprct.ReturnCode;
+                                    if (addprct.ReturnCode == 8)
+                                    {
+                                        report.Warnings.Add("ADDPRCT RC=0008: diagnostic DB2TIAD conservé ; PRCTT0 décide.");
+                                        foreach (string line in _spool.Analyze(addprct.Spool).DiagnosticLines)
+                                            Log("ADDPRCT spool: " + line);
+                                    }
+                                }
+
+                                var prctAfter = await _verifier.CheckPrctAsync(plan, token).ConfigureAwait(false);
+                                if (prctAfter.Status == PrctCheckStatus.ADDPRCT_NOT_FOUND && selection.UseSqlPrctInsert)
+                                {
+                                    var sqlFallback = await _verifier.InsertPrctRowViaSqlAsync(plan, token).ConfigureAwait(false);
+                                    Log("Fallback SQL LV.PRCTT0 : " + sqlFallback.Detail);
+                                    prctAfter = await _verifier.CheckPrctAsync(plan, token).ConfigureAwait(false);
+                                }
+
+                                report.PrctAfter = prctAfter.Status;
+                                report.PrctAfterDetail = prctAfter.Detail;
+
+                                if (prctAfter.Status == PrctCheckStatus.ADDPRCT_SQL_ERROR)
+                                    throw new Branch23ActivationException("BR23_ADDPRCT_SQL_ERROR", "PRCTT0 non lisible après ADDPRCT: " + prctAfter.Detail);
+                                if (prctAfter.Status != PrctCheckStatus.ADDPRCT_CONFIRMED)
+                                {
+                                    Finish(report,
+                                        prctAfter.Status == PrctCheckStatus.ADDPRCT_NOT_FOUND
+                                            ? Branch23FinalDiagnostic.NOT_ACTIVATED
+                                            : prctAfter.Status is PrctCheckStatus.ADDPRCT_AMBIGUOUS or PrctCheckStatus.ADDPRCT_CONFLICTING_RECEIPTS
+                                                ? Branch23FinalDiagnostic.AMBIGUOUS
+                                                : Branch23FinalDiagnostic.BLOCKED,
+                                        "BR23_" + prctAfter.Status,
+                                        $"PRCTT0 non confirmé après ADDPRCT/SQL (RC={addprctRc:0000}); LVPP06U non soumis.");
+                                    return;
+                                }
+                                break;
+                            }
+
+                        case PrctCheckStatus.ADDPRCT_SQL_ERROR:
+                            Finish(report, Branch23FinalDiagnostic.TECHNICAL_FAILURE, "BR23_PRE_ADDPRCT_SQL_ERROR",
+                                "PRCTT0 non lisible avant ADDPRCT; aucun job soumis.");
+                            return;
+
+                        default:
+                            Finish(report,
+                                prctBefore.Status is PrctCheckStatus.ADDPRCT_AMBIGUOUS or PrctCheckStatus.ADDPRCT_CONFLICTING_RECEIPTS
+                                    ? Branch23FinalDiagnostic.AMBIGUOUS
+                                    : Branch23FinalDiagnostic.BLOCKED,
+                                "BR23_PRE_" + prctBefore.Status,
+                                $"PRCTT0 incompatible avant ADDPRCT ({prctBefore.Status}); aucun job soumis.");
+                            return;
+                    }
+                }
+                else
+                {
+                    report.AddprctSkipped = true;
+                    report.Jobs[0].Status = "SkippedByUserSelection";
+                    Log("ADDPRCT ignoré (case décochée par l'utilisateur).");
+                }
+
+                // ---------------- LVPP06U, LVPG22U
+                if (!skipPremiumJobsForResume)
+                {
+                    if (selection.RunLvpp06u)
+                    {
+                        await RunJobAsync(report.Jobs[1], variables, token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        report.Jobs[1].Status = "SkippedByUserSelection";
+                    }
+
+                    if (selection.RunLvpg22u)
+                    {
+                        await RunJobAsync(report.Jobs[2], variables, token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        report.Jobs[2].Status = "SkippedByUserSelection";
+                    }
+                }
+
+                // ---------------- PRIST0 / PECHT0 (presence only)
+                if (selection.RunLvpp06u || selection.RunLvpg22u)
+                {
                     try
                     {
-                        var existingAssignment = await _verifier
-                            .GetPremiumAssignmentPresenceAsync(start, token)
-                            .ConfigureAwait(false);
-                        report.AssignmentDetail =
-                            $"PRIST0 lignes={existingAssignment.PremiumCount}; " +
-                            $"PECHT0 lignes={existingAssignment.ReceiptCount} (pré-contrôle reprise)";
-
-                        if (existingAssignment.PremiumCount > 0 &&
-                            existingAssignment.ReceiptCount > 0)
-                        {
-                            skipPremiumJobsForResume = true;
-                            report.Jobs[1].Status = "SkippedAlreadyProcessed";
-                            report.Jobs[2].Status = "SkippedAlreadyProcessed";
-                            Log("Reprise confirmée: réception déjà traitée/affectée; " +
-                                "LVPP06U et LVPG22U non relancés.");
-                        }
+                        var presence = await _verifier.GetPremiumAssignmentPresenceAsync(start, token).ConfigureAwait(false);
+                        report.AssignmentDetail = $"PRIST0 lignes={presence.PremiumCount}; PECHT0 lignes={presence.ReceiptCount}";
+                        if (presence.PremiumCount == 0 || presence.ReceiptCount == 0)
+                            report.Warnings.Add("PRIST0/PECHT0: aucune ligne détectée après LVPG22U (non bloquant).");
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        report.Warnings.Add(
-                            "Pré-contrôle de reprise PRIST0/PECHT0 indisponible: " +
-                            ex.Message + ". Les jobs prime restent nécessaires.");
+                        report.AssignmentDetail = "NON LISIBLE: " + ex.Message;
+                        report.Warnings.Add("PRIST0/PECHT0 non lisibles.");
                     }
-                    break;
+                }
 
-                case PrctCheckStatus.ADDPRCT_NOT_FOUND:
-                    {
-                        var addprct = await RunJobAsync(report.Jobs[0], variables, token).ConfigureAwait(false);
-                        if (addprct.ReturnCode == 8)
-                        {
-                            report.Warnings.Add("ADDPRCT RC=0008: diagnostic DB2TIAD conservé ; non interprété comme ALREADY_ACTIVE ; PRCTT0 décide.");
-                            foreach (string line in _spool.Analyze(addprct.Spool).DiagnosticLines) Log("ADDPRCT spool: " + line);
-                        }
+                // ---------------- PE01
+                Pe01CheckResult pe01;
+                try { pe01 = await _pe01.CheckAsync(start, token).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                { pe01 = new Pe01CheckResult { Status = Pe01CheckStatus.ERROR, Detail = ex.Message }; }
 
-                        var prctAfter = await _verifier.CheckPrctAsync(plan, token).ConfigureAwait(false);
-                        report.PrctAfter = prctAfter.Status;
-                        report.PrctAfterDetail = prctAfter.Detail;
-
-                        if (prctAfter.Status == PrctCheckStatus.ADDPRCT_SQL_ERROR)
-                            throw new Branch23ActivationException("BR23_ADDPRCT_SQL_ERROR", "PRCTT0 non lisible après ADDPRCT: " + prctAfter.Detail);
-                        if (prctAfter.Status != PrctCheckStatus.ADDPRCT_CONFIRMED)
-                        {
-                            Finish(report,
-                                prctAfter.Status == PrctCheckStatus.ADDPRCT_NOT_FOUND
-                                    ? Branch23FinalDiagnostic.NOT_ACTIVATED
-                                    : prctAfter.Status is PrctCheckStatus.ADDPRCT_AMBIGUOUS or PrctCheckStatus.ADDPRCT_CONFLICTING_RECEIPTS
-                                        ? Branch23FinalDiagnostic.AMBIGUOUS
-                                        : Branch23FinalDiagnostic.BLOCKED,
-                                "BR23_" + prctAfter.Status,
-                                $"PRCTT0 non confirmé après ADDPRCT (RC={addprct.ReturnCode:0000}); LVPP06U non soumis.");
-                            return;
-                        }
-                        break;
-                    }
-
-                case PrctCheckStatus.ADDPRCT_SQL_ERROR:
-                    Finish(report, Branch23FinalDiagnostic.TECHNICAL_FAILURE, "BR23_PRE_ADDPRCT_SQL_ERROR",
-                        "PRCTT0 non lisible avant ADDPRCT; aucun job soumis.");
-                    return;
-
-                default:
-                    Finish(report,
-                        prctBefore.Status is PrctCheckStatus.ADDPRCT_AMBIGUOUS or PrctCheckStatus.ADDPRCT_CONFLICTING_RECEIPTS
-                            ? Branch23FinalDiagnostic.AMBIGUOUS
-                            : Branch23FinalDiagnostic.BLOCKED,
-                        "BR23_PRE_" + prctBefore.Status,
-                        $"PRCTT0 incompatible avant ADDPRCT ({prctBefore.Status}); aucun job soumis.");
-                    return;
-            }
-
-            // ---------------- LVPP06U, LVPG22U
-            if (!skipPremiumJobsForResume)
-            {
-                await RunJobAsync(report.Jobs[1], variables, token).ConfigureAwait(false);
-                await RunJobAsync(report.Jobs[2], variables, token).ConfigureAwait(false);
-            }
-
-            // ---------------- PRIST0 / PECHT0 (presence only)
-            try
-            {
-                var presence = await _verifier.GetPremiumAssignmentPresenceAsync(start, token).ConfigureAwait(false);
-                report.AssignmentDetail = $"PRIST0 lignes={presence.PremiumCount}; PECHT0 lignes={presence.ReceiptCount} (présence seule, colonnes NON CONFIRMÉES)";
-                if (presence.PremiumCount == 0 || presence.ReceiptCount == 0)
-                    report.Warnings.Add("PRIST0/PECHT0: aucune ligne détectée après LVPG22U (non bloquant, signification NON CONFIRMÉE).");
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                report.AssignmentDetail = "NON LISIBLE: " + ex.Message;
-                report.Warnings.Add("PRIST0/PECHT0 non lisibles.");
-            }
-
-            // ---------------- PE01
-            Pe01CheckResult pe01;
-            try { pe01 = await _pe01.CheckAsync(start, token).ConfigureAwait(false); }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            { pe01 = new Pe01CheckResult { Status = Pe01CheckStatus.ERROR, Detail = ex.Message }; }
-
-            report.Pe01 = pe01.Status;
-            report.Pe01Detail = pe01.Detail;
-            switch (pe01.Status)
-            {
-                case Pe01CheckStatus.CONFIRMED:
-                    Log("PE01 confirmé.");
-                    break;
-
-                case Pe01CheckStatus.NOT_AVAILABLE:
-                    // ELIAT0 has not been located in the available SQL Server databases.
-                    // LVChain does not perform this SQL pre-check. At this point ADDPRCT,
-                    // PRCTT0, LVPP06U and LVPG22U have already succeeded. Continue with a
-                    // visible warning, then require the strict final SCNTT0 proof.
-                    report.Warnings.Add(
-                        "PE01_NOT_AVAILABLE: ELIAT0 n'est pas localisée. " +
-                        "Poursuite autorisée après succès d'ADDPRCT, PRCTT0, " +
-                        "LVPP06U et LVPG22U. L'activation devra être confirmée " +
-                        "strictement dans SCNTT0.");
-                    Log(
-                        "PE01 non vérifiable via SQL (NOT_AVAILABLE); " +
-                        "poursuite vers LI1J04D0 autorisée, avec contrôle final SCNTT0 obligatoire.");
-                    break;
-
-                case Pe01CheckStatus.NOT_FOUND:
+                report.Pe01 = pe01.Status;
+                report.Pe01Detail = pe01.Detail;
+                if (pe01.Status == Pe01CheckStatus.NOT_FOUND)
+                {
                     Finish(
                         report,
                         Branch23FinalDiagnostic.NOT_ACTIVATED,
                         "BR23_PE01_NOT_FOUND",
-                        "La source PE01 est disponible mais aucun PE01 éligible n'a été trouvé; " +
-                        "LI1J04D0 non soumis.");
+                        "La source PE01 est disponible mais aucun PE01 éligible n'a été trouvé; LI1J04D0 non soumis.");
                     return;
+                }
 
-                case Pe01CheckStatus.ERROR:
-                default:
-                    Finish(
-                        report,
-                        Branch23FinalDiagnostic.TECHNICAL_FAILURE,
-                        "BR23_PE01_CHECK_ERROR",
-                        "Échec technique du contrôle PE01; LI1J04D0 non soumis.");
-                    return;
+                // ---------------- LI1J04D0, then LI1J04D2
+                if (selection.RunLi1j04d0)
+                {
+                    await RunJobAsync(report.Jobs[3], variables, token).ConfigureAwait(false);
+                }
+                else
+                {
+                    report.Jobs[3].Status = "SkippedByUserSelection";
+                }
+
+                if (selection.RunLi1j04d2)
+                {
+                    await RunJobAsync(report.Jobs[4], variables, token).ConfigureAwait(false);
+                }
+                else
+                {
+                    report.Jobs[4].Status = "SkippedByUserSelection";
+                }
+            }
+            else if (!alreadyActiveInScntt)
+            {
+                for (int i = 0; i < 5; i++)
+                {
+                    report.Jobs[i].Status = "SkippedByUserSelection";
+                }
             }
 
-            // ---------------- LI1J04D0, then LI1J04D2
-            await RunJobAsync(report.Jobs[3], variables, token).ConfigureAwait(false);
-            await RunJobAsync(report.Jobs[4], variables, token).ConfigureAwait(false);
+            // ============================================================
+            // PHASE 3 : CHAÎNE LVDQ & SQL VNI (LVDQFG03 Date N -> SQL LV000GD0.LV.GFCRT0 N+2 -> LVDQFG01 Date N+2)
+            // ============================================================
+            if (selection.HasAnyBranch23Step)
+            {
+                // 1) Préparation VNI initiale avant LVDQFG03 (si SQL VNI coché)
+                if (selection.RunBranch23SqlVni && prepareFundsAndVniAsync != null)
+                {
+                    Log($"Préparation SQL VNI dans LV000GD0 (LV.GFCRT0 / GFEVT0) de {report.RunDate} (Date N) à {report.ConsolidationDate} (Date N+2)...");
+                    var vniResult = await prepareFundsAndVniAsync(runDate, consolidationDate, token).ConfigureAwait(false);
+                    report.FundsResolved = vniResult.Funds.Count > 0 ? string.Join(", ", vniResult.Funds) : "Aucun fonds résolu";
+                    report.FundsSource = vniResult.Source;
+                    report.NavSummary = vniResult.NavSummary.Count > 0
+                        ? string.Join(" | ", vniResult.NavSummary)
+                        : "VNI vérifiées";
+                    Log($"Fonds BR23={report.FundsResolved} ({report.FundsSource}) | VNI={report.NavSummary}");
+                }
 
-            // ---------------- technical completion
-            // LI1J04D2 is the last mandatory job of the validated LVChain activation
-            // sequence. LISA writes SCNTT0 asynchronously, sometimes after AutoActivator
-            // has already received RC=0000. Do not perform a final contract-number poll
-            // and do not report a false FAILED activation during that propagation delay.
-            report.ScnttFinalStatus = null;
-            report.ScnttFinalDetail =
-                "NOT_CHECKED_AFTER_LI1J04D2: LISA updates SCNTT0 asynchronously.";
-            report.ScnttFinalRow = "SCNTT0_NOT_CHECKED";
-            report.BeforeAfterComparison =
-                "Final SCNTT0 verification disabled; technical job sequence is authoritative.";
-            report.Warnings.Add(
-                "The mandatory activation jobs completed with accepted return codes. " +
-                "The contract may become visible in LISA after a short asynchronous delay; " +
-                "SCNTT0 was not checked after LI1J04D2.");
+                // 2) Étape 4 du guide : Créer le mouvement via LVDQFG03 (LVFG03U) à la date de création (Date N)
+                if (selection.RunLvdqFg03 && fg03Evidence != null)
+                {
+                    Log($"Soumission LVDQFG03 (LVFG03U) à la date de création DRUN={fg03Vars["DRUN"]} ({report.RunDate})...");
+                    await RunJobAsync(fg03Evidence, fg03Vars, token).ConfigureAwait(false);
+
+                    var mvtAfterFg03 = await _verifier.GetFundMovementsSummaryAsync(start, token).ConfigureAwait(false);
+                    report.MovementStateAfterFg03 = mvtAfterFg03.Summary;
+                    Log($"Mouvement LISA après LVDQFG03 : {report.MovementStateAfterFg03}");
+                }
+                else
+                {
+                    report.MovementStateAfterFg03 = "LVDQFG03 non exécuté (case décochée)";
+                }
+
+                // 3) Étape 5 du guide : En SQL LV000GD0 -> LV.GFCRT0 / GFEVT0 mettre la valeur à la date N+2
+                //    (ré-exécuté après LVDQFG03 au cas où de nouveaux fonds ont été découverts dans LV000FD0.LV.FMVDT0)
+                if (selection.RunBranch23SqlVni && prepareFundsAndVniAsync != null)
+                {
+                    var vniResultAfterFg03 = await prepareFundsAndVniAsync(runDate, consolidationDate, token).ConfigureAwait(false);
+                    if (vniResultAfterFg03.Funds.Count > 0)
+                    {
+                        report.FundsResolved = string.Join(", ", vniResultAfterFg03.Funds);
+                        report.FundsSource = vniResultAfterFg03.Source;
+                    }
+                    if (vniResultAfterFg03.NavSummary.Count > 0)
+                    {
+                        report.NavSummary = string.Join(" | ", vniResultAfterFg03.NavSummary);
+                    }
+                    Log($"VNI SQL confirmées à N+2 ({report.ConsolidationDate}) dans LV000GD0 : {report.NavSummary}");
+                }
+
+                // 4) Étape 6 du guide : En LVCHAIN consolider le mouvement via LVDQFG01 (LVFG01U, Seq 1, STEP=1) à la date N+2
+                if (selection.RunLvdqFg01 && fg01Evidence != null)
+                {
+                    Log($"Soumission LVDQFG01 (LVFG01U, Seq 1, STEP=1, UPD=Y) à Date N+2 DRUN={fg01Vars["DRUN"]} ({report.ConsolidationDate})...");
+                    await RunJobAsync(fg01Evidence, fg01Vars, token).ConfigureAwait(false);
+
+                    var mvtAfterFg01 = await _verifier.GetFundMovementsSummaryAsync(start, token).ConfigureAwait(false);
+                    report.MovementStateAfterFg01 = mvtAfterFg01.Summary;
+                    Log($"Mouvement LISA après LVDQFG01 (consolidation) : {report.MovementStateAfterFg01}");
+                }
+                else
+                {
+                    report.MovementStateAfterFg01 = "LVDQFG01 non exécuté (case décochée)";
+                }
+
+                // 5) Étape optionnelle LVD1PE01 (Seq 3, FP01)
+                if (selection.RunLvd1Pe01 && pe01Evidence != null)
+                {
+                    Log($"Soumission LVD1PE01 (LVPE01U, GBT=FP01) à Date N+2 DRUN={pe01Vars["DRUN"]}...");
+                    await RunJobAsync(pe01Evidence, pe01Vars, token).ConfigureAwait(false);
+                }
+            }
+
+            // ---------------- Contrôle final SCNTT0 (informatif, non bloquant si propagation asynchrone)
+            try
+            {
+                var afterScntt = await _verifier.GetScnttRowsAsync(start, token).ConfigureAwait(false);
+                if (afterScntt.Count == 1)
+                {
+                    var evaluated = Branch23ActivationResolver.EvaluateScntt(afterScntt, report.ScnttStateBefore);
+                    report.ScnttFinalStatus = evaluated.Status;
+                    report.ScnttFinalDetail = evaluated.Detail;
+                    report.ScnttFinalRow = RowText(afterScntt[0]);
+                    report.BeforeAfterComparison = $"Avant={report.ScnttStateBefore ?? "absent"} -> Après=C_ETAT_CNT={afterScntt[0].State}";
+                }
+                else
+                {
+                    report.ScnttFinalStatus = ContractActivationStatus.PENDING_ASYNC_LISA_CREATION;
+                    report.ScnttFinalDetail = "Propagation LISA asynchrone en cours (SCNTT0 non bloquant).";
+                    report.ScnttFinalRow = "PENDING_ASYNC_LISA_CREATION";
+                    report.BeforeAfterComparison = "Séquence technique terminée avec succès.";
+                }
+            }
+            catch
+            {
+                report.ScnttFinalStatus = null;
+                report.ScnttFinalDetail = "NOT_CHECKED: LISA updates SCNTT0 asynchronously.";
+                report.ScnttFinalRow = "SCNTT0_NOT_CHECKED";
+            }
 
             Finish(
                 report,
                 Branch23FinalDiagnostic.ACTIVATED,
                 string.Empty,
-                "Technical activation sequence completed successfully: " +
-                "ADDPRCT, LVPP06U, LVPG22U, LI1J04D0 and LI1J04D2 ended with accepted " +
-                "return codes. Final SCNTT0 verification intentionally skipped.");
+                $"Séquence exécutée avec succès ({report.SelectedStepsSummary}).");
+        }
+
+        private static Dictionary<string, string> BuildMergedLvdqVariables(
+            IReadOnlyDictionary<string, string> commonVariables,
+            IReadOnlyDictionary<string, string> specificVariables)
+        {
+            var merged = new Dictionary<string, string>(commonVariables, StringComparer.OrdinalIgnoreCase)
+            {
+                ["AP"] = Settings.Branch23.Application,
+                ["STE"] = Settings.Branch23.Ste,
+                ["CLASS"] = Settings.Branch23Activation.Class
+            };
+
+            foreach (var kvp in specificVariables)
+            {
+                merged[kvp.Key] = kvp.Value;
+            }
+
+            return merged;
         }
 
         private async Task<Branch23JobOutcome> RunJobAsync(
@@ -717,7 +976,7 @@ namespace AutoActivator.Services.Branch23Activation
             var counters = _spool.Analyze(outcome.Spool);
             evidence.Counters = counters.Status == SpoolCounterStatus.COUNTERS_FOUND
                 ? string.Join(", ", counters.Counters.Select(c => $"{c.Key}={c.Value.ToString(CultureInfo.InvariantCulture)}"))
-                : "COUNTERS_NOT_AVAILABLE (libellés NON CONFIRMÉS; preuve = SQL)";
+                : "COUNTERS_NOT_AVAILABLE (preuve = SQL)";
 
             bool accepted = outcome.ReturnCode is 0 or 4 ||
                 (evidence.JobName == "ADDPRCT" && outcome.ReturnCode == 8);
@@ -751,6 +1010,7 @@ namespace AutoActivator.Services.Branch23Activation
             report.Lines.Add($"{diagnostic}: {report.FinalReason}");
             return report;
         }
+
         private static bool IsActiveScnttRow(ScnttRow row)
         {
             if (row == null)

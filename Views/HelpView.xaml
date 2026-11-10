@@ -8,24 +8,49 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Help &amp; Technical Documentation Center" TextWrapping="Wrap" FontSize="24" FontWeight="Bold" Foreground="#0F172A"/>
-            <TextBlock Text="Complete reference guide for the LISA &amp; ELIA E.T.L Suite: High-speed Mainframe Activation, Parallel SQL Extraction, and Deep Non-Regression Comparison."
-                       TextWrapping="Wrap" FontSize="13.5" Foreground="#64748B" Margin="0,4,0,0"/>
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock Text="Centre d'Aide &amp; Référentiel Métier / Technique (LISA &amp; ELIA)"
+                       TextWrapping="Wrap"
+                       FontSize="23"
+                       FontWeight="Bold"
+                       Foreground="#0F172A"/>
+            <TextBlock Text="Guide complet de la logique d'Autocomplete SQL, détection automatique Banque vs Broker, classification Branche 21 vs Branche 23, exécution LVCHAIN, Extraction SQL et Comparaison."
+                       TextWrapping="Wrap"
+                       FontSize="13.5"
+                       Foreground="#64748B"
+                       Margin="0,4,0,0"/>
         </StackPanel>
 
-        <Border Grid.Row="1" Background="#EFF6FF" CornerRadius="8" Padding="16,12" BorderBrush="#BFDBFE" BorderThickness="1" Margin="0,0,0,16">
+        <Border Grid.Row="1"
+                Background="#EFF6FF"
+                CornerRadius="8"
+                Padding="16,12"
+                BorderBrush="#BFDBFE"
+                BorderThickness="1"
+                Margin="0,0,0,14">
             <StackPanel>
-                <TextBlock Text="💡 Recommended E.T.L Non-Regression Workflow" TextWrapping="Wrap" FontWeight="Bold" FontSize="15" Foreground="#1E40AF" Margin="0,0,0,4"/>
-                <TextBlock Text="1. Run a Batch Extraction to capture your Baseline state  ➜  2. Run Batch Activation to process contracts on Mainframe  ➜  3. Run a second Extraction to capture the Target state  ➜  4. Use the Smart Baseline Matcher in Comparison to verify 100% non-regression." TextWrapping="Wrap" Foreground="#334155" FontSize="13"/>
+                <TextBlock Text="💡 Garanties de cohérence End-to-End (Contrat / Demand ID / Environnement / Single &amp; Batch)"
+                           TextWrapping="Wrap"
+                           FontWeight="Bold"
+                           FontSize="14.5"
+                           Foreground="#1E40AF"
+                           Margin="0,0,0,4"/>
+                <TextBlock Text="Peu importe que vous saisissiez un Numéro de Contrat (3-7-2 ou JCL 9 chiffres) ou une Demand ID, en D000 ou Q000, en mode Unitaire ou Batch Excel : l'application exécute exactement le même moteur d'Autocomplete SQL, résout les mêmes paramètres (BUCP, CMDPMT, Prime, Date N, Date N+2, Fonds) et applique les mêmes contrôles métier."
+                           TextWrapping="Wrap"
+                           Foreground="#1E3A8A"
+                           FontSize="12.5"/>
             </StackPanel>
         </Border>
 
-        <TabControl x:Name="HelpTabControl" Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1">
+        <TabControl x:Name="HelpTabControl"
+                    Grid.Row="2"
+                    Background="White"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1">
             <TabControl.Resources>
                 <Style TargetType="TabItem">
-                    <Setter Property="Padding" Value="20,10"/>
-                    <Setter Property="FontSize" Value="14.5"/>
+                    <Setter Property="Padding" Value="18,10"/>
+                    <Setter Property="FontSize" Value="13.5"/>
                     <Setter Property="FontWeight" Value="Bold"/>
                     <Setter Property="Foreground" Value="#64748B"/>
                     <Setter Property="Background" Value="#F1F5F9"/>
@@ -41,112 +66,268 @@
                 </Style>
             </TabControl.Resources>
 
-            <TabItem Header="⚡ 1. Activation &amp; Diagnostics">
+            <!-- TAB 0 : AUTOCOMPLETE, BANQUE/BROKER & BRANCHE 21/23 -->
+            <TabItem Header="⚡ 1. Autocomplete, Banque/Broker &amp; Branche 21/23">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="22">
                     <StackPanel>
-                        <TextBlock Text="High-Speed Contract Activation &amp; Diagnostic Engine" TextWrapping="Wrap" FontSize="19" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,8"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#334155" FontSize="13.5" LineHeight="21" Margin="0,0,0,18">
-                            The Activation module automates Mainframe 3270 operations. It resolves contract identifiers and gross premiums in a single SQL query, injects parameters into cached JCL templates in memory, submits jobs via MicroFocus ESCWA REST APIs, and automatically extracts Mainframe Spool outputs if any step fails.
+                        <TextBlock Text="1. Logique complète derrière l'Autocomplete SQL (Pré-remplissage automatique)"
+                                   TextWrapping="Wrap"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="#0F172A"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock TextWrapping="Wrap"
+                                   Foreground="#334155"
+                                   FontSize="13"
+                                   LineHeight="20"
+                                   Margin="0,0,0,14">
+                            Dès que vous cliquez sur « 🔍 Analyze Contract » ou sur « ⚡ Run Activation » (en mode Unitaire comme en Batch Excel), le moteur interroge automatiquement les bases SQL Server de l'environnement sélectionné (Q000 : DBMFBDBQ / D000 : DBMFBDBD) pour construire un plan d'activation déterministe sans aucune saisie manuelle requise.
                         </TextBlock>
 
-                        <TextBlock Text="1. Strict Mainframe Formatting Rules" TextWrapping="Wrap" FontWeight="Bold" FontSize="15.5" Foreground="#0F172A" Margin="0,0,0,6"/>
                         <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,18">
                             <StackPanel>
-                                <TextBlock Text="• Target Contract ID (9-Digit JCL Format):" TextWrapping="Wrap" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,2"/>
-                                <TextBlock Text="When a 12-digit DB contract is provided (e.g., 182-2728195-31), the engine extracts the 9 central digits (822728195) required by Mainframe CNTBEG/CNTEND parameters." TextWrapping="Wrap" Margin="14,0,0,10" FontSize="13" Foreground="#475569"/>
+                                <TextBlock Text="• Détection bidirectionnelle Contrat ⟷ Demand ID :"
+                                           FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,3"/>
+                                <TextBlock Text="Que vous entriez un numéro de contrat externe 12 chiffres (ex. 582-2437921-78), un numéro technique JCL 9 chiffres / NO_CNT (ex. 822437921) ou une Demand ID ELIA (ex. 100458921), l'application retrouve automatiquement le triptyque complet : DemandId (FJ1.TB5HDMD) ⟷ EliaId / UCON (FJ1.TB5HELT &amp; FJ1.TB5UCON) ⟷ Contrat (IT5UCONLREFEXN) ⟷ État LISA (LV000SD0.LV.SCNTT0). Même si le mauvais bouton radio est coché, le moteur corrige automatiquement la recherche."
+                                           TextWrapping="Wrap" Margin="14,0,0,10" FontSize="12.5" Foreground="#475569"/>
 
-                                <TextBlock Text="• Gross Premium (IT5UPRPUBRU):" TextWrapping="Wrap" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,2"/>
-                                <TextBlock Text="Fetched in a single SQL roundtrip from FJ1.TB5UCON + FJ1.TB5UPRP and formatted to 10 characters with leading zeros (e.g., '0002500.00'). In Batch mode, contracts with 0€ premium are caught immediately during the parallel DB phase without blocking the Mainframe queue." TextWrapping="Wrap" Margin="14,0,0,10" FontSize="13" Foreground="#475569"/>
+                                <TextBlock Text="• Conversion du Numéro de Contrat pour LVCHAIN (9 chiffres / NO_CNT) :"
+                                           FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,3"/>
+                                <TextBlock Text="À partir du contrat ELIA au format 3-7-2 (12 chiffres, ex. 582-2437921-78), l'application retire les tirets, supprime le 1er chiffre (code compagnie) et les 2 derniers chiffres (chiffres de contrôle) pour obtenir les 9 chiffres centraux (ex. 822437921). Ce numéro à 9 chiffres correspond au NO_CNT dans LISA et aux champs Start / End (CNTBEG / CNTEND) dans LVCHAIN."
+                                           TextWrapping="Wrap" Margin="14,0,0,10" FontSize="12.5" Foreground="#475569"/>
 
-                                <TextBlock Text="• Distribution Channel Presets (BUCP &amp; CMDPMT):" TextWrapping="Wrap" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,2"/>
-                                <TextBlock Text="Bank (BUCP: 00382, CMDPMT: 8), Broker Old Gen (BUCP: 49797, CMDPMT: X), or Broker New Gen (BUCP: 80819, CMDPMT: H)." TextWrapping="Wrap" Margin="14,0,0,0" FontSize="13" Foreground="#475569"/>
+                                <TextBlock Text="• Sélection de la Prime Brute (AMOUNT) dans FJ1.TB5UPRP :"
+                                           FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,3"/>
+                                <TextBlock Text="Le moteur sélectionne en priorité la prime de conclusion (Groupe IT5UPRPCTYPGRPPRI = '01', Type IT5UPRPCTYPPRI = '02') ayant un montant brut strictement positif (IT5UPRPUBRU &gt; 0) sur la dernière séquence d'avenant (IT5UAVENSEQ DESC). Elle est formatée sur 10 caractères avec point décimal (ex. 2500,00 € ➔ 0002500.00) pour le JCL ADDPRCT."
+                                           TextWrapping="Wrap" Margin="14,0,0,10" FontSize="12.5" Foreground="#475569"/>
+
+                                <TextBlock Text="• Calcul de la Run Date (Date N) et de la Date de Consolidation (Date N+2) :"
+                                           FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,3"/>
+                                <TextBlock Text="La Date N (DRUN) n'utilise jamais la date du jour si une date métier ELIA existe. L'ordre strict de priorité est : 1) Date de Versement (TB5UPRP.IT5UPRPDVRS) si valide (&gt; 1900-01-01) et cohérente avec le début du contrat  ➔  2) Date de Première Prime (TB5UPRP.IT5UPRPDPMRPAI)  ➔  3) Date de Début du Contrat (TB5UCON.IT5UCONDDEB)  ➔  4) Date de Création de la Demande (TB5HDMD.IT5HDMDDCRE). Pour la Branche 23, la Date de Consolidation (Date N+2) ajoute automatiquement +2 jours ouvrés (hors week-end) pour l'injection VNI et LVDQFG01."
+                                           TextWrapping="Wrap" Margin="14,0,0,0" FontSize="12.5" Foreground="#475569"/>
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="2. Mainframe 5-Step JCL Sequence &amp; Low-Latency Polling" TextWrapping="Wrap" FontWeight="Bold" FontSize="15.5" Foreground="#0F172A" Margin="0,0,0,6"/>
-                        <Border Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,18">
-                            <StackPanel>
-                                <TextBlock Text="Phase 1 — Billing &amp; Premium Injection: ADDPRCT ➜ LVPP06U ➜ LVPG22U" TextWrapping="Wrap" FontWeight="Bold" Foreground="#166534"/>
-                                <TextBlock Text="Assigns and posts the contract premium. Automatically bypassed when Process is 'C05' or when 'Skip Prime' is clicked." TextWrapping="Wrap" Foreground="#15803D" Margin="14,2,0,10" FontSize="13"/>
+                        <!-- SECTION 2 : BANQUE VS BROKER -->
+                        <TextBlock Text="2. Comment savoir si c'est un contrat Banque ou Broker ? (Routage BUCP &amp; CMDPMT)"
+                                   TextWrapping="Wrap"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="#1E40AF"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock TextWrapping="Wrap"
+                                   Foreground="#334155"
+                                   FontSize="13"
+                                   LineHeight="20"
+                                   Margin="0,0,0,12">
+                            La distinction entre Banque (Bank) et Courtier (Broker) est déterminée automatiquement à partir de la colonne ChannelCode (IT5HDMDCCDI) de la table ELIA FJ1.TB5HDMD :
+                        </TextBlock>
 
-                                <TextBlock Text="Phase 2 — Core IMS Activation: LI1J04D0 (LI1J04D1) ➜ LI1J04D2 (LI1J04D3)" TextWrapping="Wrap" FontWeight="Bold" Foreground="#166534"/>
-                                <TextBlock Text="Finalizes the contract status in IMS (IM7T for D000, IM7C for Q000). JCL templates are cached in RAM and polled starting at 200ms intervals for maximum speed." TextWrapping="Wrap" Foreground="#15803D" Margin="14,2,0,0" FontSize="13"/>
+                        <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,18">
+                            <StackPanel>
+                                <TextBlock Text="🏦 CANAL BANQUE (BANK)"
+                                           FontWeight="Bold" FontSize="14" Foreground="#1D4ED8" Margin="0,0,0,4"/>
+                                <TextBlock Text="• Codes Canal ELIA (IT5HDMDCCDI) : 01, 02, 04, 05, 13, 18, 22, 23, 24 (ou Process C02)"
+                                           FontWeight="SemiBold" Foreground="#1E3A8A" Margin="10,0,0,2" FontSize="12.5"/>
+                                <TextBlock Text="• Paramètres LVCHAIN (Auto SQL) : BUCP = 00382  |  CMDPMT (Mode de paiement) = 8"
+                                           Foreground="#1E3A8A" Margin="10,0,0,2" FontSize="12.5"/>
+                                <TextBlock Text="• Variante P48LV (en LISA) : BUCP = 00182 (182 Bank)  |  CMDPMT = 8 (disponible en 1 clic via le preset 'Bank P48LV')"
+                                           Foreground="#334155" Margin="10,0,0,12" FontSize="12.5"/>
+
+                                <TextBlock Text="🤝 CANAL BROKER NEW GENERATION / 2P (BROKER_NEW_GEN)"
+                                           FontWeight="Bold" FontSize="14" Foreground="#6D28D9" Margin="0,0,0,4"/>
+                                <TextBlock Text="• Codes Canal ELIA (IT5HDMDCCDI) : 03, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 19, 20, 21"
+                                           FontWeight="SemiBold" Foreground="#5B21B6" Margin="10,0,0,2" FontSize="12.5"/>
+                                <TextBlock Text="• Paramètres LVCHAIN (Auto SQL) : BUCP = 80819  |  CMDPMT (Mode de paiement) = H"
+                                           Foreground="#5B21B6" Margin="10,0,0,12" FontSize="12.5"/>
+
+                                <TextBlock Text="🏛️ CANAL BROKER CLASSIQUE — AGF+ / AG Target+ / AG Invest+ (BROKER_LEGACY)"
+                                           FontWeight="Bold" FontSize="14" Foreground="#0F172A" Margin="0,0,0,4"/>
+                                <TextBlock Text="• Pour les contrats Broker AGF+ / AG Target+ : BUCP = 49797  |  CMDPMT = X (preset 'Broker AGF+ / Target+')"
+                                           Foreground="#334155" Margin="10,0,0,2" FontSize="12.5"/>
+                                <TextBlock Text="• Pour les contrats Broker AG Invest+ : BUCP = 49797  |  CMDPMT = H (preset 'Broker AG Invest+')"
+                                           Foreground="#334155" Margin="10,0,0,2" FontSize="12.5"/>
+                                <TextBlock Text="• Liaison de la prime Broker : Vous pouvez soit utiliser la Ligne 1 PremElia (ADDPRCT), soit cocher 'SQL LV.PRCTT0 Insert (Broker)' pour insérer directement la ligne dans [LV000PD0].[LV].[PRCTT0]."
+                                           Foreground="#334155" Margin="10,0,0,0" FontSize="12.5"/>
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="3. Detailed Diagnostic Reports &amp; Spool Extraction on Failure" TextWrapping="Wrap" FontWeight="Bold" FontSize="15.5" Foreground="#DC2626" Margin="0,0,0,6"/>
-                        <Border Background="#FEF2F2" CornerRadius="8" Padding="16" BorderBrush="#FECACA" BorderThickness="1">
+                        <!-- SECTION 3 : BRANCHE 21 VS BRANCHE 23 -->
+                        <TextBlock Text="3. Comment savoir si c'est une Branche 21 ou une Branche 23 ?"
+                                   TextWrapping="Wrap"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="#6D28D9"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock TextWrapping="Wrap"
+                                   Foreground="#334155"
+                                   FontSize="13"
+                                   LineHeight="20"
+                                   Margin="0,0,0,12">
+                            L'application détecte automatiquement si un contrat relève de la Branche 21 (taux garanti, sans fonds d'investissement) ou de la Branche 23 (lié à des fonds d'investissement et nécessitant VNI + consolidation LVDQ) en vérifiant 4 sources dans l'ordre suivant :
+                        </TextBlock>
+
+                        <Border Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,18">
                             <StackPanel>
-                                <TextBlock Text="🔍 Maximum Failure Diagnostics (Live Monitor &amp; TXT Reports)" TextWrapping="Wrap" FontWeight="Bold" FontSize="14.5" Foreground="#991B1B" Margin="0,0,0,6"/>
-                                <TextBlock Text="• Every Single and Batch activation records a complete ContractActivationTrace: DB identifiers (UCON ID, Demand ID, LISA NO_CNT), exact step durations, Job Numbers (Jxxxxxx), and Return Codes." TextWrapping="Wrap" Foreground="#7F1D1D" Margin="0,0,0,6" FontSize="13"/>
-                                <TextBlock Text="• If any Mainframe job fails (JCLError, Abend, or RC ≠ 0/4), the engine automatically downloads the Mainframe Spool DDs (BERPCTLO, SYSOUT, SYSPRINT, JESYSMSG, JESMSGLG) and embeds them in the report along with a Root-Cause Analysis and Recommended Action." TextWrapping="Wrap" Foreground="#7F1D1D" Margin="0,0,0,6" FontSize="13"/>
-                                <TextBlock Text="• Tip: Double-click any row in the Live Activation Monitor table to inspect its full diagnostic report and Mainframe Spool output immediately!" TextWrapping="Wrap" Foreground="#991B1B" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="Niveau 1 — Code Produit ELIA (FJ1.TB5HDMD.IT5HDMDCPRD) :"
+                                           FontWeight="Bold" Foreground="#5B21B6" Margin="0,0,0,2"/>
+                                <TextBlock Text="Si le code produit appartient au catalogue Branche 23 confirmé (9500, 9502, 9503, 9506, D018, D022, O018, F018, B018, EB18), le contrat est immédiatement classé en Branche 23."
+                                           TextWrapping="Wrap" Margin="14,0,0,10" FontSize="12.5" Foreground="#4C1D95"/>
+
+                                <TextBlock Text="Niveau 2 — Features &amp; Fonds de Garantie ELIA (FJ1.TB5UGFF) :"
+                                           FontWeight="Bold" Foreground="#5B21B6" Margin="0,0,0,2"/>
+                                <TextBlock Text="Le moteur inspecte la table FJ1.TB5UGFF (colonnes IT5UGFFCFND et IT5UGFFCFNDDSI, visibles en M38LV / OFTS sous LISA, ex. F5050, F7525, FEUR, FICA). Dès qu'au moins un code fonds est présent, le contrat est classé en Branche 23."
+                                           TextWrapping="Wrap" Margin="14,0,0,10" FontSize="12.5" Foreground="#4C1D95"/>
+
+                                <TextBlock Text="Niveau 3 — Répartition des Primes par Fonds ELIA (FJ1.TB5UPRF) :"
+                                           FontWeight="Bold" Foreground="#5B21B6" Margin="0,0,0,2"/>
+                                <TextBlock Text="Si TB5UGFF est vide, le moteur interroge FJ1.TB5UPRF (colonne IT5UPRFCFND avec proportion IT5UPRFPRPIFND &gt; 0) pour récupérer les fonds souscrits sur la prime."
+                                           TextWrapping="Wrap" Margin="14,0,0,10" FontSize="12.5" Foreground="#4C1D95"/>
+
+                                <TextBlock Text="Niveau 4 — Mouvements de Fonds LISA ([LV000FD0].[LV].[FMVDT0] / FMVGT0) :"
+                                           FontWeight="Bold" Foreground="#5B21B6" Margin="0,0,0,2"/>
+                                <TextBlock Text="Après la création du mouvement de fonds via LVDQFG03 (mouvement en état 2 dans F51LV), le moteur vérifie également les codes fonds enregistrés dans [LV000FD0].[LV].[FMVDT0] (colonne C_FONDS)."
+                                           TextWrapping="Wrap" Margin="14,0,0,10" FontSize="12.5" Foreground="#4C1D95"/>
+
+                                <TextBlock Text="Résultat Branche 21 (Standard) :"
+                                           FontWeight="Bold" Foreground="#1D4ED8" Margin="0,0,0,2"/>
+                                <TextBlock Text="Si le produit n'est pas un produit Branche 23 et qu'aucun fonds n'est associé dans TB5UGFF / TB5UPRF, le contrat est classé en Branche 21 : seule la chaîne PREMELIA (ADDPRCT ➔ LVPP06U ➔ LVPG22U ➔ LI1J04D0 ➔ LVBM25D0) est exécutée."
+                                           TextWrapping="Wrap" Margin="14,0,0,0" FontSize="12.5" Foreground="#1E3A8A"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- SECTION 4 : CHAINE COMPLETE LVCHAIN & SQL -->
+                        <TextBlock Text="4. Chaîne d'exécution LVCHAIN &amp; SQL (En 1 fois ou étape par étape via les cases à cocher)"
+                                   TextWrapping="Wrap"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="#166534"
+                                   Margin="0,0,0,8"/>
+                        <Border Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="Étape 1 — PREMELIA Ligne 1 (ADDPRCT ou SQL LV.PRCTT0) :"
+                                           FontWeight="Bold" Foreground="#166534" Margin="0,0,0,2"/>
+                                <TextBlock Text="Ajoute la réception de prime dans [LV000PD0].[LV].[PRCTT0] (Montant avec point décimal, Date N, BUCP et Mode de paiement CMDPMT). Non exécuté si vous avez déjà fait le P48LV ou si vous cliquez sur 'Skip Prime'."
+                                           TextWrapping="Wrap" Foreground="#15803D" Margin="14,0,0,8" FontSize="12.5"/>
+
+                                <TextBlock Text="Étape 2 — PREMELIA Lignes 2 &amp; 3 (LVPP06U ➔ LVPG22U) :"
+                                           FontWeight="Bold" Foreground="#166534" Margin="0,0,0,2"/>
+                                <TextBlock Text="Affecte la prime et prépare les tables de quittances ([LV].[PRIST0] et [LV].[PECHT0] dans LV000PD0)."
+                                           TextWrapping="Wrap" Foreground="#15803D" Margin="14,0,0,8" FontSize="12.5"/>
+
+                                <TextBlock Text="Étape 3 — PREMELIA Lignes 6 &amp; 7 (LI1J04D0 ➔ LVBM25D0 / LI1J04D2) :"
+                                           FontWeight="Bold" Foreground="#166534" Margin="0,0,0,2"/>
+                                <TextBlock Text="Active le contrat dans LISA ([LV000SD0].[LV].[SCNTT0], état ACTIF '1'). Pour une Branche 21, l'activation est terminée ici."
+                                           TextWrapping="Wrap" Foreground="#15803D" Margin="14,0,0,8" FontSize="12.5"/>
+
+                                <TextBlock Text="Étape 4 (Branche 23) — Chaîne LVDQ Ligne 0 (LVDQFG03 à la Date N) :"
+                                           FontWeight="Bold" Foreground="#166534" Margin="0,0,0,2"/>
+                                <TextBlock Text="Crée le mouvement d'achat de fonds dans LISA ([LV000FD0].[LV].[FMVGT0] / FMVDT0). Le mouvement apparaît en F51LV à l'état 2."
+                                           TextWrapping="Wrap" Foreground="#15803D" Margin="14,0,0,8" FontSize="12.5"/>
+
+                                <TextBlock Text="Étape 5 (Branche 23) — Injection SQL des VNI dans [LV000GD0].[LV].[GFCRT0] (Date N..N+2) :"
+                                           FontWeight="Bold" Foreground="#166534" Margin="0,0,0,2"/>
+                                <TextBlock Text="Vérifie et insère automatiquement la valeur liquidative (VNI / cours de fonds C_VALID_COURS = '1') pour chaque fonds du contrat entre la Date N et la Date N+2 dans [LV000GD0].[LV].[GFCRT0] (et LV.GFEVT0 si fonds fermé)."
+                                           TextWrapping="Wrap" Foreground="#15803D" Margin="14,0,0,8" FontSize="12.5"/>
+
+                                <TextBlock Text="Étape 6 (Branche 23) — Chaîne LVDQ Ligne 1 (LVDQFG01 à la Date N+2) :"
+                                           FontWeight="Bold" Foreground="#166534" Margin="0,0,0,2"/>
+                                <TextBlock Text="Consolide le mouvement de fonds à la Date N+2. Le mouvement passe de l'état 2 à l'état 4 dans LISA (F51LV) avec attribution des unités."
+                                           TextWrapping="Wrap" Foreground="#15803D" Margin="14,0,0,0" FontSize="12.5"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="📥 2. Extraction">
+            <!-- TAB 1 : EXTRACTION SQL -->
+            <TabItem Header="📥 2. Extraction SQL (LISA &amp; ELIA)">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="22">
                     <StackPanel>
-                        <TextBlock Text="Parallel Multi-Table Extraction (LISA &amp; ELIA)" TextWrapping="Wrap" FontSize="19" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,8"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#334155" FontSize="13.5" LineHeight="21" Margin="0,0,0,18">
-                            Connects to SQL Server environments (<Run FontWeight="Bold">D000</Run>: <Run FontFamily="Consolas">DBMFBDBD</Run> / <Run FontFamily="Consolas">FJ0AGDB_D000</Run> &amp; <Run FontFamily="Consolas">FJ5LIFE_D000</Run> | <Run FontWeight="Bold">Q000</Run>: <Run FontFamily="Consolas">DBMFBDBQ</Run> / <Run FontFamily="Consolas">FJ0AGDB_Q000</Run> &amp; <Run FontFamily="Consolas">FJ5LIFE_Q000</Run>) to extract 32 LISA tables and 23 ELIA/Demand tables in parallel, formatting them into structured CSV snapshots for regression testing.
+                        <TextBlock Text="Extraction SQL Parallèle Multi-Tables (32 tables LISA &amp; 24 tables ELIA)"
+                                   TextWrapping="Wrap"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="#0F172A"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock TextWrapping="Wrap"
+                                   Foreground="#334155"
+                                   FontSize="13"
+                                   LineHeight="20"
+                                   Margin="0,0,0,16">
+                            Le module d'Extraction se connecte aux environnements SQL Server (<Run FontWeight="Bold">D000</Run> : <Run FontFamily="Consolas">DBMFBDBD</Run> | <Run FontWeight="Bold">Q000</Run> : <Run FontFamily="Consolas">DBMFBDBQ</Run>) pour extraire en parallèle les 32 tables LISA et les 24 tables ELIA / Demand d'un contrat ou d'un fichier Excel/CSV complet, tout en affichant les mêmes colonnes métier que le tableau d'Activation (Ligne Excel, Contrat, JCL 9 chiffres, LISA NO_CNT, UCON, Demand ID, Branche 21/23, Produit, Process, Canal, BUCP, CMDPMT, Prime et Fonds).
                         </TextBlock>
 
-                        <Border Background="#F8FAFC" CornerRadius="8" Padding="18" BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,0,0,18">
+                        <Border Background="#F8FAFC" CornerRadius="8" Padding="18" BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,0,0,16">
                             <StackPanel>
-                                <TextBlock Text="Batch Input File Rules (Excel / CSV)" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#0F172A" Margin="0,0,0,8"/>
-                                <TextBlock Text="1. Search by Contract ID: The file must contain a column header named 'LISA Contract'." TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,8"/>
-                                <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Margin="14,0,0,16" HorizontalAlignment="Left" Padding="10" Background="White">
-                                    <StackPanel Width="360">
-                                        <Border Background="#166534" CornerRadius="4,4,0,0" Padding="10,6">
-                                            <TextBlock Text="A1 : LISA Contract" FontFamily="Consolas" FontWeight="Bold" Foreground="White" FontSize="12"/>
-                                        </Border>
-                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="#F8FAFC">
-                                            <TextBlock Text="001-2345678-90" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
-                                        </Border>
-                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="White">
-                                            <TextBlock Text="001-9876543-21" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
-                                        </Border>
-                                    </StackPanel>
-                                </Border>
+                                <TextBlock Text="Détection intelligente des fichiers Excel / CSV en mode Batch"
+                                           TextWrapping="Wrap" FontWeight="Bold" FontSize="15.5" Foreground="#0F172A" Margin="0,0,0,8"/>
+                                <TextBlock Text="• Numéro de ligne Excel réel (Excel Row #) : Chaque contrat extrait ou activé affiche le numéro exact de sa ligne dans le fichier Excel (base 1, identique à celui affiché à gauche dans Microsoft Excel). Vous pouvez cliquer sur '👁️ Preview Rows' avant de lancer un batch pour inspecter toutes les lignes détectées."
+                                           TextWrapping="Wrap" Foreground="#334155" Margin="0,0,0,8" FontSize="12.5"/>
+                                <TextBlock Text="• Recherche par Numéro de Contrat : Colonne 'LISA Contract' (ou détection automatique d'un contrat au format 3-7-2)."
+                                           TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,6" FontSize="12.5"/>
+                                <TextBlock Text="• Recherche par Demand ID : Colonne 'Value' en ligne 2 dans les fichiers Excel de test automatisés (ex. 100458921)."
+                                           TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,0" FontSize="12.5"/>
+                            </StackPanel>
+                        </Border>
 
-                                <TextBlock Text="2. Search by Demand ID: The file must contain a column header named 'Value' (typically on Row 2 in Testing Team Excel sheets)." TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,8"/>
-                                <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Margin="14,0,0,6" HorizontalAlignment="Left" Padding="10" Background="White">
-                                    <StackPanel Width="360">
-                                        <Border Background="#1D4ED8" CornerRadius="4,4,0,0" Padding="10,6">
-                                            <TextBlock Text="Row 2 : Value (ELIA Demand ID)" FontFamily="Consolas" FontWeight="Bold" Foreground="White" FontSize="12"/>
-                                        </Border>
-                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="#F8FAFC">
-                                            <TextBlock Text="100458921" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
-                                        </Border>
-                                        <Border BorderBrush="#E2E8F0" BorderThickness="1,0,1,1" Padding="10,5" Background="White">
-                                            <TextBlock Text="100458922" FontFamily="Consolas" Foreground="#0F172A" FontSize="12"/>
-                                        </Border>
-                                    </StackPanel>
-                                </Border>
+                        <Border Background="#ECFDF5" CornerRadius="8" Padding="16" BorderBrush="#A7F3D0" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="🚀 Actions rapides depuis la table d'Extraction"
+                                           FontWeight="Bold" FontSize="14.5" Foreground="#065F46" Margin="0,0,0,6"/>
+                                <TextBlock Text="• Double-clic ou bouton '🔍 Inspect SQL' : Ouvre une fenêtre de rapport complète affichant toutes les métadonnées métier et un aperçu direct des tables SQL extraites dans le CSV."
+                                           TextWrapping="Wrap" Foreground="#047857" Margin="0,0,0,4" FontSize="12.5"/>
+                                <TextBlock Text="• Bouton '⚡ Send to Activation' : Envoie instantanément le contrat ou la Demand ID sélectionné(e) vers l'onglet Contract Activation avec le bon environnement."
+                                           TextWrapping="Wrap" Foreground="#047857" Margin="0,0,0,4" FontSize="12.5"/>
+                                <TextBlock Text="• Bouton '📊 Compare Latest' : Envoie directement le dernier fichier CSV extrait vers le module Deep Comparison et sélectionne automatiquement la Baseline correspondante."
+                                           TextWrapping="Wrap" Foreground="#047857" Margin="0,0,0,0" FontSize="12.5"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="📊 3. Comparison">
+            <!-- TAB 2 : COMPARAISON NON-REGRESSION -->
+            <TabItem Header="📊 3. Comparaison &amp; Non-Régression">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="22">
                     <StackPanel>
-                        <TextBlock Text="Deep Non-Regression Comparison Engine" TextWrapping="Wrap" FontSize="19" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,8"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#334155" FontSize="13.5" LineHeight="21" Margin="0,0,0,18">
-                            Compares Baseline and Target CSV snapshots table by table, row by row, and cell by cell using single-pass $O(N)$ streaming and 128-bit decimal normalization.
+                        <TextBlock Text="Moteur de Comparaison Non-Régression Cellule par Cellule"
+                                   TextWrapping="Wrap"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="#0F172A"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock TextWrapping="Wrap"
+                                   Foreground="#334155"
+                                   FontSize="13"
+                                   LineHeight="20"
+                                   Margin="0,0,0,16">
+                            Compare un fichier Baseline (référence) et un fichier Target (nouvelle extraction) table par table, ligne par ligne et colonne par colonne, en normalisant les nombres décimaux (arrondi à 4 décimales) et en ignorant automatiquement les colonnes techniques volatiles (timestamps DB2/LISA, identifiants techniques de séquence, dates de traitement batch).
                         </TextBlock>
 
-                        <Border Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1" CornerRadius="8" Padding="16">
+                        <Border Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,16">
                             <StackPanel>
-                                <TextBlock Text="Comparison Status Codes &amp; Scoring:" TextWrapping="Wrap" FontWeight="Bold" FontSize="15" Foreground="#065F46" Margin="0,0,0,8"/>
-                                <TextBlock Text="• OK / OK_EMPTY : 100% identical data (after volatile timestamp/ID exclusions and 4-decimal rounding)." TextWrapping="Wrap" Foreground="#047857" Margin="8,0,0,4" FontWeight="SemiBold"/>
-                                <TextBlock Text="• KO_ROW_COUNT : Row count mismatch between Base and Target for a table." TextWrapping="Wrap" Foreground="#DC2626" Margin="8,0,0,4" FontWeight="SemiBold"/>
-                                <TextBlock Text="• KO : Cell-level differences detected (exact row, column, Base value, and Target value are listed)." TextWrapping="Wrap" Foreground="#DC2626" Margin="8,0,0,0" FontWeight="SemiBold"/>
+                                <TextBlock Text="Codes de Statut de Comparaison :"
+                                           TextWrapping="Wrap" FontWeight="Bold" FontSize="15" Foreground="#065F46" Margin="0,0,0,8"/>
+                                <TextBlock Text="• OK : Toutes les lignes et colonnes métier de la table sont 100% identiques entre Baseline et Target."
+                                           TextWrapping="Wrap" Foreground="#047857" Margin="8,0,0,4" FontWeight="SemiBold" FontSize="12.5"/>
+                                <TextBlock Text="• OK_EMPTY : La table est vide (0 ligne) aussi bien dans la Baseline que dans la Target."
+                                           TextWrapping="Wrap" Foreground="#047857" Margin="8,0,0,4" FontWeight="SemiBold" FontSize="12.5"/>
+                                <TextBlock Text="• KO_ROW_COUNT : Le nombre de lignes de la table diffère entre la Baseline et la Target."
+                                           TextWrapping="Wrap" Foreground="#DC2626" Margin="8,0,0,4" FontWeight="SemiBold" FontSize="12.5"/>
+                                <TextBlock Text="• KO : Différence(s) de valeur détectée(s) sur une ou plusieurs colonnes métier (avec affichage côte à côte Base vs Target)."
+                                           TextWrapping="Wrap" Foreground="#DC2626" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12.5"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="🔍 Inspection Côte à Côte et Rejeu Rapide :"
+                                           FontWeight="Bold" FontSize="14.5" Foreground="#0F172A" Margin="0,0,0,6"/>
+                                <TextBlock Text="• Double-cliquez sur n'importe quelle ligne ou cliquez sur '🔍 Inspect Diff' pour ouvrir le rapport détaillant chaque colonne en écart (Ligne, Colonne, Valeur Baseline vs Valeur Target)."
+                                           TextWrapping="Wrap" Foreground="#334155" Margin="0,0,0,4" FontSize="12.5"/>
+                                <TextBlock Text="• Utilisez les boutons '📥 Re-Extract' ou '⚡ Activate' directement depuis la barre d'outils de comparaison pour relancer l'extraction ou l'activation du contrat sélectionné en 1 clic."
+                                           TextWrapping="Wrap" Foreground="#334155" Margin="0,0,0,0" FontSize="12.5"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

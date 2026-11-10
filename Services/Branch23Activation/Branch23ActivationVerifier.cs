@@ -17,7 +17,11 @@ namespace AutoActivator.Services.Branch23Activation
         /// <summary>LV000PD0_x000 / LV (PRCTT0, PRIST0, PECHT0).</summary>
         LisaPayment,
         /// <summary>LV000SD0_x000 / LV (SCNTT0).</summary>
-        LisaContract
+        LisaContract,
+        /// <summary>LV000FD0_x000 / LV (FMVDT0, FPLCT0).</summary>
+        LisaFundMovement,
+        /// <summary>LV000GD0_x000 / LV (GFCRT0, GFEVT0).</summary>
+        LisaFundValuation
     }
 
     /// <summary>Read-only SQL access, mockable in unit tests.</summary>
@@ -50,6 +54,8 @@ namespace AutoActivator.Services.Branch23Activation
             Branch23Database.Elia => Settings.DbConfig.GetLifeDatabase(_environment),
             Branch23Database.LisaPayment => Settings.DbConfig.GetLisaPaymentDatabase(_environment),
             Branch23Database.LisaContract => Settings.DbConfig.GetLisaContractDatabase(_environment),
+            Branch23Database.LisaFundMovement => Settings.DbConfig.GetFundMovementDatabase(_environment),
+            Branch23Database.LisaFundValuation => Settings.DbConfig.GetFundValuationDatabase(_environment),
             _ => throw new ArgumentOutOfRangeException(nameof(database))
         };
 
@@ -71,24 +77,52 @@ namespace AutoActivator.Services.Branch23Activation
     public static class Branch23ActivationQueries
     {
         public const string EliaContractByDemand = @"
-SELECT
-    h.IT5HDMDAIDN AS DemandId,
-    u.IT5UCONAIDN AS EliaId,
-    LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS NumeroContrat
+SELECT DISTINCT
+    CONVERT(varchar(30), h.IT5HDMDAIDN) AS DemandId,
+    CONVERT(varchar(30), u.IT5UCONAIDN) AS EliaId,
+    LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))) AS NumeroContrat,
+    NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
+    d.IT5HDMDDCRE AS DemandCreationDate,
+    h.IT5HELTDTISMAJDB2 AS LinkUpdateDate,
+    TRY_CONVERT(int, h.IT5HPRONSEQ) AS ProcessSequence,
+    TRY_CONVERT(int, h.IT5HELTNSEQCON) AS ContractSequence,
+    TRY_CONVERT(int, h.IT5HELTNSEQAVENOU) AS AmendmentSequence
 FROM [FJ1].[TB5HELT] AS h WITH (NOLOCK)
 INNER JOIN [FJ1].[TB5UCON] AS u WITH (NOLOCK)
     ON u.IT5UCONAIDN = h.IT5UCONAIDN
-WHERE h.IT5HDMDAIDN = @DemandId;";
+LEFT JOIN [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
+    ON d.IT5HDMDAIDN = h.IT5HDMDAIDN
+WHERE TRY_CONVERT(decimal(15, 0), h.IT5HDMDAIDN) =
+      TRY_CONVERT(decimal(15, 0), @DemandId);";
 
         public const string EliaContractByNumber = @"
-SELECT
-    h.IT5HDMDAIDN AS DemandId,
-    u.IT5UCONAIDN AS EliaId,
-    LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS NumeroContrat
+SELECT DISTINCT
+    CONVERT(varchar(30), h.IT5HDMDAIDN) AS DemandId,
+    CONVERT(varchar(30), u.IT5UCONAIDN) AS EliaId,
+    LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))) AS NumeroContrat,
+    NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
+    d.IT5HDMDDCRE AS DemandCreationDate,
+    h.IT5HELTDTISMAJDB2 AS LinkUpdateDate,
+    TRY_CONVERT(int, h.IT5HPRONSEQ) AS ProcessSequence,
+    TRY_CONVERT(int, h.IT5HELTNSEQCON) AS ContractSequence,
+    TRY_CONVERT(int, h.IT5HELTNSEQAVENOU) AS AmendmentSequence
 FROM [FJ1].[TB5UCON] AS u WITH (NOLOCK)
 LEFT JOIN [FJ1].[TB5HELT] AS h WITH (NOLOCK)
     ON h.IT5UCONAIDN = u.IT5UCONAIDN
-WHERE REPLACE(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '-', '') = REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', '');";
+LEFT JOIN [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
+    ON d.IT5HDMDAIDN = h.IT5HDMDAIDN
+WHERE REPLACE(REPLACE(REPLACE(
+          LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))),
+          '-', ''), ' ', ''), '.', '') =
+      REPLACE(REPLACE(REPLACE(
+          LTRIM(RTRIM(@ContractNumber)),
+          '-', ''), ' ', ''), '.', '')
+   OR SUBSTRING(REPLACE(REPLACE(REPLACE(
+          LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))),
+          '-', ''), ' ', ''), '.', ''), 2, 9) =
+      REPLACE(REPLACE(REPLACE(
+          LTRIM(RTRIM(@ContractNumber)),
+          '-', ''), ' ', ''), '.', '');";
 
         public const string EliaDemandDetails = @"
 SELECT TOP (1)
@@ -98,6 +132,7 @@ SELECT TOP (1)
     NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCCDI))), '') AS ChannelCode,
     NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCAPL))), '') AS ApplicationChannel,
     NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
+    d.IT5HDMDDCRE AS DemandCreationDate,
     NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), p.IT5UPMPCMDEPAI))), '') AS PaymentMethodCode
 FROM [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
 LEFT JOIN [FJ1].[TB5HELT] AS h WITH (NOLOCK)
@@ -223,7 +258,30 @@ WHERE NO_CNT = @CoInterneLisa;";
         string ChannelCode,
         string ApplicationChannel,
         string DemandStatus,
-        string PaymentMethodCode);
+        string PaymentMethodCode,
+        DateTime? DemandCreationDate = null);
+
+    internal sealed record Branch23EliaContractCandidate(
+        string DemandId,
+        string EliaId,
+        string ContractNumber,
+        string DemandStatus,
+        DateTime? DemandCreationDate,
+        DateTime? LinkUpdateDate,
+        int ProcessSequence,
+        int ContractSequence,
+        int AmendmentSequence)
+    {
+        public bool IsActiveDemand =>
+            string.Equals(DemandStatus, "A3", StringComparison.OrdinalIgnoreCase);
+
+        public string Evidence =>
+            $"DemandId={DemandId}, EliaId={EliaId}, " +
+            $"Contract={ContractNumber}, Status={DemandStatus}, " +
+            $"DemandDate={DemandCreationDate:yyyy-MM-dd}, " +
+            $"LinkUpdate={LinkUpdateDate:yyyy-MM-dd HH:mm:ss}, " +
+            $"Seq={ProcessSequence}/{ContractSequence}/{AmendmentSequence}";
+    }
 
     /// <summary>
     /// SQL read/verification of the Branch 23 activation flow.
@@ -243,42 +301,178 @@ WHERE NO_CNT = @CoInterneLisa;";
         // ---------------------------------------------------------- ELIA
 
         public async Task<(string DemandId, string EliaId, string ContractNumber)> ResolveEliaContractAsync(
-            string? demandId, string? contractNumber, CancellationToken token)
+            string? demandId,
+            string? contractNumber,
+            CancellationToken token)
         {
-            DataTable table;
-            if (!string.IsNullOrWhiteSpace(demandId) && demandId != "N/A")
+            string normalizedDemandId = NormalizeIdentifier(demandId);
+            string normalizedContract = NormalizeIdentifier(contractNumber);
+
+            if (normalizedDemandId.Length == 0 && normalizedContract.Length == 0)
             {
-                table = await _sql.QueryAsync(Branch23Database.Elia, Branch23ActivationQueries.EliaContractByDemand,
-                    new Dictionary<string, object> { ["@DemandId"] = demandId.Trim() }, token).ConfigureAwait(false);
-            }
-            else if (!string.IsNullOrWhiteSpace(contractNumber))
-            {
-                table = await _sql.QueryAsync(Branch23Database.Elia, Branch23ActivationQueries.EliaContractByNumber,
-                    new Dictionary<string, object> { ["@ContractNumber"] = contractNumber.Trim() }, token).ConfigureAwait(false);
-            }
-            else
-            {
-                throw new Branch23ActivationException("BR23_ELIA_CONTRACT_NOT_FOUND", "No Demand ID or contract number provided.");
+                throw new Branch23ActivationException(
+                    "BR23_ELIA_CONTRACT_NOT_FOUND",
+                    "No Demand ID or contract number provided.");
             }
 
-            var rows = table.Rows.Cast<DataRow>()
-                .Select(r => (Demand: Str(r, "DemandId"), Elia: Str(r, "EliaId"), Number: Str(r, "NumeroContrat")))
-                .Where(r => r.Elia.Length > 0)
-                .Distinct()
+            bool resolvedByDemand = normalizedDemandId.Length > 0;
+            DataTable table = resolvedByDemand
+                ? await _sql.QueryAsync(
+                        Branch23Database.Elia,
+                        Branch23ActivationQueries.EliaContractByDemand,
+                        new Dictionary<string, object>
+                        {
+                            ["@DemandId"] = normalizedDemandId
+                        },
+                        token)
+                    .ConfigureAwait(false)
+                : await _sql.QueryAsync(
+                        Branch23Database.Elia,
+                        Branch23ActivationQueries.EliaContractByNumber,
+                        new Dictionary<string, object>
+                        {
+                            ["@ContractNumber"] = normalizedContract
+                        },
+                        token)
+                    .ConfigureAwait(false);
+
+            List<Branch23EliaContractCandidate> candidates =
+                ReadDistinctEliaCandidates(table);
+
+            if (candidates.Count == 0 && resolvedByDemand && normalizedContract.Length > 0)
+            {
+                resolvedByDemand = false;
+                table = await _sql.QueryAsync(
+                        Branch23Database.Elia,
+                        Branch23ActivationQueries.EliaContractByNumber,
+                        new Dictionary<string, object>
+                        {
+                            ["@ContractNumber"] = normalizedContract
+                        },
+                        token)
+                    .ConfigureAwait(false);
+                candidates = ReadDistinctEliaCandidates(table);
+            }
+
+            if (candidates.Count == 0)
+            {
+                throw new Branch23ActivationException(
+                    "BR23_ELIA_CONTRACT_NOT_FOUND",
+                    resolvedByDemand
+                        ? $"No ELIA contract is linked to Demand ID {normalizedDemandId}."
+                        : $"Contract '{normalizedContract}' was not found in " +
+                          "FJ1.TB5HELT / FJ1.TB5UCON.");
+            }
+
+            Branch23EliaContractCandidate selected = resolvedByDemand
+                ? SelectUniqueDemandCandidate(candidates, normalizedDemandId)
+                : SelectCurrentContractCandidate(candidates, normalizedContract);
+
+            return (selected.DemandId, selected.EliaId, selected.ContractNumber);
+        }
+
+        private static List<Branch23EliaContractCandidate> ReadDistinctEliaCandidates(
+            DataTable table)
+        {
+            return table.Rows.Cast<DataRow>()
+                .Select(row => new Branch23EliaContractCandidate(
+                    NormalizeIdentifier(Str(row, "DemandId")),
+                    NormalizeIdentifier(Str(row, "EliaId")),
+                    Str(row, "NumeroContrat"),
+                    Str(row, "DemandStatus"),
+                    Date(row, "DemandCreationDate"),
+                    Date(row, "LinkUpdateDate"),
+                    Int(row, "ProcessSequence"),
+                    Int(row, "ContractSequence"),
+                    Int(row, "AmendmentSequence")))
+                .Where(candidate =>
+                    candidate.EliaId.Length > 0 &&
+                    candidate.ContractNumber.Length > 0)
+                .GroupBy(candidate => new
+                {
+                    candidate.DemandId,
+                    candidate.EliaId,
+                    Contract = NormalizeContract(candidate.ContractNumber)
+                })
+                .Select(group => group
+                    .OrderByDescending(candidate => candidate.LinkUpdateDate)
+                    .ThenByDescending(candidate => candidate.DemandCreationDate)
+                    .First())
                 .ToList();
+        }
 
-            if (rows.Count == 0)
-                throw new Branch23ActivationException("BR23_ELIA_CONTRACT_NOT_FOUND", "Contract not found in FJ1.TB5HELT / FJ1.TB5UCON.");
+        private static Branch23EliaContractCandidate SelectUniqueDemandCandidate(
+            IReadOnlyList<Branch23EliaContractCandidate> candidates,
+            string demandId)
+        {
+            List<Branch23EliaContractCandidate> distinct = DistinctByEliaAndContract(
+                candidates.Where(candidate => string.Equals(
+                    candidate.DemandId,
+                    demandId,
+                    StringComparison.OrdinalIgnoreCase)).ToList());
 
-            if (rows.Select(r => r.Elia).Distinct().Count() > 1)
-                throw new Branch23ActivationException("BR23_ELIA_CONTRACT_AMBIGUOUS",
-                    "Several ELIA contracts match: " + string.Join(", ", rows.Select(r => r.Elia).Distinct()));
+            if (distinct.Count == 1)
+            {
+                return distinct[0];
+            }
 
-            var first = rows[0];
-            if (first.Number.Length == 0)
-                throw new Branch23ActivationException("BR23_ELIA_CONTRACT_NUMBER_MISSING", "TB5UCON.IT5UCONLREFEXN is empty.");
+            throw new Branch23ActivationException(
+                "BR23_ELIA_DEMAND_AMBIGUOUS",
+                $"Demand ID {demandId} is linked to {distinct.Count} " +
+                "distinct ELIA contracts: " +
+                string.Join(" | ", distinct.Select(candidate => candidate.Evidence)));
+        }
 
-            return (first.Demand, first.Elia, first.Number);
+        private static Branch23EliaContractCandidate SelectCurrentContractCandidate(
+            IReadOnlyList<Branch23EliaContractCandidate> candidates,
+            string contractNumber)
+        {
+            List<Branch23EliaContractCandidate> distinct =
+                DistinctByEliaAndContract(candidates);
+
+            if (distinct.Count == 1)
+            {
+                return distinct[0];
+            }
+
+            List<Branch23EliaContractCandidate> active =
+                DistinctByEliaAndContract(
+                    distinct.Where(candidate => candidate.IsActiveDemand).ToList());
+
+            if (active.Count == 1)
+            {
+                return active[0];
+            }
+
+            throw new Branch23ActivationException(
+                "BR23_ELIA_CONTRACT_AMBIGUOUS",
+                $"Contract '{contractNumber}' matches {distinct.Count} distinct " +
+                "ELIA contracts. " +
+                (active.Count == 0
+                    ? "No unique active A3 Demand could be selected. "
+                    : $"{active.Count} active A3 contracts remain. ") +
+                "Candidates: " +
+                string.Join(" | ", distinct.Select(candidate => candidate.Evidence)));
+        }
+
+        private static List<Branch23EliaContractCandidate> DistinctByEliaAndContract(
+            IReadOnlyList<Branch23EliaContractCandidate> candidates)
+        {
+            return candidates
+                .GroupBy(candidate => new
+                {
+                    candidate.EliaId,
+                    Contract = NormalizeContract(candidate.ContractNumber)
+                })
+                .Select(group => group
+                    .OrderByDescending(candidate => candidate.IsActiveDemand)
+                    .ThenByDescending(candidate => candidate.ProcessSequence)
+                    .ThenByDescending(candidate => candidate.ContractSequence)
+                    .ThenByDescending(candidate => candidate.AmendmentSequence)
+                    .ThenByDescending(candidate => candidate.LinkUpdateDate)
+                    .ThenByDescending(candidate => candidate.DemandCreationDate)
+                    .First())
+                .ToList();
         }
 
         public async Task<IReadOnlyList<Branch23PremiumRow>> GetPremiumRowsAsync(string eliaId, CancellationToken token)
@@ -307,6 +501,17 @@ WHERE NO_CNT = @CoInterneLisa;";
             string demandId,
             CancellationToken token)
         {
+            if (string.IsNullOrWhiteSpace(demandId))
+            {
+                return new Branch23EliaDemandDetails(
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty);
+            }
+
             DataTable table = await _sql.QueryAsync(
                     Branch23Database.Elia,
                     Branch23ActivationQueries.EliaDemandDetails,
@@ -319,9 +524,13 @@ WHERE NO_CNT = @CoInterneLisa;";
 
             if (table.Rows.Count == 0)
             {
-                throw new Branch23ActivationException(
-                    "BR23_DEMAND_DETAILS_NOT_FOUND",
-                    $"No TB5HDMD data was found for Demand ID {demandId}.");
+                return new Branch23EliaDemandDetails(
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty);
             }
 
             DataRow row = table.Rows[0];
@@ -331,11 +540,13 @@ WHERE NO_CNT = @CoInterneLisa;";
                 Str(row, "ChannelCode"),
                 Str(row, "ApplicationChannel"),
                 Str(row, "DemandStatus"),
-                Str(row, "PaymentMethodCode"));
+                Str(row, "PaymentMethodCode"),
+                Date(row, "DemandCreationDate"));
         }
 
         /// <summary>
         /// ELIA -> complete plan (Start/End, Run Date, AMOUNT, BUCP/CMDPMT).
+        /// En mode automatique, le ChannelCode ELIA fait foi.
         /// </summary>
         public async Task<Branch23ActivationPlan> BuildPlanAsync(
             string? demandId,
@@ -343,29 +554,42 @@ WHERE NO_CNT = @CoInterneLisa;";
             Branch23PaymentChannel channel,
             CancellationToken token)
         {
-            // Compatibility overload. The ELIA ChannelCode remains authoritative.
-            Branch23ActivationPlan plan = await BuildPlanAsync(
+            _ = channel;
+            return await BuildPlanAsync(
                     demandId,
                     contractNumber,
                     token)
                 .ConfigureAwait(false);
-
-            if (channel != Branch23PaymentChannel.Unknown &&
-                channel != plan.Payment.Channel)
-            {
-                throw new Branch23ActivationException(
-                    "BR23_PAYMENT_ROUTING_MISMATCH",
-                    $"Requested channel {channel} conflicts with ELIA " +
-                    $"ChannelCode {plan.ChannelCode} resolved to " +
-                    $"{plan.Payment.BusinessChannelName}.");
-            }
-
-            return plan;
         }
 
         public async Task<Branch23ActivationPlan> BuildPlanAsync(
             string? demandId,
             string? contractNumber,
+            string? bucpOverride,
+            string? cmdpmtOverride,
+            bool overrideApplied,
+            CancellationToken token)
+        {
+            return await BuildPlanAsync(
+                    demandId,
+                    contractNumber,
+                    bucpOverride,
+                    cmdpmtOverride,
+                    overrideApplied,
+                    runDateOverride: null,
+                    amountOverride: null,
+                    token)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<Branch23ActivationPlan> BuildPlanAsync(
+            string? demandId,
+            string? contractNumber,
+            string? bucpOverride,
+            string? cmdpmtOverride,
+            bool overrideApplied,
+            DateTime? runDateOverride,
+            decimal? amountOverride,
             CancellationToken token)
         {
             var elia = await ResolveEliaContractAsync(
@@ -379,22 +603,108 @@ WHERE NO_CNT = @CoInterneLisa;";
                     .ConfigureAwait(false);
 
             Branch23PaymentParameters payment =
-                Branch23ActivationResolver.ResolvePaymentParameters(
-                    details.ChannelCode);
+                Branch23PaymentParameters.ResolveFromChannelCode(details.ChannelCode);
+
+            if ((overrideApplied || !payment.IsResolved) &&
+                (!string.IsNullOrWhiteSpace(bucpOverride) || !string.IsNullOrWhiteSpace(cmdpmtOverride)))
+            {
+                var fallbackOrManualPayment = Branch23PaymentParameters.ResolveFromPaymentPair(
+                    string.IsNullOrWhiteSpace(bucpOverride) ? payment.Bucp : bucpOverride,
+                    string.IsNullOrWhiteSpace(cmdpmtOverride) ? payment.Cmdpmt : cmdpmtOverride,
+                    details.ChannelCode,
+                    overrideApplied: overrideApplied);
+
+                if (fallbackOrManualPayment.IsResolved)
+                {
+                    payment = fallbackOrManualPayment;
+                }
+            }
+
+            if (!payment.IsResolved)
+            {
+                throw new Branch23ActivationException(
+                    "BR23_CHANNEL_NOT_SUPPORTED",
+                    $"ELIA ChannelCode '{details.ChannelCode}' is not mapped to BANK or BROKER_NEW_GEN " +
+                    $"and no valid BUCP/CMDPMT override ({bucpOverride}/{cmdpmtOverride}) was provided.");
+            }
 
             Branch23StartEnd startEnd =
                 Branch23ActivationResolver.ResolveStartEnd(elia.ContractNumber);
+
             IReadOnlyList<Branch23PremiumRow> rows =
                 await GetPremiumRowsAsync(elia.EliaId, token)
                     .ConfigureAwait(false);
-            Branch23PremiumSelection premium =
-                Branch23ActivationResolver.SelectConclusionPremium(rows);
+
+            Branch23PremiumSelection premium;
+            if (overrideApplied && amountOverride.HasValue && amountOverride.Value > 0m)
+            {
+                Branch23PremiumRow? baseRow = rows.FirstOrDefault(r => r.GrossPremium.HasValue && r.GrossPremium.Value > 0m)
+                    ?? rows.FirstOrDefault();
+
+                DateTime? fallbackDate = runDateOverride ?? baseRow?.PaymentDate ?? baseRow?.FirstPremiumDate ?? baseRow?.ContractStartDate;
+                premium = new Branch23PremiumSelection
+                {
+                    Selected = new Branch23PremiumRow
+                    {
+                        EliaId = elia.EliaId,
+                        ContractNumber = startEnd.FullContractNumber,
+                        GrossPremium = amountOverride.Value,
+                        NetPremium = baseRow?.NetPremium ?? amountOverride.Value,
+                        FirstPremiumDate = baseRow?.FirstPremiumDate ?? fallbackDate,
+                        PaymentDate = baseRow?.PaymentDate ?? fallbackDate,
+                        ContractStartDate = baseRow?.ContractStartDate ?? fallbackDate
+                    },
+                    TotalRows = rows.Count,
+                    Amount = Branch23ActivationResolver.FormatAmount(amountOverride.Value),
+                    Reason = "Manual override"
+                };
+            }
+            else if (rows.Count == 0 && amountOverride.HasValue && amountOverride.Value > 0m)
+            {
+                premium = new Branch23PremiumSelection
+                {
+                    Selected = new Branch23PremiumRow
+                    {
+                        EliaId = elia.EliaId,
+                        ContractNumber = startEnd.FullContractNumber,
+                        GrossPremium = amountOverride.Value,
+                        NetPremium = amountOverride.Value,
+                        FirstPremiumDate = runDateOverride,
+                        PaymentDate = runDateOverride,
+                        ContractStartDate = runDateOverride
+                    },
+                    TotalRows = 0,
+                    Amount = Branch23ActivationResolver.FormatAmount(amountOverride.Value),
+                    Reason = "Fallback amount (TB5UPRP empty)"
+                };
+            }
+            else
+            {
+                premium = Branch23ActivationResolver.SelectConclusionPremium(rows);
+            }
+
             Branch23PremiumRow selected = premium.Selected;
-            Branch23RunDate runDate =
-                Branch23ActivationResolver.ResolveRunDate(
+            Branch23RunDate runDate;
+            if (runDateOverride.HasValue && runDateOverride.Value > new DateTime(1900, 1, 1))
+            {
+                runDate = new Branch23RunDate
+                {
+                    RunDate = runDateOverride.Value.Date,
+                    Source = "Manual override",
+                    Reason = $"RunDate explicit ({runDateOverride.Value:yyyy-MM-dd})",
+                    PaymentDate = selected.PaymentDate,
+                    FirstPremiumDate = selected.FirstPremiumDate,
+                    ContractStartDate = selected.ContractStartDate
+                };
+            }
+            else
+            {
+                runDate = Branch23ActivationResolver.ResolveRunDate(
                     selected.PaymentDate,
                     selected.FirstPremiumDate,
-                    selected.ContractStartDate);
+                    selected.ContractStartDate,
+                    details.DemandCreationDate);
+            }
 
             return new Branch23ActivationPlan
             {
@@ -414,8 +724,27 @@ WHERE NO_CNT = @CoInterneLisa;";
                     $"BUCP/CMDPMT={payment.Bucp}/{payment.Cmdpmt}; " +
                     $"Rule={payment.RoutingRule}; " +
                     $"PaymentMethodCode={details.PaymentMethodCode} " +
-                    "(informational only)"
+                    "(informational only); " +
+                    $"ELIA selection=DemandId {elia.DemandId}, " +
+                    $"EliaId {elia.EliaId}"
             };
+        }
+
+        public async Task<Branch23ActivationPlan> BuildPlanAsync(
+            string? demandId,
+            string? contractNumber,
+            CancellationToken token)
+        {
+            return await BuildPlanAsync(
+                    demandId,
+                    contractNumber,
+                    bucpOverride: null,
+                    cmdpmtOverride: null,
+                    overrideApplied: false,
+                    runDateOverride: null,
+                    amountOverride: null,
+                    token)
+                .ConfigureAwait(false);
         }
 
         // ------------------------------------------------------- PRCTT0
@@ -537,6 +866,256 @@ WHERE NO_CNT = @CoInterneLisa;";
             }
         }
 
+        // ------------------------------------------------------- SQL PRCTT0 INSERT & LISA FMVDT0 MOVEMENTS
+
+        /// <summary>
+        /// Insertion directe via SQL dans [LV000PD0_x].[LV].[PRCTT0] en copiant une ligne modèle
+        /// (identique à la procédure manuelle SSMS pour Broker / PremElia Ligne 1).
+        /// </summary>
+        public async Task<(bool Inserted, string Detail)> InsertPrctRowViaSqlAsync(
+            Branch23ActivationPlan plan,
+            CancellationToken token)
+        {
+            ArgumentNullException.ThrowIfNull(plan);
+            token.ThrowIfCancellationRequested();
+
+            const string dynamicInsertSql = @"
+DECLARE @Cols nvarchar(max) = N'';
+DECLARE @Exprs nvarchar(max) = N'';
+
+SELECT
+    @Cols = @Cols + CASE WHEN @Cols = N'' THEN N'' ELSE N', ' END + QUOTENAME(c.name),
+    @Exprs = @Exprs + CASE WHEN @Exprs = N'' THEN N'' ELSE N', ' END +
+        CASE UPPER(c.name)
+            WHEN 'C_STE' THEN N'@Ste'
+            WHEN 'NO_CNT' THEN N'@NoCnt'
+            WHEN 'C_MD_PMT' THEN N'@CmdPmt'
+            WHEN 'D_REF_PRM' THEN N'@RunDate'
+            WHEN 'D_BISM_DVA' THEN N'@RunDate'
+            WHEN 'D_BISM_DCOR' THEN N'@RunDate'
+            WHEN 'M_PAY' THEN N'@Amount'
+            WHEN 'NO_BISM_BUCP' THEN N'@Bucp'
+            WHEN 'NO_ORD_RCP' THEN N'1'
+            WHEN 'C_ETAT_RCP' THEN N'''1'''
+            WHEN 'C_TY_RCT' THEN N'''1'''
+            ELSE N'src.' + QUOTENAME(c.name)
+        END
+FROM sys.columns AS c
+WHERE c.object_id = OBJECT_ID(N'[LV].[PRCTT0]')
+  AND c.is_identity = 0
+  AND c.is_computed = 0
+ORDER BY c.column_id;
+
+IF @Cols = N''
+BEGIN
+    SELECT 0 AS InsertedRows, N'Table [LV].[PRCTT0] introuvable.' AS Message;
+    RETURN;
+END
+
+DECLARE @Sql nvarchar(max) = N'
+DECLARE @Inserted int = 0;
+IF NOT EXISTS (
+    SELECT 1 FROM [LV].[PRCTT0] WITH (UPDLOCK, HOLDLOCK)
+    WHERE C_STE = @Ste AND NO_CNT = @NoCnt AND D_REF_PRM = @RunDate AND M_PAY = @Amount
+)
+BEGIN
+    INSERT INTO [LV].[PRCTT0] (' + @Cols + N')
+    SELECT TOP (1) ' + @Exprs + N'
+    FROM [LV].[PRCTT0] AS src
+    WHERE src.C_STE = @Ste
+    ORDER BY CASE WHEN src.C_MD_PMT = @CmdPmt THEN 0 ELSE 1 END, src.D_REF_PRM DESC;
+    SET @Inserted = @@ROWCOUNT;
+END
+SELECT @Inserted AS InsertedRows, N''OK'' AS Message;';
+
+EXEC sp_executesql
+    @Sql,
+    N'@Ste varchar(4), @NoCnt decimal(15,0), @CmdPmt varchar(4), @RunDate date, @Amount decimal(18,3), @Bucp decimal(10,0)',
+    @Ste = @Ste,
+    @NoCnt = @NoCnt,
+    @CmdPmt = @CmdPmt,
+    @RunDate = @RunDate,
+    @Amount = @Amount,
+    @Bucp = @Bucp;";
+
+            try
+            {
+                decimal noCnt = decimal.Parse(plan.StartEnd.Start, CultureInfo.InvariantCulture);
+                decimal amount = plan.Premium.Selected.GrossPremium!.Value;
+                decimal bucp = decimal.Parse(plan.Payment.Bucp, CultureInfo.InvariantCulture);
+
+                return await InsertPrctRowViaSqlCoreAsync(
+                        noCnt,
+                        plan.Payment.Cmdpmt,
+                        bucp.ToString(CultureInfo.InvariantCulture),
+                        plan.RunDate.RunDate,
+                        amount,
+                        dynamicInsertSql,
+                        token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return (false, $"SQL INSERT LV.PRCTT0 erreur : {ex.Message}");
+            }
+        }
+
+        public async Task<string> InsertPrctRowViaSqlAsync(
+            decimal noCnt,
+            string cmdpmt,
+            string bucp,
+            DateTime runDate,
+            decimal amount,
+            CancellationToken token)
+        {
+            var plan = new Branch23ActivationPlan
+            {
+                StartEnd = new Branch23StartEnd
+                {
+                    Start = noCnt.ToString("0", CultureInfo.InvariantCulture),
+                    End = noCnt.ToString("0", CultureInfo.InvariantCulture),
+                    FullContractNumber = noCnt.ToString("0", CultureInfo.InvariantCulture)
+                },
+                RunDate = new Branch23RunDate { RunDate = runDate.Date },
+                Premium = new Branch23PremiumSelection
+                {
+                    Selected = new Branch23PremiumRow { GrossPremium = amount },
+                    Amount = amount.ToString("0.00", CultureInfo.InvariantCulture)
+                },
+                Payment = new Branch23PaymentParameters
+                {
+                    Bucp = string.IsNullOrWhiteSpace(bucp) ? "00382" : bucp.Trim(),
+                    Cmdpmt = string.IsNullOrWhiteSpace(cmdpmt) ? "8" : cmdpmt.Trim().ToUpperInvariant()
+                }
+            };
+
+            var res = await InsertPrctRowViaSqlAsync(plan, token).ConfigureAwait(false);
+            return res.Detail;
+        }
+
+        private async Task<(bool Inserted, string Detail)> InsertPrctRowViaSqlCoreAsync(
+            decimal noCnt,
+            string cmdpmt,
+            string bucpText,
+            DateTime runDate,
+            decimal amount,
+            string dynamicInsertSql,
+            CancellationToken token)
+        {
+            decimal bucp = decimal.TryParse(bucpText, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal b) ? b : 0m;
+            DataTable result = await _sql.QueryAsync(
+                    Branch23Database.LisaPayment,
+                    dynamicInsertSql,
+                    new Dictionary<string, object>
+                    {
+                        ["@Ste"] = Settings.Branch23Activation.Ste,
+                        ["@NoCnt"] = noCnt,
+                        ["@CmdPmt"] = cmdpmt,
+                        ["@RunDate"] = runDate.Date,
+                        ["@Amount"] = amount,
+                        ["@Bucp"] = bucp
+                    },
+                    token)
+                .ConfigureAwait(false);
+
+            int inserted = result.Rows.Count > 0 && result.Rows[0]["InsertedRows"] != DBNull.Value
+                ? Convert.ToInt32(result.Rows[0]["InsertedRows"], CultureInfo.InvariantCulture)
+                : 0;
+
+            return (inserted > 0,
+                inserted > 0
+                    ? $"SQL INSERT LV.PRCTT0 réussi (NO_CNT={noCnt}, M_PAY={amount:0.00}, C_MD_PMT={cmdpmt}, BUCP={bucp}, D_REF_PRM={runDate:yyyy-MM-dd})."
+                    : "SQL LV.PRCTT0 : aucune ligne insérée (déjà présente ou aucune ligne modèle trouvée).");
+        }
+
+        /// <summary>
+        /// Lit l'état des mouvements de fonds dans [LV000FD0_x].[LV].[FMVDT0]
+        /// (État 2 après LVDQFG03, État 4 après LVDQFG01).
+        /// </summary>
+        public async Task<(IReadOnlyList<string> Funds, string Summary, bool HasState4, bool HasState2)>
+            GetFundMovementsSummaryAsync(string start, CancellationToken token)
+        {
+            const string sql = @"
+SELECT TOP (20) *
+FROM [LV].[FMVDT0] WITH (NOLOCK)
+WHERE C_STE = @Company
+  AND NO_CNT = @CoInterne;";
+
+            try
+            {
+                decimal noCnt = decimal.Parse(start, CultureInfo.InvariantCulture);
+                DataTable table = await _sql.QueryAsync(
+                        Branch23Database.LisaFundMovement,
+                        sql,
+                        new Dictionary<string, object>
+                        {
+                            ["@Company"] = Settings.Branch23Activation.Ste,
+                            ["@CoInterne"] = noCnt
+                        },
+                        token)
+                    .ConfigureAwait(false);
+
+                if (table.Rows.Count == 0)
+                {
+                    return (Array.Empty<string>(), "Aucun mouvement dans LV000FD0.LV.FMVDT0", false, false);
+                }
+
+                var funds = new List<string>();
+                var states = new List<string>();
+                bool hasState4 = false;
+                bool hasState2 = false;
+
+                foreach (DataRow row in table.Rows)
+                {
+                    string fund = Str(row, "C_FONDS");
+                    if (!string.IsNullOrWhiteSpace(fund))
+                    {
+                        funds.Add(fund.ToUpperInvariant());
+                    }
+
+                    string state = FirstNonEmpty(
+                        Str(row, "C_ETAT_MVT_FONDS"),
+                        Str(row, "C_ETAT_MVT"),
+                        Str(row, "ETAT_MVT"));
+                    string mvtNo = FirstNonEmpty(
+                        Str(row, "NO_ORD_MVT_FONDS"),
+                        Str(row, "NO_ORD_MVT"),
+                        Str(row, "NO_MVT"));
+                    string mvtType = FirstNonEmpty(
+                        Str(row, "TY_MVT_FONDS"),
+                        Str(row, "C_TY_MVT"),
+                        Str(row, "TY_MVT"));
+
+                    if (state == "4") hasState4 = true;
+                    if (state == "2") hasState2 = true;
+
+                    states.Add($"Mvt={DisplayOrDash(mvtNo)}(Ty={DisplayOrDash(mvtType)},Fonds={DisplayOrDash(fund)},État={DisplayOrDash(state)})");
+                }
+
+                var distinctFunds = funds.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(f => f).ToList();
+                string summary = string.Join(" | ", states.Distinct().Take(6));
+                return (distinctFunds, summary, hasState4, hasState2);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return (Array.Empty<string>(), $"LV000FD0.LV.FMVDT0 non lisible: {ex.Message}", false, false);
+            }
+        }
+
+        private static string FirstNonEmpty(params string[] values) =>
+            values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
+
+        private static string DisplayOrDash(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+
         // ------------------------------------------------------ helpers
 
         private static string Str(DataRow row, string column) =>
@@ -553,5 +1132,26 @@ WHERE NO_CNT = @CoInterneLisa;";
             row.Table.Columns.Contains(column) && row[column] != DBNull.Value
                 ? Convert.ToDateTime(row[column], CultureInfo.InvariantCulture)
                 : null;
+
+        private static int Int(DataRow row, string column) =>
+            row.Table.Columns.Contains(column) && row[column] != DBNull.Value &&
+            int.TryParse(
+                Convert.ToString(row[column], CultureInfo.InvariantCulture),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out int value)
+                    ? value
+                    : 0;
+
+        private static string NormalizeIdentifier(string? value)
+        {
+            string normalized = (value ?? string.Empty).Trim();
+            return string.Equals(normalized, "N/A", StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : normalized;
+        }
+
+        private static string NormalizeContract(string? value) =>
+            new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
     }
 }

@@ -39,6 +39,40 @@ namespace AutoActivator.Services
                 new ConcurrentDictionary<string, string>(
                     StringComparer.OrdinalIgnoreCase);
 
+        private static readonly ConcurrentDictionary<string, string>
+            JobSubmissionMessages =
+                new ConcurrentDictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+
+        private static readonly ConcurrentDictionary<string, string>
+            JobServerMetadataCache =
+                new ConcurrentDictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+
+        public static string GetSubmissionMessage(string? jobNum)
+        {
+            string normalized = NormalizeJobNumber(jobNum ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(normalized) &&
+                JobSubmissionMessages.TryGetValue(normalized, out string? msg))
+            {
+                return msg;
+            }
+
+            return string.Empty;
+        }
+
+        public static string GetServerJobMetadata(string? jobNum)
+        {
+            string normalized = NormalizeJobNumber(jobNum ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(normalized) &&
+                JobServerMetadataCache.TryGetValue(normalized, out string? meta))
+            {
+                return meta;
+            }
+
+            return string.Empty;
+        }
+
         private static readonly HttpClient HttpClient;
 
         private static readonly Regex JobNumRegex =
@@ -538,6 +572,17 @@ namespace AutoActivator.Services
                     !string.IsNullOrWhiteSpace(jobNumber))
                 {
                     SubmittedJobNodes[jobNumber] = _nodeUrl;
+                    string flattenedMsg = string.Join(
+                        " | ",
+                        messages
+                            .ToString()
+                            .Replace("\r", string.Empty)
+                            .Split('\n')
+                            .Select(l => l.Trim())
+                            .Where(l => !string.IsNullOrWhiteSpace(l)));
+                    JobSubmissionMessages[jobNumber] =
+                        $"Server={ActiveServer} | Region={ActiveRegion} | Msg={flattenedMsg}";
+
                     Debug.WriteLine(
                         "[JES SUBMIT RESOLVED] " +
                         $"RequestedJob={requestedJobName} | " +
@@ -616,6 +661,7 @@ namespace AutoActivator.Services
                 }
 
                 JObject document = JObject.Parse(body);
+                CacheJobViewMetadata(normalizedJobNumber, document);
                 string returnedJobNumber =
                     GetValueCaseInsensitive(document, "JobID")
                     ?? GetValueCaseInsensitive(document, "JobId")
@@ -722,6 +768,82 @@ namespace AutoActivator.Services
                 : (value.Length == 0 ? "Unknown" : value);
         }
 
+        private static void CacheJobViewMetadata(
+            string normalizedJobNumber,
+            JObject document)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedJobNumber) || document == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var parts = new List<string>();
+                foreach (JProperty prop in document.Properties())
+                {
+                    if (prop.Value == null ||
+                        prop.Name.Equals("JobDDs", StringComparison.OrdinalIgnoreCase) ||
+                        prop.Value.Type == JTokenType.Array ||
+                        prop.Value.Type == JTokenType.Object)
+                    {
+                        continue;
+                    }
+
+                    string val = prop.Value?.ToString()?.Trim() ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        parts.Add($"{prop.Name}={val}");
+                    }
+                }
+
+                JToken? ddToken = document.Properties()
+                    .FirstOrDefault(p => p.Name.Equals("JobDDs", StringComparison.OrdinalIgnoreCase))
+                    ?.Value;
+                if (ddToken != null && ddToken.Any())
+                {
+                    var dds = new List<string>();
+                    foreach (JToken dd in ddToken)
+                    {
+                        string ddName = GetTokenValueCaseInsensitive(dd, "DDName") ?? string.Empty;
+                        string stepName = GetTokenValueCaseInsensitive(dd, "StepName")
+                                          ?? GetTokenValueCaseInsensitive(dd, "DDStep")
+                                          ?? string.Empty;
+                        string recCount = GetTokenValueCaseInsensitive(dd, "DDRecords")
+                                          ?? GetTokenValueCaseInsensitive(dd, "Records")
+                                          ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(ddName))
+                        {
+                            string desc = ddName;
+                            if (!string.IsNullOrWhiteSpace(stepName))
+                            {
+                                desc += $"({stepName})";
+                            }
+                            if (!string.IsNullOrWhiteSpace(recCount))
+                            {
+                                desc += $":{recCount}rec";
+                            }
+                            dds.Add(desc);
+                        }
+                    }
+
+                    if (dds.Count > 0)
+                    {
+                        parts.Add($"SpoolDDs=[{string.Join(", ", dds)}]");
+                    }
+                }
+
+                if (parts.Count > 0)
+                {
+                    JobServerMetadataCache[normalizedJobNumber] = string.Join(" | ", parts);
+                }
+            }
+            catch
+            {
+                // Ignore metadata formatting errors
+            }
+        }
+
         /// <summary>
         /// Retrieves diagnostic spool information for a job.
         /// </summary>
@@ -788,6 +910,7 @@ namespace AutoActivator.Services
 
                     document =
                         JObject.Parse(responseBody);
+                    CacheJobViewMetadata(normalizedJobNumber, document);
                 }
 
                 JToken? ddToken =

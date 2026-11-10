@@ -259,6 +259,53 @@ namespace AutoActivator.Utils
         }
 
         /// <summary>
+        /// Détermine automatiquement si un identifiant saisi (ou lu depuis un fichier Excel/CSV)
+        /// correspond à un Demand ID ELIA ou à un Numéro de Contrat (3-7-2 / 12 chiffres).
+        /// - Un numéro de contrat contient un tiret ('-') ou comporte 11 à 12 chiffres -> isDemandId = false.
+        /// - Un identifiant plus court sans tiret (ex: 6 à 10 chiffres) -> isDemandId = true.
+        /// Note : les services SQL d'activation et d'extraction disposent en plus d'un fallback bidirectionnel automatique.
+        /// </summary>
+        public static bool IsDemandIdInput(string? rawInput)
+        {
+            string cleaned = CleanIdentifier(rawInput ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(cleaned))
+            {
+                return false;
+            }
+
+            if (cleaned.Contains('-'))
+            {
+                return false;
+            }
+
+            string digitsOnly = new string(cleaned.Where(char.IsDigit).ToArray());
+            if (digitsOnly.Length >= 11)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Retourne un libellé clair indiquant le type d'identifiant détecté automatiquement.
+        /// </summary>
+        public static string DescribeIdentifierType(string? rawInput)
+        {
+            string cleaned = CleanIdentifier(rawInput ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(cleaned))
+            {
+                return "Auto-détection : Contrat (12 chiffres / 3-7-2) ou Demand ID";
+            }
+
+            string digitsOnly = new string(cleaned.Where(char.IsDigit).ToArray());
+            bool isDemand = IsDemandIdInput(cleaned);
+            return isDemand
+                ? $"Demand ID détecté ({digitsOnly.Length} chiffres)"
+                : $"Numéro de Contrat détecté ({digitsOnly.Length} chiffres)";
+        }
+
+        /// <summary>
         /// Reads the first column of the first worksheet in an Excel file (.xlsx, .xls, or .csv)
         /// using forward-only row streaming to minimize memory allocations.
         /// Automatically skips common header labels on the first row.
