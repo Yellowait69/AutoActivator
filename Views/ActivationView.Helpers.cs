@@ -644,7 +644,7 @@ namespace AutoActivator.Gui.Views
                 {
                     RawInput = rawInput,
                     IsDemandId = ExcelHelper.IsDemandIdInput(rawInput),
-                    ForceBranch23 = ChkActBranch23?.IsChecked == true,
+                    ForceBranch23 = false,
                     Branch23Funds = TxtActBranch23Funds?.Text ?? string.Empty,
                     Environment = GetSelectedEnvironment(),
                     Cus = TxtActCus.Text.Trim(),
@@ -678,7 +678,7 @@ namespace AutoActivator.Gui.Views
             {
                 FilePath = TxtBatchActCsv.Text.Trim(),
                 IsDemandId = true,
-                MarkAllAsBranch23 = ChkActBranch23?.IsChecked == true,
+                MarkAllAsBranch23 = false,
                 DefaultBranch23Funds =
                     TxtActBranch23Funds?.Text ?? string.Empty,
                 Environment = GetSelectedEnvironment(),

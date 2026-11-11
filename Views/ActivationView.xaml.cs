@@ -595,14 +595,6 @@ namespace AutoActivator.Gui.Views
         // CONTROLES D'ENTREE & PRESETS
         // =============================================================
 
-        private void TxtActContract_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (TxtActDetectedTypeBadge != null)
-            {
-                TxtActDetectedTypeBadge.Text = ExcelHelper.DescribeIdentifierType(TxtActContract?.Text);
-            }
-        }
-
         private void CmbActEnv_SelectionChanged(
             object sender,
             SelectionChangedEventArgs e)
@@ -1151,8 +1143,6 @@ namespace AutoActivator.Gui.Views
                             $"Activation failed: {trace.FailureReason}";
                         mainWindow.TxtStatus.Foreground = Brushes.DarkRed;
                     });
-
-                    throw;
                 }
                 finally
                 {
@@ -1358,8 +1348,6 @@ namespace AutoActivator.Gui.Views
                             $"Batch activation failed: {exception.Message}";
                         mainWindow.TxtStatus.Foreground = Brushes.DarkRed;
                     });
-
-                    throw;
                 }
                 finally
                 {

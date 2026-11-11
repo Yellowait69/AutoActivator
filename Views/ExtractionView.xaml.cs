@@ -142,16 +142,6 @@ namespace AutoActivator.Gui.Views
                 return false;
             }
 
-            if (CmbFilterExtBranch?.SelectedItem is ComboBoxItem branchItem)
-            {
-                string branchTag = branchItem.Tag?.ToString() ?? "ALL";
-                if (!string.Equals(branchTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.BranchDisplay, branchTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
             if (CmbFilterExtStatus?.SelectedItem is ComboBoxItem statusItem)
             {
                 string statusTag = statusItem.Tag?.ToString() ?? "ALL";
@@ -365,19 +355,17 @@ namespace AutoActivator.Gui.Views
                 // ROUGE : Contrat non actif dans LISA (ELIA ONLY) ou introuvable (KO)
                 BannerExtractionResult.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEE2E2"));
                 BannerExtractionResult.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FCA5A5"));
-                TxtBannerExtIcon.Text = "🔴";
-                TxtBannerExtTitle.Text = $"NON ACTIF LISA / ÉCHEC ({latestItem.Status}) — Contrat : {latestItem.ContractId} (Demand : {latestItem.Hdmd})";
-                TxtBannerExtTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
+                TxtBannerExtTitle.Text = $"🔴 NON ACTIF LISA / ÉCHEC ({latestItem.Status}) — Contrat : {latestItem.ContractId} (Demand : {latestItem.Hdmd})";
+                TxtBannerExtTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B91C1C"));
                 TxtBannerExtDetail.Text = latestItem.SummaryDisplay;
-                TxtBannerExtDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B91C1C"));
+                TxtBannerExtDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
             }
             else if (_koExtractionCount == 0)
             {
                 // VERT : Contrat actif dans LISA + ELIA (et aucun échec dans la session)
                 BannerExtractionResult.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DCFCE7"));
-                BannerExtractionResult.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#86EFAC"));
-                TxtBannerExtIcon.Text = "🟢";
-                TxtBannerExtTitle.Text = $"ACTIF LISA + ELIA — Contrat : {latestItem.ContractId} (LISA ID : {latestItem.InternalId})";
+                BannerExtractionResult.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4ADE80"));
+                TxtBannerExtTitle.Text = $"🟢 EXTRACTION RÉUSSIE — Contrat : {latestItem.ContractId} (LISA ID : {latestItem.InternalId})";
                 TxtBannerExtTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#15803D"));
                 TxtBannerExtDetail.Text = $"{latestItem.BranchDisplay} · {latestItem.ProductProcessDisplay} · {latestItem.ChannelPaymentDisplay} · {latestItem.SummaryDisplay}";
                 TxtBannerExtDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#166534"));
@@ -740,14 +728,6 @@ namespace AutoActivator.Gui.Views
         // =============================================================
         // FILE & BASELINE CONTROLS
         // =============================================================
-
-        private void TxtExtContract_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (TxtExtDetectedTypeBadge != null)
-            {
-                TxtExtDetectedTypeBadge.Text = ExcelHelper.DescribeIdentifierType(TxtExtContract?.Text);
-            }
-        }
 
         private void TxtExtContract_KeyDown(object sender, KeyEventArgs e)
         {
@@ -1169,7 +1149,6 @@ namespace AutoActivator.Gui.Views
                 {
                     UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, null, "FAILED");
                     UpdateMainWindowStatus(mainWindow, $"Batch Error: {ex.Message}", Brushes.Red);
-                    throw;
                 }
                 finally
                 {
