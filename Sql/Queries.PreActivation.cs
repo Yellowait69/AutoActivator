@@ -330,7 +330,14 @@ SELECT
 SELECT TOP (1)
     NO_CNT
 FROM [LV].[SCNTT0] WITH (NOLOCK)
-WHERE REPLACE(REPLACE(LTRIM(RTRIM(NO_CNT_EXTENDED)), '-', ''), ' ', '') =
+WHERE NO_CNT = CASE
+          WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 12
+              THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', ''), 2, 9))
+          WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 9
+              THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', ''))
+          ELSE NULL
+      END
+   OR REPLACE(REPLACE(LTRIM(RTRIM(NO_CNT_EXTENDED)), '-', ''), ' ', '') =
       REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
    OR (
           LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 9
@@ -371,6 +378,49 @@ WHERE h.IT5HDMDAIDN = @DemandId
 ORDER BY
     u.IT5UCONAIDN DESC;";
 
+            queries["GET_CONTRACT_BY_RELATED_DEMAND"] = $@"
+SELECT TOP (1)
+    u.IT5UCONAIDN AS EliaContractId,
+    NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') AS ContractNumber
+FROM {fj1}.[TB5HDMD] AS d1 WITH (NOLOCK)
+INNER JOIN {fj1}.[TB5HDMD] AS d2 WITH (NOLOCK)
+    ON (
+           (d1.IT5HDMDAIDNDMDREF IS NOT NULL AND d1.IT5HDMDAIDNDMDREF > 0 AND d2.IT5HDMDAIDN = d1.IT5HDMDAIDNDMDREF)
+        OR (d1.IT5HDMDAIDNDMDLIE IS NOT NULL AND d1.IT5HDMDAIDNDMDLIE > 0 AND d2.IT5HDMDAIDN = d1.IT5HDMDAIDNDMDLIE)
+        OR d2.IT5HDMDAIDNDMDREF = d1.IT5HDMDAIDN
+        OR d2.IT5HDMDAIDNDMDLIE = d1.IT5HDMDAIDN
+        OR (
+               NULLIF(LTRIM(RTRIM(CONVERT(varchar(50), d1.IT5HDMDNREFEXNDOS))), '') IS NOT NULL
+           AND NULLIF(LTRIM(RTRIM(CONVERT(varchar(50), d1.IT5HDMDNREFEXNDOS))), '0') IS NOT NULL
+           AND d2.IT5HDMDNREFEXNDOS = d1.IT5HDMDNREFEXNDOS
+           )
+       )
+INNER JOIN {fj1}.[TB5HELT] AS h WITH (NOLOCK)
+    ON h.IT5HDMDAIDN = d2.IT5HDMDAIDN
+INNER JOIN {fj1}.[TB5UCON] AS u WITH (NOLOCK)
+    ON u.IT5UCONAIDN = h.IT5UCONAIDN
+WHERE d1.IT5HDMDAIDN = @DemandId
+  AND NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') IS NOT NULL
+ORDER BY u.IT5UCONAIDN DESC;";
+
+            queries["GET_CONTRACT_BY_POLICYHOLDER_UCON"] = $@"
+SELECT TOP (1)
+    u2.IT5UCONAIDN AS EliaContractId,
+    NULLIF(LTRIM(RTRIM(u2.IT5UCONLREFEXN)), '') AS ContractNumber
+FROM {fj1}.[TB5UAVE] AS a1 WITH (NOLOCK)
+INNER JOIN {fj1}.[TB5UCON] AS u1 WITH (NOLOCK)
+    ON u1.IT5UCONAIDN = a1.IT5UCONAIDN
+INNER JOIN {fj1}.[TB5UAVE] AS a2 WITH (NOLOCK)
+    ON a2.IT5UPNRAIDN = a1.IT5UPNRAIDN
+INNER JOIN {fj1}.[TB5UCON] AS u2 WITH (NOLOCK)
+    ON u2.IT5UCONAIDN = a2.IT5UCONAIDN
+WHERE a1.IT5UCONAIDN = @EliaId
+  AND a1.IT5UPNRAIDN IS NOT NULL
+  AND a1.IT5UPNRAIDN > 0
+  AND NULLIF(LTRIM(RTRIM(u2.IT5UCONLREFEXN)), '') IS NOT NULL
+  AND (u1.IT5UCONDDEB IS NULL OR u2.IT5UCONDDEB = u1.IT5UCONDDEB)
+ORDER BY u2.IT5UCONAIDN DESC;";
+
             queries["GET_FULL_CONTEXT_BY_DEMAND"] = $@"
 ;WITH DemandData AS
 (
@@ -381,8 +431,6 @@ ORDER BY
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCCDI)), '') AS ChannelCode,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCAPL)), '') AS ApplicationChannelCode,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCSTA)), '') AS DemandStatus,
-        d.IT5HDMDAIDNDMDREF AS ReferenceDemandId,
-        d.IT5HDMDAIDNDMDLIE AS LinkedDemandId,
         d.IT5HDMDDTISMAJDB2 AS LastEliaUpdate
     FROM {fj1}.[TB5HDMD] AS d WITH (NOLOCK)
     WHERE d.IT5HDMDAIDN = @DemandId
@@ -405,17 +453,12 @@ ContractData AS
         demand.LastEliaUpdate
     FROM DemandData AS demand
     LEFT JOIN {fj1}.[TB5HELT] AS h WITH (NOLOCK)
-        ON (
-               h.IT5HDMDAIDN = demand.DemandId
-            OR (demand.ReferenceDemandId IS NOT NULL AND h.IT5HDMDAIDN = demand.ReferenceDemandId)
-            OR (demand.LinkedDemandId IS NOT NULL AND h.IT5HDMDAIDN = demand.LinkedDemandId)
-           )
+        ON h.IT5HDMDAIDN = demand.DemandId
     LEFT JOIN {fj1}.[TB5UCON] AS u WITH (NOLOCK)
         ON u.IT5UCONAIDN = h.IT5UCONAIDN
     ORDER BY
         CASE WHEN h.IT5UCONAIDN IS NULL THEN 1 ELSE 0 END,
         CASE WHEN NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') IS NULL THEN 1 ELSE 0 END,
-        CASE WHEN h.IT5HDMDAIDN = demand.DemandId THEN 0 ELSE 1 END,
         h.IT5UCONAIDN DESC
 )
 SELECT TOP (1)
@@ -451,7 +494,14 @@ OUTER APPLY
         s.NO_CNT AS InternalId,
         LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
     FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
-    WHERE REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
+    WHERE s.NO_CNT = CASE
+              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 12
+                  THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''), 2, 9))
+              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 9
+                  THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''))
+              ELSE NULL
+          END
+       OR REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
           REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', '')
     ORDER BY s.NO_CNT
 ) AS lisa
@@ -562,7 +612,14 @@ OUTER APPLY
         s.NO_CNT AS InternalId,
         LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
     FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
-    WHERE REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
+    WHERE s.NO_CNT = CASE
+              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 12
+                  THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''), 2, 9))
+              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 9
+                  THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''))
+              ELSE NULL
+          END
+       OR REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
           REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', '')
     ORDER BY s.NO_CNT
 ) AS lisa

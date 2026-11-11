@@ -271,6 +271,55 @@ namespace AutoActivator.Services
             string environment,
             CancellationToken token)
         {
+            var database = new DatabaseManager(environment);
+
+            if (IsMissingValue(result.ContractNumber) &&
+                !IsMissingValue(result.DemandId) &&
+                decimal.TryParse(
+                    result.DemandId,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out decimal numericDemandForFallback) &&
+                SqlQueries.ContainsQuery("GET_CONTRACT_BY_RELATED_DEMAND", environment))
+            {
+                try
+                {
+                    using DataTable relTable = await database
+                        .GetDataAsync(
+                            SqlQueries.GetQuery("GET_CONTRACT_BY_RELATED_DEMAND", environment),
+                            new Dictionary<string, object> { ["@DemandId"] = numericDemandForFallback },
+                            token)
+                        .ConfigureAwait(false);
+                    if (relTable.Rows.Count > 0)
+                    {
+                        DataRow relRow = relTable.Rows[0];
+                        string? relContract = GetString(relRow, "ContractNumber");
+                        if (!string.IsNullOrWhiteSpace(relContract))
+                        {
+                            result.ContractNumber = relContract.Trim();
+                            result.JclContract = FormatContractStatic(result.ContractNumber);
+                            result.FoundInElia = true;
+                        }
+                        if (IsMissingValue(result.EliaUconId))
+                        {
+                            string? relUcon = GetString(relRow, "EliaContractId");
+                            if (!string.IsNullOrWhiteSpace(relUcon))
+                            {
+                                result.EliaUconId = relUcon.Trim();
+                            }
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ActivationLookup] Related demand fallback note: {ex.Message}");
+                }
+            }
+
             if (IsMissingValue(result.EliaUconId) ||
                 !decimal.TryParse(
                     result.EliaUconId,
@@ -283,7 +332,6 @@ namespace AutoActivator.Services
 
             try
             {
-                var database = new DatabaseManager(environment);
                 var eliaParams = new Dictionary<string, object>
                 {
                     ["@EliaId"] = numericUconId
@@ -306,6 +354,86 @@ namespace AutoActivator.Services
                             result.JclContract = FormatContractStatic(result.ContractNumber);
                             break;
                         }
+
+                        foreach (DataColumn col in uconTable.Columns)
+                        {
+                            if (row[col] == DBNull.Value)
+                                continue;
+                            string? cellVal = row[col]?.ToString()?.Trim();
+                            if (!string.IsNullOrWhiteSpace(cellVal) &&
+                                cellVal.Length == 14 &&
+                                cellVal[3] == '-' &&
+                                cellVal[11] == '-' &&
+                                cellVal.Where(c => c != '-').All(char.IsAsciiDigit))
+                            {
+                                result.ContractNumber = cellVal;
+                                result.JclContract = FormatContractStatic(result.ContractNumber);
+                                break;
+                            }
+                        }
+
+                        if (!IsMissingValue(result.ContractNumber))
+                            break;
+                    }
+                }
+
+                if (IsMissingValue(result.ContractNumber) &&
+                    SqlQueries.ContainsQuery("GET_CONTRACT_BY_POLICYHOLDER_UCON", environment))
+                {
+                    try
+                    {
+                        using DataTable phTable = await database
+                            .GetDataAsync(
+                                SqlQueries.GetQuery("GET_CONTRACT_BY_POLICYHOLDER_UCON", environment),
+                                eliaParams,
+                                token)
+                            .ConfigureAwait(false);
+                        if (phTable.Rows.Count > 0)
+                        {
+                            string? phContract = GetString(phTable.Rows[0], "ContractNumber");
+                            if (!string.IsNullOrWhiteSpace(phContract))
+                            {
+                                result.ContractNumber = phContract.Trim();
+                                result.JclContract = FormatContractStatic(result.ContractNumber);
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[ActivationLookup] Policyholder UCON fallback note: {ex.Message}");
+                    }
+                }
+
+                if (IsMissingValue(result.ContractNumber) &&
+                    !IsMissingValue(result.DemandId) &&
+                    SqlQueries.ContainsQuery("FJ1.TB5HDMD", environment))
+                {
+                    try
+                    {
+                        using DataTable hdmdTable = await database
+                            .GetDataAsync(
+                                SqlQueries.GetQuery("FJ1.TB5HDMD", environment),
+                                new Dictionary<string, object> { ["@DemandIds"] = result.DemandId.Trim() },
+                                token)
+                            .ConfigureAwait(false);
+                        foreach (DataRow hRow in hdmdTable.Rows)
+                        {
+                            string? refExnDos = GetString(hRow, "IT5HDMDNREFEXNDOS");
+                            if (!string.IsNullOrWhiteSpace(refExnDos))
+                            {
+                                string digits = new string(refExnDos.Where(char.IsAsciiDigit).ToArray());
+                                if (digits.Length == 12)
+                                {
+                                    result.ContractNumber = refExnDos.Trim();
+                                    result.JclContract = FormatContractStatic(result.ContractNumber);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[ActivationLookup] TB5HDMD external ref fallback note: {ex.Message}");
                     }
                 }
 
@@ -1052,6 +1180,32 @@ namespace AutoActivator.Services
                         new Dictionary<string, object> { ["@DemandId"] = numericDemandId },
                         token)
                     .ConfigureAwait(false);
+
+                if (table.Rows.Count == 0 &&
+                    SqlQueries.ContainsQuery("GET_CONTRACT_BY_RELATED_DEMAND", normalizedEnvironment))
+                {
+                    try
+                    {
+                        using DataTable relTable = await database.GetDataAsync(
+                                SqlQueries.GetQuery("GET_CONTRACT_BY_RELATED_DEMAND", normalizedEnvironment),
+                                new Dictionary<string, object> { ["@DemandId"] = numericDemandId },
+                                token)
+                            .ConfigureAwait(false);
+                        if (relTable.Rows.Count > 0)
+                        {
+                            string? relContract = GetString(relTable.Rows[0], "ContractNumber")
+                                ?? GetString(relTable.Rows[0], "IT5UCONLREFEXN");
+                            if (!string.IsNullOrWhiteSpace(relContract))
+                            {
+                                return relContract.Trim();
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[GetContractFromDemand] Related demand fallback note: {ex.Message}");
+                    }
+                }
 
                 if (table.Rows.Count == 0)
                 {

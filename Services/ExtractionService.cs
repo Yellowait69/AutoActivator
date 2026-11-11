@@ -190,6 +190,64 @@ namespace AutoActivator.Services
 
             token.ThrowIfCancellationRequested();
 
+            // 1c. If searched by Demand ID and IT5UCONLREFEXN was empty on the primary TB5UCON row,
+            // try related demands (IT5HDMDAIDNDMDREF / IT5HDMDAIDNDMDLIE / IT5HDMDNREFEXNDOS) and policyholder UCON fallback
+            if (string.Equals(cleanedContract, cleanedInput, StringComparison.OrdinalIgnoreCase) &&
+                effectiveFirstIsDemand)
+            {
+                if (envQueries.TryGetValue("GET_CONTRACT_BY_RELATED_DEMAND", out string? relQuery) &&
+                    decimal.TryParse(cleanedInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out decimal numDemand))
+                {
+                    try
+                    {
+                        using var dtRel = await db.GetDataAsync(
+                            relQuery,
+                            new Dictionary<string, object> { { "@DemandId", numDemand } },
+                            token).ConfigureAwait(false);
+                        if (dtRel.Rows.Count > 0)
+                        {
+                            string? relContract = dtRel.Rows[0]["ContractNumber"]?.ToString()?.Trim();
+                            if (!string.IsNullOrWhiteSpace(relContract))
+                                cleanedContract = relContract;
+                            if (eliaUconId == "Not found" && dtRel.Columns.Contains("EliaContractId") && dtRel.Rows[0]["EliaContractId"] != DBNull.Value)
+                            {
+                                string? relUcon = dtRel.Rows[0]["EliaContractId"]?.ToString()?.Trim();
+                                if (!string.IsNullOrWhiteSpace(relUcon))
+                                    eliaUconId = relUcon;
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ExtractionService] Related demand contract fallback note: {ex.Message}");
+                    }
+                }
+
+                if (string.Equals(cleanedContract, cleanedInput, StringComparison.OrdinalIgnoreCase) &&
+                    eliaUconId != "Not found" &&
+                    envQueries.TryGetValue("GET_CONTRACT_BY_POLICYHOLDER_UCON", out string? phQuery) &&
+                    decimal.TryParse(eliaUconId, NumberStyles.Integer, CultureInfo.InvariantCulture, out decimal numUcon))
+                {
+                    try
+                    {
+                        using var dtPh = await db.GetDataAsync(
+                            phQuery,
+                            new Dictionary<string, object> { { "@EliaId", numUcon } },
+                            token).ConfigureAwait(false);
+                        if (dtPh.Rows.Count > 0)
+                        {
+                            string? phContract = dtPh.Rows[0]["ContractNumber"]?.ToString()?.Trim();
+                            if (!string.IsNullOrWhiteSpace(phContract))
+                                cleanedContract = phContract;
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ExtractionService] Policyholder contract fallback note: {ex.Message}");
+                    }
+                }
+            }
+
             // 2. Fallback lookup if contract was searched by ContractNumber and exists only in LISA (not in ELIA)
             if (!internalIdValue.HasValue && eliaUconId == "Not found")
             {
@@ -474,6 +532,24 @@ namespace AutoActivator.Services
                                     demandStatus = lastDemandRow["IT5HDMDCSTA"]?.ToString()?.Trim()?.ToUpperInvariant() ?? string.Empty;
                                 if (!demandCreationDate.HasValue && dt.Columns.Contains("IT5HDMDDCRE"))
                                     demandCreationDate = TryParseSqlDate(lastDemandRow["IT5HDMDDCRE"]);
+
+                                if (string.Equals(cleanedContract, cleanedInput, StringComparison.OrdinalIgnoreCase) &&
+                                    dt.Columns.Contains("IT5HDMDNREFEXNDOS"))
+                                {
+                                    foreach (DataRow dRow in dt.Rows)
+                                    {
+                                        string? refDos = dRow["IT5HDMDNREFEXNDOS"]?.ToString()?.Trim();
+                                        if (!string.IsNullOrWhiteSpace(refDos))
+                                        {
+                                            string digits = new string(refDos.Where(char.IsDigit).ToArray());
+                                            if (digits.Length == 12)
+                                            {
+                                                cleanedContract = refDos;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         },
                         token).ConfigureAwait(false);
@@ -486,6 +562,15 @@ namespace AutoActivator.Services
             #endregion
 
             token.ThrowIfCancellationRequested();
+
+            if (!string.Equals(cleanedContract, cleanedInput, StringComparison.OrdinalIgnoreCase))
+            {
+                jclContract = ResolveJclContract(cleanedContract, internalIdString);
+            }
+            else if (effectiveFirstIsDemand && internalIdString == "Not found")
+            {
+                jclContract = "-";
+            }
 
             List<string> uniqueFunds = discoveredFunds
                 .Where(f => !string.IsNullOrWhiteSpace(f))

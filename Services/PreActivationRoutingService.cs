@@ -371,9 +371,20 @@ namespace AutoActivator.Services
                     .ConfigureAwait(false);
                 if (ctxTable.Rows.Count > 0)
                 {
-                    DataRow cRow = ctxTable.Rows[ctxTable.Rows.Count - 1];
-                    eliaContractId = GetDecimal(cRow, "EliaContractId");
-                    contractNumber = GetString(cRow, "ContractNumber");
+                    for (int i = ctxTable.Rows.Count - 1; i >= 0; i--)
+                    {
+                        DataRow cRow = ctxTable.Rows[i];
+                        eliaContractId ??= GetDecimal(cRow, "EliaContractId");
+                        if (string.IsNullOrWhiteSpace(contractNumber))
+                        {
+                            string candidateContract = GetString(cRow, "ContractNumber");
+                            if (!string.IsNullOrWhiteSpace(candidateContract))
+                            {
+                                contractNumber = candidateContract;
+                                eliaContractId = GetDecimal(cRow, "EliaContractId") ?? eliaContractId;
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -572,6 +583,90 @@ namespace AutoActivator.Services
                         Debug.WriteLine($"[PreActivationRouting] Related demand contract lookup note: {ex.Message}");
                     }
                 }
+
+                if (string.IsNullOrWhiteSpace(candidate.ContractNumber) &&
+                    candidate.DemandId > 0 &&
+                    SqlQueries.ContainsQuery("GET_CONTRACT_BY_RELATED_DEMAND", normalizedEnvironment))
+                {
+                    try
+                    {
+                        using DataTable relTable = await database
+                            .GetDataAsync(
+                                SqlQueries.GetQuery("GET_CONTRACT_BY_RELATED_DEMAND", normalizedEnvironment),
+                                new Dictionary<string, object> { ["@DemandId"] = candidate.DemandId },
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        if (relTable.Rows.Count > 0)
+                        {
+                            DataRow relRow = relTable.Rows[0];
+                            string relContract = GetString(relRow, "ContractNumber");
+                            if (!string.IsNullOrWhiteSpace(relContract))
+                            {
+                                candidate.ContractNumber = relContract;
+                                candidate.EliaContractId ??= GetDecimal(relRow, "EliaContractId");
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[PreActivationRouting] Related demand SQL lookup note: {ex.Message}");
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(candidate.ContractNumber) &&
+                candidate.EliaContractId.HasValue &&
+                SqlQueries.ContainsQuery("GET_CONTRACT_BY_POLICYHOLDER_UCON", normalizedEnvironment))
+            {
+                try
+                {
+                    using DataTable phTable = await database
+                        .GetDataAsync(
+                            SqlQueries.GetQuery("GET_CONTRACT_BY_POLICYHOLDER_UCON", normalizedEnvironment),
+                            new Dictionary<string, object> { ["@EliaId"] = candidate.EliaContractId.Value },
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (phTable.Rows.Count > 0)
+                    {
+                        string phContract = GetString(phTable.Rows[0], "ContractNumber");
+                        if (!string.IsNullOrWhiteSpace(phContract))
+                        {
+                            candidate.ContractNumber = phContract;
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Debug.WriteLine($"[PreActivationRouting] Policyholder UCON contract lookup note: {ex.Message}");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(candidate.ContractNumber) &&
+                candidate.DemandId > 0 &&
+                SqlQueries.ContainsQuery("FJ1.TB5HDMD", normalizedEnvironment))
+            {
+                try
+                {
+                    using DataTable hdmdTable = await database
+                        .GetDataAsync(
+                            SqlQueries.GetQuery("FJ1.TB5HDMD", normalizedEnvironment),
+                            new Dictionary<string, object> { ["@DemandIds"] = candidate.DemandId.ToString(CultureInfo.InvariantCulture) },
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    foreach (DataRow hRow in hdmdTable.Rows)
+                    {
+                        string refExnDos = GetString(hRow, "IT5HDMDNREFEXNDOS");
+                        if (IsValidExternalOrJclContractCandidate(refExnDos))
+                        {
+                            candidate.ContractNumber = refExnDos.Trim();
+                            break;
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Debug.WriteLine($"[PreActivationRouting] TB5HDMD external ref lookup note: {ex.Message}");
+                }
             }
 
             if (!candidate.EliaContractId.HasValue)
@@ -621,6 +716,21 @@ namespace AutoActivator.Services
                                     candidate.ContractNumber = refExn;
                                     break;
                                 }
+
+                                foreach (DataColumn col in uconTable.Columns)
+                                {
+                                    if (row[col] == DBNull.Value)
+                                        continue;
+                                    string? cellVal = row[col]?.ToString()?.Trim();
+                                    if (IsFormatted372ContractCandidate(cellVal))
+                                    {
+                                        candidate.ContractNumber = cellVal!;
+                                        break;
+                                    }
+                                }
+
+                                if (!string.IsNullOrWhiteSpace(candidate.ContractNumber))
+                                    break;
                             }
                         }
                     }
@@ -630,6 +740,31 @@ namespace AutoActivator.Services
             {
                 Debug.WriteLine($"[PreActivationRouting] Optional date enrichment note: {ex.Message}");
             }
+        }
+
+        private static bool IsFormatted372ContractCandidate(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            string trimmed = value.Trim();
+            return trimmed.Length == 14 &&
+                   trimmed[3] == '-' &&
+                   trimmed[11] == '-' &&
+                   trimmed.Where(c => c != '-').All(char.IsAsciiDigit);
+        }
+
+        private static bool IsValidExternalOrJclContractCandidate(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            string trimmed = value.Trim();
+            if (IsFormatted372ContractCandidate(trimmed))
+                return true;
+
+            string digits = new string(trimmed.Where(char.IsAsciiDigit).ToArray());
+            return digits.Length == 12 && trimmed.All(c => char.IsAsciiDigit(c) || c == '-' || c == ' ');
         }
 
         private static DataRow SelectBestRoutingRow(DataTable table)

@@ -337,7 +337,7 @@ WHERE NO_CNT = @CoInterneLisa;";
                     .ConfigureAwait(false);
 
             List<Branch23EliaContractCandidate> candidates =
-                ReadDistinctEliaCandidates(table);
+                ReadDistinctEliaCandidates(table, normalizedContract);
 
             if (candidates.Count == 0 && resolvedByDemand && normalizedContract.Length > 0)
             {
@@ -351,7 +351,7 @@ WHERE NO_CNT = @CoInterneLisa;";
                         },
                         token)
                     .ConfigureAwait(false);
-                candidates = ReadDistinctEliaCandidates(table);
+                candidates = ReadDistinctEliaCandidates(table, normalizedContract);
             }
 
             if (candidates.Count == 0)
@@ -372,19 +372,25 @@ WHERE NO_CNT = @CoInterneLisa;";
         }
 
         private static List<Branch23EliaContractCandidate> ReadDistinctEliaCandidates(
-            DataTable table)
+            DataTable table,
+            string? fallbackContractNumber = null)
         {
+            string normalizedFallback = (fallbackContractNumber ?? string.Empty).Trim();
             return table.Rows.Cast<DataRow>()
-                .Select(row => new Branch23EliaContractCandidate(
-                    NormalizeIdentifier(Str(row, "DemandId")),
-                    NormalizeIdentifier(Str(row, "EliaId")),
-                    Str(row, "NumeroContrat"),
-                    Str(row, "DemandStatus"),
-                    Date(row, "DemandCreationDate"),
-                    Date(row, "LinkUpdateDate"),
-                    Int(row, "ProcessSequence"),
-                    Int(row, "ContractSequence"),
-                    Int(row, "AmendmentSequence")))
+                .Select(row =>
+                {
+                    string rowContract = Str(row, "NumeroContrat");
+                    return new Branch23EliaContractCandidate(
+                        NormalizeIdentifier(Str(row, "DemandId")),
+                        NormalizeIdentifier(Str(row, "EliaId")),
+                        rowContract.Length > 0 ? rowContract : normalizedFallback,
+                        Str(row, "DemandStatus"),
+                        Date(row, "DemandCreationDate"),
+                        Date(row, "LinkUpdateDate"),
+                        Int(row, "ProcessSequence"),
+                        Int(row, "ContractSequence"),
+                        Int(row, "AmendmentSequence"));
+                })
                 .Where(candidate =>
                     candidate.EliaId.Length > 0 &&
                     candidate.ContractNumber.Length > 0)

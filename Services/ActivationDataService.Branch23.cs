@@ -327,8 +327,8 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
             string? linkedContract = GetString(row, "ContractNumber");
             string target = FormatContractStatic(targetContract);
             if (target.Length != 9 || target.Any(c => c < '0' || c > '9') ||
-                IsMissingValue(linkedContract) ||
-                !string.Equals(FormatContractStatic(linkedContract), target, StringComparison.Ordinal))
+                (!IsMissingValue(linkedContract) &&
+                 !string.Equals(FormatContractStatic(linkedContract), target, StringComparison.Ordinal)))
                 throw new InvalidOperationException(
                     "BR23_ATTACHMENT_CONTRACT_MISMATCH: the demand attachment does not confirm the activation target.");
 
