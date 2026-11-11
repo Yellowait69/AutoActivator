@@ -65,17 +65,6 @@
                            VerticalAlignment="Center" />
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button x:Name="BtnCompareLatestExt"
-                            Content="📊 Comparer"
-                            Click="BtnCompareLatestExt_Click"
-                            Background="#F5F3FF"
-                            Foreground="#6D28D9"
-                            BorderBrush="#DDD6FE"
-                            BorderThickness="1"
-                            Padding="12,5"
-                            Margin="0,0,6,0"
-                            Cursor="Hand"
-                            FontWeight="Bold" />
                     <Button x:Name="BtnAddBaselineExt"
                             Content="➕ Baseline"
                             Click="BtnAddBaseline_Click"
@@ -109,51 +98,6 @@
                             Click="BtnHelp_Click" />
                 </StackPanel>
             </Grid>
-
-            <!-- BANNIÈRE D'ÉTAT HAUTE VISIBILITÉ (VERT = ACTIF, ROUGE = ÉCHEC / NON ACTIF) -->
-            <Border x:Name="BannerExtractionResult"
-                    Grid.Row="1"
-                    CornerRadius="8"
-                    Padding="14,10"
-                    Margin="0,0,0,12"
-                    BorderThickness="1.5"
-                    Background="#DCFCE7"
-                    BorderBrush="#4ADE80"
-                    Visibility="Collapsed">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtBannerExtTitle"
-                                   Text="🟢 EXTRACTION RÉUSSIE"
-                                   FontWeight="Bold"
-                                   FontSize="13.5"
-                                   Foreground="#15803D" />
-                        <TextBlock x:Name="TxtBannerExtDetail"
-                                   Text=""
-                                   FontSize="12.5"
-                                   FontWeight="SemiBold"
-                                   Foreground="#166534"
-                                   Margin="0,2,0,0"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                    <Button x:Name="BtnInspectBannerExt"
-                            Grid.Column="1"
-                            Content="🔍 Voir le rapport"
-                            Click="BtnInspectSelectedExt_Click"
-                            Padding="10,5"
-                            Margin="12,0,0,0"
-                            FontWeight="Bold"
-                            Background="White"
-                            Foreground="#0F172A"
-                            BorderBrush="#CBD5E1"
-                            BorderThickness="1"
-                            Cursor="Hand"
-                            VerticalAlignment="Center" />
-                </Grid>
-            </Border>
 
             <!-- CARTE UNIQUE : CONFIGURATION + EXÉCUTION UNITAIRE & BATCH (IDENTIQUE À ACTIVATION) -->
             <Border Grid.Row="2"
@@ -198,7 +142,6 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="155" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0"
                                    Text="⚡ Contrat / Demand ID :"
@@ -209,17 +152,11 @@
                         <TextBox x:Name="TxtExtContract"
                                  Grid.Column="1"
                                  Style="{StaticResource InputTextBoxStyle}"
-                                 Margin="0,0,8,0"
                                  FontSize="13.5"
                                  FontWeight="SemiBold"
+                                 TextChanged="TxtExtContract_TextChanged"
                                  KeyDown="TxtExtContract_KeyDown"
                                  ToolTip="Numéro de Contrat (582-...) ou Demand ID ELIA" />
-                        <Button x:Name="BtnRunSingle"
-                                Grid.Column="2"
-                                Content="🚀 Extraire"
-                                Click="BtnRunSingle_Click"
-                                Style="{DynamicResource ActionButtonStyle}"
-                                Width="135" />
                     </Grid>
 
                     <!-- LIGNE 3 : EXTRACTION BATCH (EXCEL / CSV) -->
@@ -227,8 +164,6 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="155" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0"
@@ -239,48 +174,37 @@
                                    VerticalAlignment="Center" />
                         <TextBox x:Name="TxtBatchExtCsv"
                                  Grid.Column="1"
-                                 IsReadOnly="True"
                                  Style="{StaticResource InputTextBoxStyle}"
                                  Background="#F8FAFC"
                                  Margin="0,0,8,0" />
                         <Button Grid.Column="2"
                                 Content="📂 Parcourir"
-                                Padding="10,6"
-                                Margin="0,0,6,0"
+                                Padding="12,6"
                                 Background="#334155"
                                 Foreground="White"
                                 FontWeight="Bold"
                                 BorderThickness="0"
                                 Cursor="Hand"
                                 Click="BtnBrowseExtCsv_Click" />
-                        <Button x:Name="BtnUseDefaultQcExtFile"
-                                Grid.Column="3"
-                                Content="📋 Default QC"
-                                Padding="10,6"
-                                Margin="0,0,6,0"
-                                Background="#0F766E"
-                                Foreground="White"
-                                FontWeight="Bold"
-                                BorderThickness="0"
-                                Cursor="Hand"
-                                Click="BtnUseDefaultQcExtFile_Click" />
-                        <Button x:Name="BtnRunBatch"
-                                Grid.Column="4"
-                                Content="🚀 Lancer Batch"
-                                Click="BtnRunBatch_Click"
-                                Style="{DynamicResource ActionButtonStyle}"
-                                Width="135" />
                     </Grid>
 
-                    <!-- BOUTON STOP EN DESSOUS DES DEUX LIGNES -->
-                    <Button x:Name="BtnCancelSingleExt"
-                            Content="🛑 Stop"
-                            Click="BtnCancelExtraction_Click"
-                            Style="{DynamicResource CancelButtonStyle}"
-                            HorizontalAlignment="Right"
-                            Width="135"
-                            Margin="0,0,0,8"
-                            IsEnabled="False" />
+                    <!-- BOUTONS D'ACTION EN DESSOUS DES DEUX LIGNES -->
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,0,0,8">
+                        <Button x:Name="BtnRunSingle"
+                                Content="🚀 Extraire"
+                                Click="BtnRunSingle_Click"
+                                Style="{DynamicResource ActionButtonStyle}"
+                                Width="135"
+                                Margin="0,0,6,0" />
+                        <Button x:Name="BtnCancelSingleExt"
+                                Content="🛑 Stop"
+                                Click="BtnCancelExtraction_Click"
+                                Style="{DynamicResource CancelButtonStyle}"
+                                Width="110"
+                                IsEnabled="False" />
+                    </StackPanel>
 
                     <!-- BARRE DE PROGRESSION COMPACTE -->
                     <Border Background="#F8FAFC"

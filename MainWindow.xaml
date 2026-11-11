@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:AutoActivator.Gui.Views"
         Title="AutoActivator — LISA &amp; ELIA E.T.L Suite" Height="860" Width="1240" MinHeight="700" MinWidth="1020"
-        Background="#F1F5F9" WindowStartupLocation="CenterScreen">
+        Background="#F1F5F9" WindowStartupLocation="CenterScreen" WindowState="Maximized">
 
     <Window.Resources>
 
@@ -167,8 +167,8 @@
             <views:ComparisonView x:Name="ViewComparison" Grid.Row="0" Visibility="Collapsed"/>
             <views:HelpView x:Name="ViewHelp" Grid.Row="0" Visibility="Collapsed"/>
 
-            <!-- ELEVATED STATUS BAR DOCK -->
-            <Border Grid.Row="1" Background="White" CornerRadius="8" Padding="16,12" Margin="0,14,0,0" BorderBrush="#CBD5E1" BorderThickness="1">
+            <!-- ELEVATED STATUS BAR DOCK (HIDDEN TO AVOID DUPLICATE LOADING BAR) -->
+            <Border Grid.Row="1" Visibility="Collapsed" Background="White" CornerRadius="8" Padding="16,12" Margin="0,14,0,0" BorderBrush="#CBD5E1" BorderThickness="1">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>

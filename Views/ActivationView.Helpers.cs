@@ -947,8 +947,6 @@ namespace AutoActivator.Gui.Views
             BtnCancelSingleAct.IsEnabled = running;
             BtnRunSingleAct.IsEnabled = !running;
             BtnSkipPrimeSingleAct.IsEnabled = !running;
-            BtnRunBatchAct.IsEnabled = !running;
-            BtnSkipPrimeBatchAct.IsEnabled = !running;
         }
 
         private void SetBatchActivationButtons(bool running)
@@ -956,8 +954,6 @@ namespace AutoActivator.Gui.Views
             BtnCancelSingleAct.IsEnabled = running;
             BtnRunSingleAct.IsEnabled = !running;
             BtnSkipPrimeSingleAct.IsEnabled = !running;
-            BtnRunBatchAct.IsEnabled = !running;
-            BtnSkipPrimeBatchAct.IsEnabled = !running;
         }
 
         private sealed class SingleActivationInput

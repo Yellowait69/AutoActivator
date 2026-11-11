@@ -286,52 +286,6 @@ namespace AutoActivator.Gui.Views
             {
                 ActivationHistory.Add(item);
             }
-
-            UpdateResultBanner(item);
-        }
-
-        private void UpdateResultBanner(ActivationHistoryItem latestItem)
-        {
-            if (BannerActivationResult == null || TxtBannerTitle == null || TxtBannerDetail == null)
-            {
-                return;
-            }
-
-            BannerActivationResult.Visibility = Visibility.Visible;
-
-            // If the latest item failed (or if there is any failed item pinned at the top), display the RED banner above everything
-            ActivationHistoryItem? topFailed = latestItem.IsFailed
-                ? latestItem
-                : ActivationHistory.FirstOrDefault(x => x.IsFailed);
-
-            if (topFailed != null)
-            {
-                BannerActivationResult.Background = new SolidColorBrush(Color.FromRgb(254, 226, 226)); // #FEE2E2
-                BannerActivationResult.BorderBrush = new SolidColorBrush(Color.FromRgb(248, 113, 113)); // #F87171
-                TxtBannerTitle.Foreground = new SolidColorBrush(Color.FromRgb(153, 27, 27)); // #991B1B
-                TxtBannerDetail.Foreground = new SolidColorBrush(Color.FromRgb(185, 28, 28)); // #B91C1C
-
-                string rowPrefix = topFailed.RowNum != "Unit" && topFailed.RowNum != "-"
-                    ? $"[Row #{topFailed.RowNum}] "
-                    : string.Empty;
-
-                TxtBannerTitle.Text =
-                    $"🔴 ÉCHEC D'ACTIVATION {rowPrefix}— Contrat : {topFailed.ContractId} ({topFailed.Env})" +
-                    (_failCount > 1 ? $"  [+{_failCount - 1} autre(s) échec(s) en haut du tableau]" : string.Empty);
-                TxtBannerDetail.Text = topFailed.DiagnosticSummary;
-            }
-            else
-            {
-                BannerActivationResult.Background = new SolidColorBrush(Color.FromRgb(220, 252, 231)); // #DCFCE7
-                BannerActivationResult.BorderBrush = new SolidColorBrush(Color.FromRgb(74, 222, 128)); // #4ADE80
-                TxtBannerTitle.Foreground = new SolidColorBrush(Color.FromRgb(21, 128, 61)); // #15803D
-                TxtBannerDetail.Foreground = new SolidColorBrush(Color.FromRgb(22, 101, 52)); // #166534
-
-                TxtBannerTitle.Text =
-                    $"{latestItem.StatusBadgeText} — Contrat : {latestItem.ContractId} ({latestItem.BranchDisplay} | {latestItem.Env})";
-                TxtBannerDetail.Text =
-                    $"{latestItem.ChannelPaymentDisplay} | Prime : {latestItem.Premium} | Durée : {latestItem.Duration} | {latestItem.DiagnosticSummary}";
-            }
         }
 
         private void UpdateHistoryCounters()
@@ -366,11 +320,6 @@ namespace AutoActivator.Gui.Views
             _branch23Count = 0;
             _batchPlannedCount = 0;
             _batchProcessedCount = 0;
-
-            if (BannerActivationResult != null)
-            {
-                BannerActivationResult.Visibility = Visibility.Collapsed;
-            }
 
             UpdateHistoryCounters();
             UpdateBatchProgressDisplay(0, 0, null, "READY");
@@ -509,6 +458,10 @@ namespace AutoActivator.Gui.Views
             if (openFileDialog.ShowDialog() == true)
             {
                 TxtBatchActCsv.Text = openFileDialog.FileName;
+                if (TxtActContract != null)
+                {
+                    TxtActContract.Text = string.Empty;
+                }
             }
         }
 
@@ -575,15 +528,7 @@ namespace AutoActivator.Gui.Views
 
         private void UpdateBatchActCsvPath()
         {
-            if (TxtBatchActCsv == null)
-            {
-                return;
-            }
-
-            string environment = GetSelectedEnvironment();
-            string process = GetSelectedProcess();
-            TxtBatchActCsv.Text =
-                Settings.GetDefaultTestingExcelPath(process, environment);
+            // No automatic default QC file prefill; the user explicitly selects a batch file or enters a contract.
         }
 
         private void BtnUseDefaultQcActFile_Click(object sender, RoutedEventArgs e)
@@ -594,6 +539,16 @@ namespace AutoActivator.Gui.Views
         // =============================================================
         // CONTROLES D'ENTREE & PRESETS
         // =============================================================
+
+        private void TxtActContract_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!string.IsNullOrWhiteSpace(TxtActContract?.Text) &&
+                TxtBatchActCsv != null &&
+                !string.IsNullOrEmpty(TxtBatchActCsv.Text))
+            {
+                TxtBatchActCsv.Text = string.Empty;
+            }
+        }
 
         private void CmbActEnv_SelectionChanged(
             object sender,
@@ -625,11 +580,6 @@ namespace AutoActivator.Gui.Views
             if (BtnSkipPrimeSingleAct != null)
             {
                 BtnSkipPrimeSingleAct.Visibility = visibility;
-            }
-
-            if (BtnSkipPrimeBatchAct != null)
-            {
-                BtnSkipPrimeBatchAct.Visibility = visibility;
             }
         }
 
@@ -796,7 +746,7 @@ namespace AutoActivator.Gui.Views
 
         private void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e)
         {
-            RunSingleActivation(skipPrime: false);
+            ExecuteSmartActivation(skipPrime: false);
         }
 
         private void TxtActContract_KeyDown(object sender, KeyEventArgs e)
@@ -804,13 +754,36 @@ namespace AutoActivator.Gui.Views
             if (e.Key == Key.Enter && BtnRunSingleAct?.IsEnabled == true)
             {
                 e.Handled = true;
-                RunSingleActivation(skipPrime: false);
+                ExecuteSmartActivation(skipPrime: false);
             }
         }
 
         private void BtnSkipPrimeSingleAct_Click(object sender, RoutedEventArgs e)
         {
-            RunSingleActivation(skipPrime: true);
+            ExecuteSmartActivation(skipPrime: true);
+        }
+
+        private void ExecuteSmartActivation(bool skipPrime)
+        {
+            string singleInput = TxtActContract?.Text?.Trim() ?? string.Empty;
+            string batchPath = TxtBatchActCsv?.Text?.Trim() ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(singleInput))
+            {
+                RunSingleActivation(skipPrime);
+            }
+            else if (!string.IsNullOrWhiteSpace(batchPath))
+            {
+                RunBatchActivation(skipPrime);
+            }
+            else
+            {
+                UpdateBatchProgressDisplay(
+                    0,
+                    0,
+                    "Veuillez saisir un N° de Contrat / Demand ID ou sélectionner un fichier Batch Excel.",
+                    "READY");
+            }
         }
 
         private async void RunSingleActivation(bool skipPrime)

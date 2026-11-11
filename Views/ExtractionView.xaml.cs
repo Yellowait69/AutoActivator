@@ -337,39 +337,7 @@ namespace AutoActivator.Gui.Views
                 _okExtractionCount++;
             }
 
-            UpdateExtractionResultBanner(item);
             UpdateKpiCounters();
-        }
-
-        private void UpdateExtractionResultBanner(ExtractionItem latestItem)
-        {
-            if (BannerExtractionResult == null)
-            {
-                return;
-            }
-
-            BannerExtractionResult.Visibility = Visibility.Visible;
-
-            if (latestItem.IsFailed)
-            {
-                // ROUGE : Contrat non actif dans LISA (ELIA ONLY) ou introuvable (KO)
-                BannerExtractionResult.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEE2E2"));
-                BannerExtractionResult.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FCA5A5"));
-                TxtBannerExtTitle.Text = $"🔴 NON ACTIF LISA / ÉCHEC ({latestItem.Status}) — Contrat : {latestItem.ContractId} (Demand : {latestItem.Hdmd})";
-                TxtBannerExtTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B91C1C"));
-                TxtBannerExtDetail.Text = latestItem.SummaryDisplay;
-                TxtBannerExtDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
-            }
-            else if (_koExtractionCount == 0)
-            {
-                // VERT : Contrat actif dans LISA + ELIA (et aucun échec dans la session)
-                BannerExtractionResult.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DCFCE7"));
-                BannerExtractionResult.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4ADE80"));
-                TxtBannerExtTitle.Text = $"🟢 EXTRACTION RÉUSSIE — Contrat : {latestItem.ContractId} (LISA ID : {latestItem.InternalId})";
-                TxtBannerExtTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#15803D"));
-                TxtBannerExtDetail.Text = $"{latestItem.BranchDisplay} · {latestItem.ProductProcessDisplay} · {latestItem.ChannelPaymentDisplay} · {latestItem.SummaryDisplay}";
-                TxtBannerExtDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#166534"));
-            }
         }
 
         private void UpdateKpiCounters()
@@ -729,6 +697,16 @@ namespace AutoActivator.Gui.Views
         // FILE & BASELINE CONTROLS
         // =============================================================
 
+        private void TxtExtContract_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!string.IsNullOrWhiteSpace(TxtExtContract?.Text) &&
+                TxtBatchExtCsv != null &&
+                !string.IsNullOrEmpty(TxtBatchExtCsv.Text))
+            {
+                TxtBatchExtCsv.Text = string.Empty;
+            }
+        }
+
         private void TxtExtContract_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && BtnRunSingle?.IsEnabled == true)
@@ -740,12 +718,7 @@ namespace AutoActivator.Gui.Views
 
         private void UpdateBatchExtCsvPath()
         {
-            if (TxtBatchExtCsv == null) return;
-
-            string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
-            string channelValue = (CmbExtChannel?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "C01";
-
-            TxtBatchExtCsv.Text = Settings.GetDefaultTestingExcelPath(channelValue, envValue);
+            // No automatic default QC file prefill; the user explicitly selects a batch file or enters a contract.
         }
 
         private void BtnUseDefaultQcExtFile_Click(object sender, RoutedEventArgs e) => UpdateBatchExtCsvPath();
@@ -869,7 +842,30 @@ namespace AutoActivator.Gui.Views
         // SINGLE & BATCH EXTRACTION EXECUTION
         // =============================================================
 
-        private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
+        private void BtnRunSingle_Click(object sender, RoutedEventArgs e)
+        {
+            string singleInput = TxtExtContract?.Text?.Trim() ?? string.Empty;
+            string batchPath = TxtBatchExtCsv?.Text?.Trim() ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(singleInput))
+            {
+                RunSingleExtractionInternal();
+            }
+            else if (!string.IsNullOrWhiteSpace(batchPath))
+            {
+                BtnRunBatch_Click(sender, e);
+            }
+            else
+            {
+                UpdateBatchProgressDisplay(
+                    0,
+                    0,
+                    "Veuillez saisir un N° de Contrat / Demand ID ou sélectionner un fichier Batch Excel.",
+                    "READY");
+            }
+        }
+
+        private async void RunSingleExtractionInternal()
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
 
@@ -1032,6 +1028,10 @@ namespace AutoActivator.Gui.Views
             if (openFileDialog.ShowDialog() == true)
             {
                 TxtBatchExtCsv.Text = openFileDialog.FileName;
+                if (TxtExtContract != null)
+                {
+                    TxtExtContract.Text = string.Empty;
+                }
             }
         }
 
@@ -1161,7 +1161,6 @@ namespace AutoActivator.Gui.Views
         {
             BtnCancelSingleExt.IsEnabled = running;
             BtnRunSingle.IsEnabled = !running;
-            BtnRunBatch.IsEnabled = !running;
         }
 
         private void BtnClearHistory_Click(object sender, RoutedEventArgs e)
@@ -1174,10 +1173,6 @@ namespace AutoActivator.Gui.Views
             _totalExtractionCount = 0;
             _batchPlannedCount = 0;
             _batchProcessedCount = 0;
-            if (BannerExtractionResult != null)
-            {
-                BannerExtractionResult.Visibility = Visibility.Collapsed;
-            }
             UpdateKpiCounters();
             UpdateBatchProgressDisplay(0, 0, null, "READY");
         }

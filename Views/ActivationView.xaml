@@ -77,51 +77,6 @@
                          Click="BtnHelp_Click" />
              </Grid>
 
-             <!-- BANNIÈRE D'ÉTAT HAUTE VISIBILITÉ (VERT = ACTIVÉ / DÉJÀ ACTIF, ROUGE = ÉCHEC) -->
-             <Border x:Name="BannerActivationResult"
-                     Grid.Row="1"
-                     CornerRadius="8"
-                     Padding="14,10"
-                     Margin="0,0,0,12"
-                     BorderThickness="1.5"
-                     Background="#DCFCE7"
-                     BorderBrush="#4ADE80"
-                     Visibility="Collapsed">
-                 <Grid>
-                     <Grid.ColumnDefinitions>
-                         <ColumnDefinition Width="*" />
-                         <ColumnDefinition Width="Auto" />
-                     </Grid.ColumnDefinitions>
-                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                         <TextBlock x:Name="TxtBannerTitle"
-                                    Text="🟢 ACTIVATION RÉUSSIE"
-                                    FontWeight="Bold"
-                                    FontSize="13.5"
-                                    Foreground="#15803D" />
-                         <TextBlock x:Name="TxtBannerDetail"
-                                    Text=""
-                                    FontSize="12.5"
-                                    FontWeight="SemiBold"
-                                    Foreground="#166534"
-                                    Margin="0,2,0,0"
-                                    TextWrapping="Wrap" />
-                     </StackPanel>
-                     <Button x:Name="BtnBannerInspect"
-                             Grid.Column="1"
-                             Content="🔍 Voir le rapport"
-                             Click="BtnInspectSelectedAct_Click"
-                             Padding="10,5"
-                             Margin="12,0,0,0"
-                             FontWeight="Bold"
-                             Background="White"
-                             Foreground="#0F172A"
-                             BorderBrush="#CBD5E1"
-                             BorderThickness="1"
-                             Cursor="Hand"
-                             VerticalAlignment="Center" />
-                 </Grid>
-             </Border>
-
              <!-- CARTE UNIQUE : CONFIGURATION + EXÉCUTION UNITAIRE & BATCH -->
              <Border Grid.Row="2"
                      Style="{StaticResource CardStyle}"
@@ -309,8 +264,6 @@
                          <Grid.ColumnDefinitions>
                              <ColumnDefinition Width="155" />
                              <ColumnDefinition Width="*" />
-                             <ColumnDefinition Width="Auto" />
-                             <ColumnDefinition Width="Auto" />
                          </Grid.ColumnDefinitions>
                          <TextBlock Grid.Column="0"
                                     Text="⚡ Contrat / Demand ID :"
@@ -321,25 +274,11 @@
                          <TextBox x:Name="TxtActContract"
                                   Grid.Column="1"
                                   Style="{StaticResource InputTextBoxStyle}"
-                                  Margin="0,0,8,0"
                                   FontSize="13.5"
                                   FontWeight="SemiBold"
+                                  TextChanged="TxtActContract_TextChanged"
                                   KeyDown="TxtActContract_KeyDown"
                                   ToolTip="Numéro de Contrat (582-...) ou Demand ID ELIA" />
-                         <Button x:Name="BtnRunSingleAct"
-                                 Grid.Column="2"
-                                 Content="🚀 Activer"
-                                 Click="BtnRunSingleActivation_Click"
-                                 Style="{DynamicResource ActionButtonStyle}"
-                                 Width="135"
-                                 Margin="0,0,6,0" />
-                         <Button x:Name="BtnSkipPrimeSingleAct"
-                                 Grid.Column="3"
-                                 Content="⏭️ Skip Prime"
-                                 Click="BtnSkipPrimeSingleAct_Click"
-                                 Style="{DynamicResource ActionButtonStyle}"
-                                 Background="#F59E0B"
-                                 Width="125" />
                      </Grid>
 
                      <!-- LIGNE 3 : ACTIVATION BATCH (EXCEL / CSV) -->
@@ -347,9 +286,6 @@
                          <Grid.ColumnDefinitions>
                              <ColumnDefinition Width="155" />
                              <ColumnDefinition Width="*" />
-                             <ColumnDefinition Width="Auto" />
-                             <ColumnDefinition Width="Auto" />
-                             <ColumnDefinition Width="Auto" />
                              <ColumnDefinition Width="Auto" />
                          </Grid.ColumnDefinitions>
                          <TextBlock Grid.Column="0"
@@ -360,56 +296,44 @@
                                     VerticalAlignment="Center" />
                          <TextBox x:Name="TxtBatchActCsv"
                                   Grid.Column="1"
-                                  IsReadOnly="True"
                                   Style="{StaticResource InputTextBoxStyle}"
                                   Background="#F8FAFC"
                                   Margin="0,0,8,0" />
                          <Button Grid.Column="2"
                                  Content="📂 Parcourir"
-                                 Padding="10,6"
-                                 Margin="0,0,6,0"
+                                 Padding="12,6"
                                  Background="#334155"
                                  Foreground="White"
                                  FontWeight="Bold"
                                  BorderThickness="0"
                                  Cursor="Hand"
                                  Click="BtnBrowseActCsv_Click" />
-                         <Button x:Name="BtnUseDefaultQcActFile"
-                                 Grid.Column="3"
-                                 Content="📋 Default QC"
-                                 Padding="10,6"
-                                 Margin="0,0,6,0"
-                                 Background="#0F766E"
-                                 Foreground="White"
-                                 FontWeight="Bold"
-                                 BorderThickness="0"
-                                 Cursor="Hand"
-                                 Click="BtnUseDefaultQcActFile_Click" />
-                         <Button x:Name="BtnRunBatchAct"
-                                 Grid.Column="4"
-                                 Content="🚀 Lancer Batch"
-                                 Click="BtnRunBatchActivation_Click"
+                     </Grid>
+
+                     <!-- BOUTONS D'ACTION EN DESSOUS DES DEUX LIGNES -->
+                     <StackPanel Orientation="Horizontal"
+                                 HorizontalAlignment="Right"
+                                 Margin="0,0,0,8">
+                         <Button x:Name="BtnRunSingleAct"
+                                 Content="🚀 Activer"
+                                 Click="BtnRunSingleActivation_Click"
                                  Style="{DynamicResource ActionButtonStyle}"
                                  Width="135"
                                  Margin="0,0,6,0" />
-                         <Button x:Name="BtnSkipPrimeBatchAct"
-                                 Grid.Column="5"
+                         <Button x:Name="BtnSkipPrimeSingleAct"
                                  Content="⏭️ Skip Prime"
-                                 Click="BtnSkipPrimeBatchAct_Click"
+                                 Click="BtnSkipPrimeSingleAct_Click"
                                  Style="{DynamicResource ActionButtonStyle}"
                                  Background="#F59E0B"
-                                 Width="125" />
-                     </Grid>
-
-                     <!-- BOUTON STOP EN DESSOUS DES DEUX LIGNES -->
-                     <Button x:Name="BtnCancelSingleAct"
-                             Content="🛑 Stop"
-                             Click="BtnCancelActivation_Click"
-                             Style="{DynamicResource CancelButtonStyle}"
-                             HorizontalAlignment="Right"
-                             Width="135"
-                             Margin="0,0,0,8"
-                             IsEnabled="False" />
+                                 Width="135"
+                                 Margin="0,0,6,0" />
+                         <Button x:Name="BtnCancelSingleAct"
+                                 Content="🛑 Stop"
+                                 Click="BtnCancelActivation_Click"
+                                 Style="{DynamicResource CancelButtonStyle}"
+                                 Width="110"
+                                 IsEnabled="False" />
+                     </StackPanel>
 
                      <!-- BARRE DE PROGRESSION COMPACTE -->
                      <Border Background="#F8FAFC"
