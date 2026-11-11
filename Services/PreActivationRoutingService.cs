@@ -368,6 +368,16 @@ namespace AutoActivator.Services
                 if (ctxTable.Rows.Count > 0)
                 {
                     DataRow cRow = ctxTable.Rows[ctxTable.Rows.Count - 1];
+                    for (int i = ctxTable.Rows.Count - 1; i >= 0; i--)
+                    {
+                        DataRow candidateRow = ctxTable.Rows[i];
+                        if (!string.IsNullOrWhiteSpace(GetString(candidateRow, "ContractNumber")))
+                        {
+                            cRow = candidateRow;
+                            break;
+                        }
+                    }
+
                     eliaContractId = GetDecimal(cRow, "EliaContractId");
                     contractNumber = GetString(cRow, "ContractNumber");
                 }
@@ -419,7 +429,7 @@ namespace AutoActivator.Services
                 Debug.WriteLine($"[PreActivationRouting] Fallback GET_ELIA_PREMIUM_BY_DEMAND warning: {ex.Message}");
             }
 
-            return new EnvironmentRoutingCandidate
+            var fallbackCandidate = new EnvironmentRoutingCandidate
             {
                 Environment = normalizedEnvironment,
                 DemandId = GetDecimal(dRow, "DemandId") ?? demandId,
@@ -442,6 +452,15 @@ namespace AutoActivator.Services
                 MainQuerySucceeded = false,
                 DemandRoutingFallbackUsed = true
             };
+
+            EnvironmentRoutingCandidate completedFallback =
+                await CompleteMissingDemandRoutingAsync(fallbackCandidate, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await TryEnrichContractDatesSafeAsync(database, completedFallback, normalizedEnvironment, cancellationToken)
+                .ConfigureAwait(false);
+
+            return completedFallback;
         }
 
         private static async Task<EnvironmentRoutingCandidate> CompleteMissingDemandRoutingAsync(

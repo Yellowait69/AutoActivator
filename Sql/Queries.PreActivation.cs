@@ -9,9 +9,9 @@ namespace AutoActivator.Sql
             string fj1)
         {
             queries["GET_PRE_ACTIVATION_ROUTING"] = $@"
-;WITH DemandData AS
+;WITH RawDemand AS
 (
-    SELECT TOP (1)
+    SELECT
         d.IT5HDMDAIDN AS DemandId,
         d.IT5HDMDDCRE AS DemandCreationDate,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCPRD)), '') AS ProductCode,
@@ -25,11 +25,49 @@ namespace AutoActivator.Sql
         d.IT5HDMDDTISMAJDB2 AS LastEliaUpdate
     FROM {fj1}.[TB5HDMD] AS d WITH (NOLOCK)
     WHERE d.IT5HDMDAIDN = @DemandId
+
+    UNION ALL
+
+    SELECT TOP (1)
+        h0.IT5HDMDAIDN AS DemandId,
+        CAST(NULL AS datetime) AS DemandCreationDate,
+        CAST(NULL AS varchar(20)) AS ProductCode,
+        CAST(NULL AS varchar(20)) AS ProcessCode,
+        CAST(NULL AS varchar(20)) AS ChannelCode,
+        CAST(NULL AS varchar(20)) AS ApplicationChannelCode,
+        CAST(NULL AS varchar(20)) AS DemandStatus,
+        CAST(NULL AS decimal(15, 0)) AS ReferenceDemandId,
+        CAST(NULL AS decimal(15, 0)) AS LinkedDemandId,
+        h0.IT5HELTNSEQAVENOU AS AddendumSequence,
+        CAST(NULL AS datetime) AS LastEliaUpdate
+    FROM {fj1}.[TB5HELT] AS h0 WITH (NOLOCK)
+    WHERE h0.IT5HDMDAIDN = @DemandId
+      AND NOT EXISTS (
+          SELECT 1
+          FROM {fj1}.[TB5HDMD] AS d0 WITH (NOLOCK)
+          WHERE d0.IT5HDMDAIDN = @DemandId
+      )
+),
+DemandData AS
+(
+    SELECT TOP (1)
+        DemandId,
+        DemandCreationDate,
+        ProductCode,
+        ProcessCode,
+        ChannelCode,
+        ApplicationChannelCode,
+        DemandStatus,
+        ReferenceDemandId,
+        LinkedDemandId,
+        AddendumSequence,
+        LastEliaUpdate
+    FROM RawDemand
     ORDER BY
-        CASE WHEN NULLIF(LTRIM(RTRIM(d.IT5HDMDCPRD)), '') IS NULL THEN 1 ELSE 0 END,
-        CASE WHEN NULLIF(LTRIM(RTRIM(d.IT5HDMDCPCS)), '') IS NULL THEN 1 ELSE 0 END,
-        CASE WHEN NULLIF(LTRIM(RTRIM(d.IT5HDMDCCDI)), '') IS NULL THEN 1 ELSE 0 END,
-        d.IT5HDMDDTISMAJDB2 DESC
+        CASE WHEN ProductCode IS NULL THEN 1 ELSE 0 END,
+        CASE WHEN ProcessCode IS NULL THEN 1 ELSE 0 END,
+        CASE WHEN ChannelCode IS NULL THEN 1 ELSE 0 END,
+        LastEliaUpdate DESC
 )
 SELECT TOP (1)
     demand.DemandId,
@@ -45,11 +83,14 @@ SELECT TOP (1)
     demand.LastEliaUpdate,
     h.IT5UCONAIDN AS EliaContractId,
     NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') AS ContractNumber,
+    u.IT5UCONDDEB AS ContractStartDate,
     premium.PremiumSequence,
     premium.GrossPremium,
     premium.NetPremium,
+    premium.FirstPaymentDate,
+    premium.PaymentDate,
     payment.PaymentMethodCode,
-    payment.PremiumGroupType,
+    premium.PremiumGroupType,
     ISNULL(fundInfo.FundFeatureCount, 0) AS FundFeatureCount,
     CASE
         WHEN h.IT5UCONAIDN IS NULL THEN 'DEMAND_FOUND_NO_ELIA_CONTRACT'
@@ -61,7 +102,7 @@ SELECT TOP (1)
     END AS RoutingStatus
 FROM DemandData AS demand
 LEFT JOIN {fj1}.[TB5HELT] AS h WITH (NOLOCK)
-    ON h.IT5HDMDAIDN = demand.DemandId
+    ON h.IT5HDMDAIDN IN (demand.DemandId, demand.ReferenceDemandId, demand.LinkedDemandId)
 LEFT JOIN {fj1}.[TB5UCON] AS u WITH (NOLOCK)
     ON u.IT5UCONAIDN = h.IT5UCONAIDN
 OUTER APPLY
@@ -69,7 +110,10 @@ OUTER APPLY
     SELECT TOP (1)
         p.IT5UAVENSEQ AS PremiumSequence,
         p.IT5UPRPUBRU AS GrossPremium,
-        p.IT5UPRPUNET AS NetPremium
+        p.IT5UPRPUNET AS NetPremium,
+        p.IT5UPRPDPMRPAI AS FirstPaymentDate,
+        p.IT5UPRPDVRS AS PaymentDate,
+        NULLIF(LTRIM(RTRIM(p.IT5UPRPCTYPGRPPRI)), '') AS PremiumGroupType
     FROM {fj1}.[TB5UPRP] AS p WITH (NOLOCK)
     WHERE p.IT5UCONAIDN = h.IT5UCONAIDN
     ORDER BY
@@ -82,8 +126,7 @@ OUTER APPLY
 OUTER APPLY
 (
     SELECT TOP (1)
-        NULLIF(LTRIM(RTRIM(pm.IT5UPMPCMDEPAI)), '') AS PaymentMethodCode,
-        NULLIF(LTRIM(RTRIM(pm.IT5UPMPCCTYPGRPPRI)), '') AS PremiumGroupType
+        NULLIF(LTRIM(RTRIM(pm.IT5UPMPCMDEPAI)), '') AS PaymentMethodCode
     FROM {fj1}.[TB5UPMP] AS pm WITH (NOLOCK)
     WHERE pm.IT5UCONAIDN = h.IT5UCONAIDN
     ORDER BY pm.IT5UAVENSEQ DESC, pm.IT5UGARCGAR
@@ -100,6 +143,7 @@ OUTER APPLY
 ORDER BY
     CASE WHEN h.IT5UCONAIDN IS NULL THEN 1 ELSE 0 END,
     CASE WHEN NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') IS NULL THEN 1 ELSE 0 END,
+    CASE WHEN h.IT5HDMDAIDN = demand.DemandId THEN 0 ELSE 1 END,
     h.IT5UCONAIDN DESC;";
 
             queries["GET_ELIA_DEMAND_ROUTING"] = $@"
@@ -133,10 +177,15 @@ SELECT DISTINCT
     h.IT5HELTNSEQAVEREF AS ReferenceAddendumSequence,
     h.IT5HELTNSEQAVENOU AS NewAddendumSequence,
     NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') AS ContractNumber
-FROM {fj1}.[TB5HELT] AS h
-LEFT JOIN {fj1}.[TB5UCON] AS u
+FROM {fj1}.[TB5HELT] AS h WITH (NOLOCK)
+LEFT JOIN {fj1}.[TB5UCON] AS u WITH (NOLOCK)
     ON u.IT5UCONAIDN = h.IT5UCONAIDN
 WHERE h.IT5HDMDAIDN = @DemandId
+   OR h.IT5HDMDAIDN IN (
+       SELECT d.IT5HDMDAIDNDMDREF FROM {fj1}.[TB5HDMD] AS d WITH (NOLOCK) WHERE d.IT5HDMDAIDN = @DemandId AND d.IT5HDMDAIDNDMDREF IS NOT NULL
+       UNION
+       SELECT d.IT5HDMDAIDNDMDLIE FROM {fj1}.[TB5HDMD] AS d WITH (NOLOCK) WHERE d.IT5HDMDAIDN = @DemandId AND d.IT5HDMDAIDNDMDLIE IS NOT NULL
+   )
 ORDER BY
     EliaContractId,
     ProposalSequence,
@@ -170,7 +219,7 @@ SELECT
     pm.IT5UAVENSEQ AS AddendumSequence,
     NULLIF(LTRIM(RTRIM(pm.IT5UGARCGAR)), '') AS GuaranteeCode,
     NULLIF(LTRIM(RTRIM(pm.IT5UPMPCMDEPAI)), '') AS PaymentMethodCode,
-    NULLIF(LTRIM(RTRIM(pm.IT5UPMPCCTYPGRPPRI)), '') AS PremiumGroupType,
+    CAST(NULL AS varchar(10)) AS PremiumGroupType,
     pm.IT5UPMPDDEB AS StartDate,
     pm.IT5UPMPDDMD AS MandateDate,
     NULLIF(LTRIM(RTRIM(pm.IT5UPMPCSTATMDA)), '') AS MandateStatus,
@@ -344,27 +393,69 @@ FROM {fj1}.[TB5HELT] AS h WITH (NOLOCK)
 INNER JOIN {fj1}.[TB5UCON] AS u WITH (NOLOCK)
     ON u.IT5UCONAIDN = h.IT5UCONAIDN
 WHERE h.IT5HDMDAIDN = @DemandId
+   OR h.IT5HDMDAIDN IN (
+       SELECT d.IT5HDMDAIDNDMDREF FROM {fj1}.[TB5HDMD] AS d WITH (NOLOCK) WHERE d.IT5HDMDAIDN = @DemandId AND d.IT5HDMDAIDNDMDREF IS NOT NULL
+       UNION
+       SELECT d.IT5HDMDAIDNDMDLIE FROM {fj1}.[TB5HDMD] AS d WITH (NOLOCK) WHERE d.IT5HDMDAIDN = @DemandId AND d.IT5HDMDAIDNDMDLIE IS NOT NULL
+   )
 ORDER BY
     CASE WHEN NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') IS NULL THEN 1 ELSE 0 END,
+    CASE WHEN h.IT5HDMDAIDN = @DemandId THEN 0 ELSE 1 END,
     u.IT5UCONAIDN DESC;";
 
             queries["GET_FULL_CONTEXT_BY_DEMAND"] = $@"
-;WITH DemandData AS
+;WITH RawDemand AS
 (
-    SELECT TOP (1)
+    SELECT
         d.IT5HDMDAIDN AS DemandId,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCPRD)), '') AS ProductCode,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCPCS)), '') AS ProcessCode,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCCDI)), '') AS ChannelCode,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCAPL)), '') AS ApplicationChannelCode,
         NULLIF(LTRIM(RTRIM(d.IT5HDMDCSTA)), '') AS DemandStatus,
+        d.IT5HDMDAIDNDMDREF AS ReferenceDemandId,
+        d.IT5HDMDAIDNDMDLIE AS LinkedDemandId,
         d.IT5HDMDDTISMAJDB2 AS LastEliaUpdate
     FROM {fj1}.[TB5HDMD] AS d WITH (NOLOCK)
     WHERE d.IT5HDMDAIDN = @DemandId
+
+    UNION ALL
+
+    SELECT TOP (1)
+        h0.IT5HDMDAIDN AS DemandId,
+        CAST(NULL AS varchar(20)) AS ProductCode,
+        CAST(NULL AS varchar(20)) AS ProcessCode,
+        CAST(NULL AS varchar(20)) AS ChannelCode,
+        CAST(NULL AS varchar(20)) AS ApplicationChannelCode,
+        CAST(NULL AS varchar(20)) AS DemandStatus,
+        CAST(NULL AS decimal(15, 0)) AS ReferenceDemandId,
+        CAST(NULL AS decimal(15, 0)) AS LinkedDemandId,
+        CAST(NULL AS datetime) AS LastEliaUpdate
+    FROM {fj1}.[TB5HELT] AS h0 WITH (NOLOCK)
+    WHERE h0.IT5HDMDAIDN = @DemandId
+      AND NOT EXISTS (
+          SELECT 1
+          FROM {fj1}.[TB5HDMD] AS d0 WITH (NOLOCK)
+          WHERE d0.IT5HDMDAIDN = @DemandId
+      )
+),
+DemandData AS
+(
+    SELECT TOP (1)
+        DemandId,
+        ProductCode,
+        ProcessCode,
+        ChannelCode,
+        ApplicationChannelCode,
+        DemandStatus,
+        ReferenceDemandId,
+        LinkedDemandId,
+        LastEliaUpdate
+    FROM RawDemand
     ORDER BY
-        CASE WHEN NULLIF(LTRIM(RTRIM(d.IT5HDMDCPRD)), '') IS NULL THEN 1 ELSE 0 END,
-        CASE WHEN NULLIF(LTRIM(RTRIM(d.IT5HDMDCPCS)), '') IS NULL THEN 1 ELSE 0 END,
-        d.IT5HDMDDTISMAJDB2 DESC
+        CASE WHEN ProductCode IS NULL THEN 1 ELSE 0 END,
+        CASE WHEN ProcessCode IS NULL THEN 1 ELSE 0 END,
+        LastEliaUpdate DESC
 ),
 ContractData AS
 (
@@ -372,6 +463,7 @@ ContractData AS
         demand.DemandId,
         h.IT5UCONAIDN AS UconId,
         NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') AS ContractNumber,
+        u.IT5UCONDDEB AS ContractStartDate,
         demand.ProductCode,
         demand.ProcessCode,
         demand.ChannelCode,
@@ -380,18 +472,20 @@ ContractData AS
         demand.LastEliaUpdate
     FROM DemandData AS demand
     LEFT JOIN {fj1}.[TB5HELT] AS h WITH (NOLOCK)
-        ON h.IT5HDMDAIDN = demand.DemandId
+        ON h.IT5HDMDAIDN IN (demand.DemandId, demand.ReferenceDemandId, demand.LinkedDemandId)
     LEFT JOIN {fj1}.[TB5UCON] AS u WITH (NOLOCK)
         ON u.IT5UCONAIDN = h.IT5UCONAIDN
     ORDER BY
         CASE WHEN h.IT5UCONAIDN IS NULL THEN 1 ELSE 0 END,
         CASE WHEN NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') IS NULL THEN 1 ELSE 0 END,
+        CASE WHEN h.IT5HDMDAIDN = demand.DemandId THEN 0 ELSE 1 END,
         h.IT5UCONAIDN DESC
 )
 SELECT TOP (1)
     contractData.DemandId,
     contractData.UconId,
     contractData.ContractNumber,
+    contractData.ContractStartDate,
     contractData.ProductCode,
     contractData.ProcessCode,
     contractData.ChannelCode,
@@ -402,6 +496,9 @@ SELECT TOP (1)
     premium.PremiumSequence,
     premium.GrossPremium,
     premium.NetPremium,
+    premium.FirstPaymentDate,
+    premium.PaymentDate,
+    ISNULL(fundInfo.FundFeatureCount, 0) AS FundFeatureCount,
     CASE
         WHEN contractData.DemandId IS NULL THEN 'DEMAND NOT FOUND'
         WHEN contractData.UconId IS NULL THEN 'DEMAND FOUND - ELIA CONTRACT NOT LINKED'
@@ -429,7 +526,9 @@ OUTER APPLY
     SELECT TOP (1)
         p.IT5UAVENSEQ AS PremiumSequence,
         p.IT5UPRPUBRU AS GrossPremium,
-        p.IT5UPRPUNET AS NetPremium
+        p.IT5UPRPUNET AS NetPremium,
+        p.IT5UPRPDPMRPAI AS FirstPaymentDate,
+        p.IT5UPRPDVRS AS PaymentDate
     FROM {fj1}.[TB5UPRP] AS p WITH (NOLOCK)
     WHERE p.IT5UCONAIDN = contractData.UconId
     ORDER BY
@@ -438,7 +537,16 @@ OUTER APPLY
         CASE WHEN p.IT5UPRPUNET IS NOT NULL THEN 0 ELSE 1 END,
         p.IT5UPRPUBRU DESC,
         p.IT5UPRPUNET DESC
-) AS premium;";
+) AS premium
+OUTER APPLY
+(
+    SELECT
+        COUNT_BIG(*) AS FundFeatureCount
+    FROM {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
+    WHERE ff.IT5UCONAIDN = contractData.UconId
+      AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
+        OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL)
+) AS fundInfo;";
 
             queries["GET_FULL_CONTEXT_BY_CONTRACT"] = $@"
 ;WITH ContractData AS
@@ -447,6 +555,7 @@ OUTER APPLY
         demand.DemandId,
         u.IT5UCONAIDN AS UconId,
         NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') AS ContractNumber,
+        u.IT5UCONDDEB AS ContractStartDate,
         demand.ProductCode,
         demand.ProcessCode,
         demand.ChannelCode,
@@ -487,6 +596,7 @@ SELECT TOP (1)
     contractData.DemandId,
     contractData.UconId,
     contractData.ContractNumber,
+    contractData.ContractStartDate,
     contractData.ProductCode,
     contractData.ProcessCode,
     contractData.ChannelCode,
@@ -497,6 +607,9 @@ SELECT TOP (1)
     premium.PremiumSequence,
     premium.GrossPremium,
     premium.NetPremium,
+    premium.FirstPaymentDate,
+    premium.PaymentDate,
+    ISNULL(fundInfo.FundFeatureCount, 0) AS FundFeatureCount,
     CASE
         WHEN contractData.ContractNumber IS NULL THEN 'CONTRACT NOT FOUND'
         WHEN contractData.ProductCode IS NULL THEN 'ELIA FOUND - PRODUCT NOT FOUND'
@@ -522,7 +635,9 @@ OUTER APPLY
     SELECT TOP (1)
         p.IT5UAVENSEQ AS PremiumSequence,
         p.IT5UPRPUBRU AS GrossPremium,
-        p.IT5UPRPUNET AS NetPremium
+        p.IT5UPRPUNET AS NetPremium,
+        p.IT5UPRPDPMRPAI AS FirstPaymentDate,
+        p.IT5UPRPDVRS AS PaymentDate
     FROM {fj1}.[TB5UPRP] AS p WITH (NOLOCK)
     WHERE p.IT5UCONAIDN = contractData.UconId
     ORDER BY
@@ -531,7 +646,16 @@ OUTER APPLY
         CASE WHEN p.IT5UPRPUNET IS NOT NULL THEN 0 ELSE 1 END,
         p.IT5UPRPUBRU DESC,
         p.IT5UPRPUNET DESC
-) AS premium;";
+) AS premium
+OUTER APPLY
+(
+    SELECT
+        COUNT_BIG(*) AS FundFeatureCount
+    FROM {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
+    WHERE ff.IT5UCONAIDN = contractData.UconId
+      AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
+        OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL)
+) AS fundInfo;";
         }
 
         private static void AddBranch23MovementQueries(IDictionary<string, string> queries)

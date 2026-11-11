@@ -45,61 +45,47 @@ namespace AutoActivator.Services
 
             try
             {
-                await TryResolveWithModeAsync(
+                result = await ResolveContractInEnvironmentInternalAsync(
                         cleanInput,
                         isDemandId,
                         normalizedEnvironment,
-                        result,
                         token)
                     .ConfigureAwait(false);
 
-                // Bidirectional auto-detection fallback:
-                // If not found in ELIA with the initial mode (e.g. 9-digit JCL contract treated as Demand ID,
-                // or Demand ID treated as Contract), automatically try the opposite mode.
+                // Automatic cross-environment fallback (D000 <-> Q000):
+                // If the Demand ID or Contract was not found in the selected environment,
+                // automatically check the other environment so D000/Q000 mismatches never block activation.
                 if (!result.FoundInElia || IsMissingValue(result.ContractNumber))
                 {
-                    bool oppositeMode = !isDemandId;
-                    await TryResolveWithModeAsync(
-                            cleanInput,
-                            oppositeMode,
-                            normalizedEnvironment,
-                            result,
-                            token)
-                        .ConfigureAwait(false);
+                    string otherEnvironment = string.Equals(normalizedEnvironment, "Q000", StringComparison.OrdinalIgnoreCase)
+                        ? "D000"
+                        : "Q000";
 
-                    if (result.FoundInElia && !IsMissingValue(result.ContractNumber))
+                    try
                     {
-                        result.IsDemandId = oppositeMode;
-                        if (!oppositeMode && string.Equals(result.DemandId, cleanInput, StringComparison.OrdinalIgnoreCase))
+                        ActivationLookupResult otherResult = await ResolveContractInEnvironmentInternalAsync(
+                                cleanInput,
+                                isDemandId,
+                                otherEnvironment,
+                                token)
+                            .ConfigureAwait(false);
+
+                        if (otherResult.FoundInElia && !IsMissingValue(otherResult.ContractNumber))
                         {
-                            result.DemandId = "N/A";
+                            result = otherResult;
+                            result.ResolvedEnvironment = otherEnvironment;
+                        }
+                        else if (!result.FoundInElia && otherResult.FoundInElia)
+                        {
+                            result = otherResult;
+                            result.ResolvedEnvironment = otherEnvironment;
                         }
                     }
+                    catch (Exception crossEx) when (crossEx is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[ActivationLookup] Cross-environment fallback note ({otherEnvironment}): {crossEx.Message}");
+                    }
                 }
-
-                await TryEnrichLookupFromResolvedDemandSafeAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
-
-                await TryCompleteDirectDemandRoutingAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
-
-                await TryCompleteContractFundCountSafeAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
-
-                await TryCompleteLisaInformationAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
 
                 if (!result.FoundInElia && !result.IsDemandId && IsMissingValue(result.ContractNumber))
                 {
@@ -108,7 +94,10 @@ namespace AutoActivator.Services
                 }
 
                 NormalizeLookupResult(result);
-                DebugLookupResult("Resolved lookup result", result, normalizedEnvironment);
+                DebugLookupResult(
+                    "Resolved lookup result",
+                    result,
+                    !string.IsNullOrWhiteSpace(result.ResolvedEnvironment) ? result.ResolvedEnvironment : normalizedEnvironment);
             }
             catch (OperationCanceledException)
             {
@@ -128,6 +117,156 @@ namespace AutoActivator.Services
             }
 
             return result;
+        }
+
+        private async Task<ActivationLookupResult> ResolveContractInEnvironmentInternalAsync(
+            string cleanInput,
+            bool isDemandId,
+            string normalizedEnvironment,
+            CancellationToken token)
+        {
+            var result = new ActivationLookupResult
+            {
+                RawInput = cleanInput,
+                IsDemandId = isDemandId,
+                DemandId = isDemandId ? cleanInput : "N/A",
+                DbDiagnosticStatus = isDemandId
+                    ? "DEMAND NOT FOUND"
+                    : "CONTRACT NOT FOUND"
+            };
+
+            await TryResolveWithModeAsync(
+                    cleanInput,
+                    isDemandId,
+                    normalizedEnvironment,
+                    result,
+                    token)
+                .ConfigureAwait(false);
+
+            // Bidirectional auto-detection fallback:
+            // Run on an isolated lookup instance so a 0-row result in the opposite mode
+            // never overwrites FoundInElia / DemandId / UconId resolved by the primary mode.
+            if (!result.FoundInElia || IsMissingValue(result.ContractNumber))
+            {
+                bool oppositeMode = !isDemandId;
+                var oppositeResult = new ActivationLookupResult
+                {
+                    RawInput = cleanInput,
+                    IsDemandId = oppositeMode,
+                    DemandId = oppositeMode ? cleanInput : "N/A",
+                    DbDiagnosticStatus = oppositeMode
+                        ? "DEMAND NOT FOUND"
+                        : "CONTRACT NOT FOUND"
+                };
+
+                await TryResolveWithModeAsync(
+                        cleanInput,
+                        oppositeMode,
+                        normalizedEnvironment,
+                        oppositeResult,
+                        token)
+                    .ConfigureAwait(false);
+
+                if (oppositeResult.FoundInElia && !IsMissingValue(oppositeResult.ContractNumber))
+                {
+                    result = oppositeResult;
+                }
+                else if (!result.FoundInElia && oppositeResult.FoundInElia)
+                {
+                    result = oppositeResult;
+                }
+            }
+
+            // If UCON ID is known in ELIA but ContractNumber was not yet populated, resolve it directly from FJ1.TB5UCON
+            if (IsMissingValue(result.ContractNumber) && !IsMissingValue(result.EliaUconId))
+            {
+                await TryCompleteContractNumberFromUconSafeAsync(result, normalizedEnvironment, token)
+                    .ConfigureAwait(false);
+            }
+
+            await TryEnrichLookupFromResolvedDemandSafeAsync(
+                    result,
+                    normalizedEnvironment,
+                    token)
+                .ConfigureAwait(false);
+
+            if (IsMissingValue(result.ContractNumber) && !IsMissingValue(result.EliaUconId))
+            {
+                await TryCompleteContractNumberFromUconSafeAsync(result, normalizedEnvironment, token)
+                    .ConfigureAwait(false);
+            }
+
+            await TryCompleteDirectDemandRoutingAsync(
+                    result,
+                    normalizedEnvironment,
+                    token)
+                .ConfigureAwait(false);
+
+            await TryCompleteContractFundCountSafeAsync(
+                    result,
+                    normalizedEnvironment,
+                    token)
+                .ConfigureAwait(false);
+
+            await TryCompleteLisaInformationAsync(
+                    result,
+                    normalizedEnvironment,
+                    token)
+                .ConfigureAwait(false);
+
+            if (result.FoundInElia && string.IsNullOrWhiteSpace(result.ResolvedEnvironment))
+            {
+                result.ResolvedEnvironment = normalizedEnvironment;
+            }
+
+            NormalizeLookupResult(result);
+            return result;
+        }
+
+        private static async Task TryCompleteContractNumberFromUconSafeAsync(
+            ActivationLookupResult result,
+            string environment,
+            CancellationToken token)
+        {
+            if (!IsMissingValue(result.ContractNumber) || IsMissingValue(result.EliaUconId))
+            {
+                return;
+            }
+
+            try
+            {
+                var database = new DatabaseManager(environment);
+                ReadOnlyDictionary<string, string> envQueries = SqlQueries.GetQueries(environment);
+                if (!envQueries.TryGetValue("FJ1.TB5UCON", out string? uconQuery))
+                {
+                    return;
+                }
+
+                using DataTable table = await database.GetDataAsync(
+                        uconQuery,
+                        new Dictionary<string, object> { ["@EliaId"] = result.EliaUconId.Trim() },
+                        token)
+                    .ConfigureAwait(false);
+
+                if (table.Rows.Count > 0 && table.Columns.Contains("IT5UCONLREFEXN"))
+                {
+                    foreach (DataRow row in table.Rows)
+                    {
+                        string? contractNum = GetString(row, "IT5UCONLREFEXN");
+                        if (!string.IsNullOrWhiteSpace(contractNum))
+                        {
+                            result.ContractNumber = contractNum.Trim();
+                            result.JclContract = FormatContractStatic(result.ContractNumber);
+                            result.FoundInElia = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Debug.WriteLine($"[ActivationLookup] TB5UCON direct contract lookup warning: {ex.Message}");
+            }
         }
 
         private async Task TryResolveWithModeAsync(
@@ -626,8 +765,11 @@ namespace AutoActivator.Services
 
             if (table.Rows.Count == 0)
             {
-                result.FoundInElia = false;
-                result.DbDiagnosticStatus = isDemandId ? "DEMAND NOT FOUND" : "CONTRACT NOT FOUND";
+                if (!result.FoundInElia)
+                {
+                    result.FoundInElia = false;
+                    result.DbDiagnosticStatus = isDemandId ? "DEMAND NOT FOUND" : "CONTRACT NOT FOUND";
+                }
                 return;
             }
 
@@ -1064,6 +1206,9 @@ namespace AutoActivator.Services
 
         private static string CleanInput(string? value) =>
             (value ?? string.Empty)
+                .Replace("=", string.Empty)
+                .Replace("\"", string.Empty)
+                .Replace("'", string.Empty)
                 .Replace("\u00A0", string.Empty)
                 .Replace("\uFEFF", string.Empty)
                 .Trim();

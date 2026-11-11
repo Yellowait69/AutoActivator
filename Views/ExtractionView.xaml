@@ -116,7 +116,7 @@
                             <TextBlock Text="Environnement :" Style="{StaticResource FieldLabelStyle}" />
                             <ComboBox x:Name="CmbExtEnv"
                                       Style="{StaticResource InputComboBoxStyle}"
-                                      SelectedIndex="0"
+                                      SelectedIndex="1"
                                       SelectionChanged="CmbExtEnv_SelectionChanged">
                                 <ComboBoxItem Content="D000 - Development (IM7T)" Tag="D" />
                                 <ComboBoxItem Content="Q000 - Qualification (IM7C)" Tag="Q" />
