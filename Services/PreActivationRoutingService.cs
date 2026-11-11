@@ -109,7 +109,11 @@ namespace AutoActivator.Services
             cancellationToken.ThrowIfCancellationRequested();
 
             FundFeatureLoadResult fundFeatureLoadResult =
-                await TryGetFundFeaturesAsync(candidate.DemandId, candidate.Environment, cancellationToken)
+                await TryGetFundFeaturesAsync(
+                        candidate.DemandId,
+                        candidate.EliaContractId,
+                        candidate.Environment,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -368,16 +372,6 @@ namespace AutoActivator.Services
                 if (ctxTable.Rows.Count > 0)
                 {
                     DataRow cRow = ctxTable.Rows[ctxTable.Rows.Count - 1];
-                    for (int i = ctxTable.Rows.Count - 1; i >= 0; i--)
-                    {
-                        DataRow candidateRow = ctxTable.Rows[i];
-                        if (!string.IsNullOrWhiteSpace(GetString(candidateRow, "ContractNumber")))
-                        {
-                            cRow = candidateRow;
-                            break;
-                        }
-                    }
-
                     eliaContractId = GetDecimal(cRow, "EliaContractId");
                     contractNumber = GetString(cRow, "ContractNumber");
                 }
@@ -453,14 +447,14 @@ namespace AutoActivator.Services
                 DemandRoutingFallbackUsed = true
             };
 
-            EnvironmentRoutingCandidate completedFallback =
-                await CompleteMissingDemandRoutingAsync(fallbackCandidate, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await TryEnrichContractDatesSafeAsync(database, completedFallback, normalizedEnvironment, cancellationToken)
+            await TryEnrichContractDatesSafeAsync(
+                    database,
+                    fallbackCandidate,
+                    normalizedEnvironment,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
-            return completedFallback;
+            return fallbackCandidate;
         }
 
         private static async Task<EnvironmentRoutingCandidate> CompleteMissingDemandRoutingAsync(
@@ -544,6 +538,42 @@ namespace AutoActivator.Services
             string normalizedEnvironment,
             CancellationToken cancellationToken)
         {
+            if (!candidate.EliaContractId.HasValue || string.IsNullOrWhiteSpace(candidate.ContractNumber))
+            {
+                decimal?[] relatedDemands = new[] { candidate.ReferenceDemandId, candidate.LinkedDemandId };
+                foreach (decimal? relatedDemandId in relatedDemands)
+                {
+                    if (!relatedDemandId.HasValue || relatedDemandId.Value <= 0)
+                        continue;
+
+                    try
+                    {
+                        string contractContextQuery = SqlQueries.GetQuery("GET_ELIA_DEMAND_CONTRACT_CONTEXT", normalizedEnvironment);
+                        using DataTable ctxTable = await database
+                            .GetDataAsync(
+                                contractContextQuery,
+                                new Dictionary<string, object> { ["@DemandId"] = relatedDemandId.Value },
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        for (int i = ctxTable.Rows.Count - 1; i >= 0; i--)
+                        {
+                            DataRow cRow = ctxTable.Rows[i];
+                            candidate.EliaContractId ??= GetDecimal(cRow, "EliaContractId");
+                            if (string.IsNullOrWhiteSpace(candidate.ContractNumber))
+                            {
+                                string cNum = GetString(cRow, "ContractNumber");
+                                if (!string.IsNullOrWhiteSpace(cNum))
+                                    candidate.ContractNumber = cNum;
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[PreActivationRouting] Related demand contract lookup note: {ex.Message}");
+                    }
+                }
+            }
+
             if (!candidate.EliaContractId.HasValue)
             {
                 return;
@@ -566,6 +596,9 @@ namespace AutoActivator.Services
                         DataRow prpRow = prpTable.Rows[0];
                         candidate.FirstPaymentDate ??= GetDateTime(prpRow, "IT5UPRPDPMRPAI");
                         candidate.PaymentDate ??= GetDateTime(prpRow, "IT5UPRPDVRS");
+                        candidate.PremiumSequence ??= GetInt32(prpRow, "IT5UAVENSEQ");
+                        candidate.GrossPremium ??= GetDecimal(prpRow, "IT5UPRPUBRU");
+                        candidate.NetPremium ??= GetDecimal(prpRow, "IT5UPRPUNET");
                     }
                 }
 
@@ -578,6 +611,18 @@ namespace AutoActivator.Services
                     {
                         DataRow uconRow = uconTable.Rows[0];
                         candidate.ContractStartDate ??= GetDateTime(uconRow, "IT5UCONDDEB");
+                        if (string.IsNullOrWhiteSpace(candidate.ContractNumber))
+                        {
+                            foreach (DataRow row in uconTable.Rows)
+                            {
+                                string refExn = GetString(row, "IT5UCONLREFEXN");
+                                if (!string.IsNullOrWhiteSpace(refExn))
+                                {
+                                    candidate.ContractNumber = refExn;
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
             }

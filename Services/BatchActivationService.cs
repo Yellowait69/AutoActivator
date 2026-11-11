@@ -314,18 +314,13 @@ namespace AutoActivator.Services
                             token)
                         .ConfigureAwait(false);
 
-                    string effectiveItemEnvironmentSuffix =
-                        !string.IsNullOrWhiteSpace(lookup.ResolvedEnvironment)
-                            ? Settings.NormalizeEnvironmentSuffix(lookup.ResolvedEnvironment)
-                            : environmentSuffix;
-
                     string demandCandidate = itemIsDemandId ? item.RawInput : lookup.DemandId;
                     if (!string.IsNullOrWhiteSpace(demandCandidate) &&
                         long.TryParse(demandCandidate, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
                     {
                         routing = await TryResolveRoutingAsync(
                                 demandCandidate,
-                                effectiveItemEnvironmentSuffix,
+                                environmentSuffix,
                                 onProgress,
                                 token)
                             .ConfigureAwait(false);
@@ -364,7 +359,7 @@ namespace AutoActivator.Services
                     automaticPlan = await _dataService.ResolveAutomaticActivationPlanAsync(
                             item.RawInput,
                             itemIsDemandId,
-                            effectiveItemEnvironmentSuffix,
+                            environmentSuffix,
                             cus,
                             item.Branch23Override ?? markAllAsBranch23,
                             inputMode,

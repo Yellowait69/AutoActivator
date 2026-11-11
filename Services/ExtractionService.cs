@@ -105,49 +105,6 @@ namespace AutoActivator.Services
                 }
             }
 
-            // Cross-environment fallback (D000 <-> Q000) if nothing was found in the selected environment
-            if (dtContext.Rows.Count == 0)
-            {
-                string otherEnv = string.Equals(envSuffix, "Q000", StringComparison.OrdinalIgnoreCase) ? "D000" : "Q000";
-                try
-                {
-                    var otherDb = new DatabaseManager(otherEnv);
-                    var otherQueries = SqlQueries.GetQueries(otherEnv);
-                    DataTable otherDt = await otherDb.GetDataAsync(
-                        otherQueries[contextQueryKey],
-                        new Dictionary<string, object> { { contextParamName, cleanedInput } },
-                        token).ConfigureAwait(false);
-
-                    if (otherDt.Rows.Count == 0 && (!effectiveFirstIsDemand ? canQueryAsDemand : true))
-                    {
-                        otherDt.Dispose();
-                        string alternateQueryKey = !effectiveFirstIsDemand ? "GET_FULL_CONTEXT_BY_DEMAND" : "GET_FULL_CONTEXT_BY_CONTRACT";
-                        string alternateParamName = !effectiveFirstIsDemand ? "@DemandId" : "@ContractNumber";
-                        otherDt = await otherDb.GetDataAsync(
-                            otherQueries[alternateQueryKey],
-                            new Dictionary<string, object> { { alternateParamName, cleanedInput } },
-                            token).ConfigureAwait(false);
-                    }
-
-                    if (otherDt.Rows.Count > 0)
-                    {
-                        dtContext.Dispose();
-                        dtContext = otherDt;
-                        envSuffix = otherEnv;
-                        db = otherDb;
-                        envQueries = otherQueries;
-                    }
-                    else
-                    {
-                        otherDt.Dispose();
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ExtractionService] Cross-environment context query warning: {ex.Message}");
-                }
-            }
-
             using (dtContext)
             {
                 if (dtContext.Rows.Count > 0)
@@ -414,16 +371,22 @@ namespace AutoActivator.Services
                         if (tableName.Equals("FJ1.TB5UCON", StringComparison.OrdinalIgnoreCase) &&
                             dt.Rows.Count > 0)
                         {
-                            if (string.Equals(cleanedContract, cleanedInput, StringComparison.OrdinalIgnoreCase) &&
-                                dt.Columns.Contains("IT5UCONLREFEXN"))
-                            {
-                                string? refExn = dt.Rows[0]["IT5UCONLREFEXN"]?.ToString()?.Trim();
-                                if (!string.IsNullOrWhiteSpace(refExn))
-                                    cleanedContract = refExn;
-                            }
                             if (!contractStartDate.HasValue && dt.Columns.Contains("IT5UCONDDEB"))
                             {
                                 contractStartDate = TryParseSqlDate(dt.Rows[0]["IT5UCONDDEB"]);
+                            }
+                            if (string.Equals(cleanedContract, cleanedInput, StringComparison.OrdinalIgnoreCase) &&
+                                dt.Columns.Contains("IT5UCONLREFEXN"))
+                            {
+                                foreach (DataRow uRow in dt.Rows)
+                                {
+                                    string? refExn = uRow["IT5UCONLREFEXN"]?.ToString()?.Trim();
+                                    if (!string.IsNullOrWhiteSpace(refExn))
+                                    {
+                                        cleanedContract = refExn;
+                                        break;
+                                    }
+                                }
                             }
                         }
                         else if (tableName.Equals("FJ1.TB5UPRP", StringComparison.OrdinalIgnoreCase) &&

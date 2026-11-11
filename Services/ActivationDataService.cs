@@ -99,89 +99,12 @@ namespace AutoActivator.Services
                 await ResolveContractForActivationAsync(
                     input, isDemandId, environment, token).ConfigureAwait(false);
 
-            if (lookup.FoundInElia && !string.IsNullOrWhiteSpace(lookup.ResolvedEnvironment))
-            {
-                string resolvedEnv = Settings.NormalizeEnvironmentSuffix(lookup.ResolvedEnvironment);
-                if (!string.Equals(resolvedEnv, environment, StringComparison.OrdinalIgnoreCase))
-                {
-                    environment = resolvedEnv;
-                    existingRouting = null;
-                }
-            }
-
             if (!lookup.FoundInElia && inputMode == ActivationInputMode.Manual && !isDemandId && !string.IsNullOrWhiteSpace(input))
             {
                 lookup.ContractNumber = input;
                 lookup.JclContract = FormatContractStatic(input);
                 lookup.FoundInElia = true;
             }
-
-            if (!lookup.FoundInElia || IsMissingValue(lookup.ContractNumber))
-            {
-                string otherEnv = string.Equals(environment, "Q000", StringComparison.OrdinalIgnoreCase)
-                    ? "D000"
-                    : "Q000";
-                try
-                {
-                    ActivationLookupResult otherLookup = await ResolveContractForActivationAsync(
-                        input, isDemandId, otherEnv, token).ConfigureAwait(false);
-                    if (otherLookup.FoundInElia && !IsMissingValue(otherLookup.ContractNumber))
-                    {
-                        lookup = otherLookup;
-                        environment = Settings.NormalizeEnvironmentSuffix(
-                            !string.IsNullOrWhiteSpace(otherLookup.ResolvedEnvironment)
-                                ? otherLookup.ResolvedEnvironment
-                                : otherEnv);
-                        existingRouting = null;
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    Debug.WriteLine($"[AutomaticActivationPlan] Cross-environment check note: {ex.Message}");
-                }
-            }
-
-            if (!lookup.FoundInElia || IsMissingValue(lookup.ContractNumber))
-            {
-                string notFoundDetail = $"BLOCKED_CONTRACT_NOT_FOUND: '{input}' introuvable dans ELIA ({environment}) [Statut: {lookup.DbDiagnosticStatus}]";
-                if (!string.IsNullOrWhiteSpace(lookup.DbError))
-                {
-                    notFoundDetail += $" | SQL Error: {lookup.DbError}";
-                }
-
-                return new AutomaticActivationPlan
-                {
-                    InputMode = inputMode,
-                    InputValue = input,
-                    InputIsDemandId = isDemandId,
-                    ForceBranch23 = forceBranch23,
-                    Environment = environment,
-                    Cus = normalizedCus,
-                    ResumeStrategy = ActivationResumeStrategy.Blocked,
-                    Overrides = effectiveOverrides,
-                    Diagnostic = notFoundDetail
-                };
-            }
-
-            effectiveOverrides.TryGetValue("BUCP", out string? bucpOverride);
-            effectiveOverrides.TryGetValue("CMDPMT", out string? cmdpmtOverride);
-            string channelCode = ResolveOverride(
-                lookup.ChannelCode, effectiveOverrides, inputMode, "CHANNEL");
-            string processCode = ResolveOverride(
-                lookup.ProcessCode, effectiveOverrides, inputMode, "PROCESS");
-
-            ActivationRoutingResult paymentRouting =
-                _activationRoutingService.Resolve(
-                    channelCode,
-                    bucpOverride,
-                    cmdpmtOverride,
-                    inputMode);
-
-            decimal grossPremium = ParseDecimal(lookup.RawPremium);
-            if (inputMode.AllowsManualOverrides() &&
-                effectiveOverrides.TryGetValue("AMOUNT", out string? amountOverride) &&
-                TryParsePositiveAmount(amountOverride, out decimal manualAmount))
-                grossPremium = manualAmount;
 
             PreActivationRoutingInfo? planRouting = existingRouting;
             if (planRouting == null && !IsMissingValue(lookup.DemandId))
@@ -205,6 +128,58 @@ namespace AutoActivator.Services
                         "[AutomaticActivationPlan] Business date context unavailable: " +
                         exception.Message);
                 }
+            }
+
+            if (planRouting != null && planRouting.RoutingStatus != PreActivationRoutingStatus.DemandNotFound)
+            {
+                lookup.FoundInElia = true;
+                if (IsMissingValue(lookup.ContractNumber) && !string.IsNullOrWhiteSpace(planRouting.ContractNumber))
+                {
+                    lookup.ContractNumber = planRouting.ContractNumber.Trim();
+                    lookup.JclContract = FormatContractStatic(lookup.ContractNumber);
+                }
+                if (IsMissingValue(lookup.EliaUconId) && planRouting.EliaContractId.HasValue)
+                {
+                    lookup.EliaUconId = planRouting.EliaContractId.Value.ToString(CultureInfo.InvariantCulture);
+                }
+                if (IsMissingValue(lookup.ProductCode) && !string.IsNullOrWhiteSpace(planRouting.ProductCode))
+                {
+                    lookup.ProductCode = planRouting.ProductCode.Trim();
+                }
+                if (IsMissingValue(lookup.ProcessCode) && !string.IsNullOrWhiteSpace(planRouting.ProcessCode))
+                {
+                    lookup.ProcessCode = planRouting.ProcessCode.Trim();
+                }
+                if (IsMissingValue(lookup.ChannelCode) && !string.IsNullOrWhiteSpace(planRouting.ChannelCode))
+                {
+                    lookup.ChannelCode = planRouting.ChannelCode.Trim();
+                }
+            }
+
+            effectiveOverrides.TryGetValue("BUCP", out string? bucpOverride);
+            effectiveOverrides.TryGetValue("CMDPMT", out string? cmdpmtOverride);
+            string channelCode = ResolveOverride(
+                lookup.ChannelCode, effectiveOverrides, inputMode, "CHANNEL");
+            string processCode = ResolveOverride(
+                lookup.ProcessCode, effectiveOverrides, inputMode, "PROCESS");
+
+            ActivationRoutingResult paymentRouting =
+                _activationRoutingService.Resolve(
+                    channelCode,
+                    bucpOverride,
+                    cmdpmtOverride,
+                    inputMode);
+
+            decimal grossPremium = ParseDecimal(lookup.RawPremium);
+            if (grossPremium <= 0m && planRouting?.GrossPremium.HasValue == true)
+            {
+                grossPremium = planRouting.GrossPremium.Value;
+            }
+            if (inputMode.AllowsManualOverrides() &&
+                effectiveOverrides.TryGetValue("AMOUNT", out string? amountOverride) &&
+                TryParsePositiveAmount(amountOverride, out decimal manualAmount))
+            {
+                grossPremium = manualAmount;
             }
 
             DateTime runDate = ResolvePlanRunDate(
@@ -233,18 +208,11 @@ namespace AutoActivator.Services
                     ? "Manual override" : "Channel routing matrix"
             };
 
-            string diagnostic = alreadyActive
-                ? "ALREADY_ACTIVATED"
-                : !paymentRouting.IsResolved
-                    ? paymentRouting.DiagnosticCode
-                    : grossPremium <= 0m
-                        ? "BLOCKED_NO_POSITIVE_PREMIUM"
-                        : "READY_FOR_PRE_ACTIVATION";
-
             bool effectiveIsBranch23 =
                 forceBranch23 ||
                 lookup.IsBranch23 == true ||
                 planRouting?.IsBranch23 == true ||
+                Settings.PreActivationRouting.IsKnownBranch23Product(lookup.ProductCode) ||
                 lookup.FundFeatureCount > 0 ||
                 (planRouting?.FundFeatureCount ?? 0) > 0;
 
@@ -308,6 +276,110 @@ namespace AutoActivator.Services
             int effectiveFundCount = Math.Max(
                 Math.Max(lookup.FundFeatureCount, planRouting?.FundFeatureCount ?? 0),
                 distinctResolvedFunds.Count);
+
+            if (effectiveFundCount > 0)
+            {
+                effectiveIsBranch23 = true;
+            }
+
+            if (!lookup.FoundInElia || IsMissingValue(lookup.ContractNumber))
+            {
+                string notFoundDetail = lookup.FoundInElia
+                    ? $"BLOCKED_CONTRACT_NOT_FOUND: Demand ID '{input}' trouvé dans ELIA ({environment}, UCON={DisplayValue(lookup.EliaUconId)}, {(effectiveIsBranch23 ? "Branche 23" : "Branche 21")}) mais aucun N° de contrat externe (IT5UCONLREFEXN) n'est attribué dans TB5UCON [Statut: {lookup.DbDiagnosticStatus}]"
+                    : $"BLOCKED_CONTRACT_NOT_FOUND: '{input}' introuvable dans ELIA ({environment}) [Statut: {lookup.DbDiagnosticStatus}]";
+
+                if (!string.IsNullOrWhiteSpace(lookup.DbError))
+                {
+                    notFoundDetail += $" | SQL Error: {lookup.DbError}";
+                }
+                else
+                {
+                    string otherEnv = string.Equals(environment, "Q000", StringComparison.OrdinalIgnoreCase)
+                        ? "D000"
+                        : "Q000";
+                    try
+                    {
+                        ActivationLookupResult otherLookup = await ResolveContractForActivationAsync(
+                            input, isDemandId, otherEnv, token).ConfigureAwait(false);
+                        if (otherLookup.FoundInElia && !IsMissingValue(otherLookup.ContractNumber))
+                        {
+                            notFoundDetail += $" | ATTENTION : '{input}' existe dans {otherEnv} (Contrat {otherLookup.ContractNumber}) ! Basculez l'environnement cible sur {otherEnv[0]}.";
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[AutomaticActivationPlan] Cross-environment check note: {ex.Message}");
+                    }
+                }
+
+                return new AutomaticActivationPlan
+                {
+                    InputMode = inputMode,
+                    InputValue = input,
+                    InputIsDemandId = isDemandId,
+                    ForceBranch23 = forceBranch23,
+                    Environment = environment,
+                    Ims = NormalizeShortEnvironment(environment) == "D" ? "IM7T" : "IM7C",
+                    Db2 = NormalizeShortEnvironment(environment) == "D" ? "Q2T" : "Q2C",
+                    Cus = normalizedCus,
+                    FastCtrl = NormalizeShortEnvironment(environment) == "D"
+                        ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL",
+                    EliaDatabase = Settings.DbConfig.GetLifeDatabase(environment),
+                    PaymentDatabase = Settings.DbConfig.GetLisaPaymentDatabase(environment),
+                    ContractDatabase = Settings.DbConfig.GetLisaContractDatabase(environment),
+                    ContractNumber = lookup.ContractNumber,
+                    MainframeContractNumber = lookup.JclContract,
+                    EliaId = lookup.EliaUconId,
+                    DemandId = lookup.DemandId,
+                    LisaInternalId = IsMissingValue(lookup.LisaInternalId) ? string.Empty : lookup.LisaInternalId,
+                    ProductCode = lookup.ProductCode,
+                    ProcessCode = processCode,
+                    ChannelCode = channelCode,
+                    ApplicationChannel = lookup.ApplicationChannelCode,
+                    DemandStatus = lookup.DemandStatus,
+                    EliaPaymentCode = lookup.PaymentMethodCode,
+                    DemandLinkCount = IsMissingValue(lookup.DemandId) ? 0 : 1,
+                    PremiumCandidateCount = grossPremium > 0m ? 1 : 0,
+                    PaymentCandidateCount =
+                        !string.IsNullOrWhiteSpace(lookup.PaymentMethodCode) ||
+                        paymentRouting.IsResolved
+                            ? 1
+                            : 0,
+                    GrossPremium = grossPremium,
+                    NetPremium = ParseNullableDecimal(lookup.NetPremium),
+                    RunDate = runDate,
+                    RunDateSource = sources["RunDate"],
+                    PaymentChannel = paymentRouting.PaymentChannel,
+                    Bucp = paymentRouting.Bucp,
+                    PaymentCommand = paymentRouting.PaymentCommand,
+                    RoutingRule = paymentRouting.Rule,
+                    RoutingStatus = paymentRouting.Status.ToString(),
+                    FundFeatureCount = effectiveFundCount,
+                    ResolvedFunds = distinctResolvedFunds,
+                    FundsSource = fundsSourceText,
+                    BranchClassification = effectiveIsBranch23
+                        ? ContractBranchClassification.Branch23
+                        : lookup.BranchClassification != ContractBranchClassification.Unknown
+                            ? lookup.BranchClassification
+                            : ContractBranchClassification.Standard,
+                    BranchDetectionSource = lookup.BranchDetectionSource,
+                    BranchDetectionReason = lookup.BranchDetectionReason,
+                    IsBranch23 = effectiveIsBranch23,
+                    IsAlreadyActive = false,
+                    ResumeStrategy = ActivationResumeStrategy.Blocked,
+                    ValueSources = sources,
+                    Overrides = effectiveOverrides,
+                    Diagnostic = notFoundDetail
+                };
+            }
+
+            string diagnostic = alreadyActive
+                ? "ALREADY_ACTIVATED"
+                : !paymentRouting.IsResolved
+                    ? paymentRouting.DiagnosticCode
+                    : grossPremium <= 0m
+                        ? "BLOCKED_NO_POSITIVE_PREMIUM"
+                        : "READY_FOR_PRE_ACTIVATION";
 
             return new AutomaticActivationPlan
             {

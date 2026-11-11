@@ -45,47 +45,88 @@ namespace AutoActivator.Services
 
             try
             {
-                result = await ResolveContractInEnvironmentInternalAsync(
+                await TryResolveWithModeAsync(
                         cleanInput,
                         isDemandId,
+                        normalizedEnvironment,
+                        result,
+                        token)
+                    .ConfigureAwait(false);
+
+                // Bidirectional auto-detection fallback:
+                // If not found in ELIA with the initial mode (e.g. 9-digit JCL contract treated as Demand ID,
+                // or Demand ID treated as Contract), automatically try the opposite mode on an isolated result
+                // so a negative opposite-mode query never wipes out a valid ELIA match from the primary mode.
+                if (!result.FoundInElia || IsMissingValue(result.ContractNumber))
+                {
+                    bool oppositeMode = !isDemandId;
+                    var alternateResult = new ActivationLookupResult
+                    {
+                        RawInput = cleanInput,
+                        IsDemandId = oppositeMode,
+                        DemandId = oppositeMode ? cleanInput : "N/A",
+                        DbDiagnosticStatus = oppositeMode
+                            ? "DEMAND NOT FOUND"
+                            : "CONTRACT NOT FOUND"
+                    };
+
+                    await TryResolveWithModeAsync(
+                            cleanInput,
+                            oppositeMode,
+                            normalizedEnvironment,
+                            alternateResult,
+                            token)
+                        .ConfigureAwait(false);
+
+                    bool shouldAdoptAlternate =
+                        alternateResult.FoundInElia &&
+                        (!IsMissingValue(alternateResult.ContractNumber) || !result.FoundInElia);
+
+                    if (shouldAdoptAlternate)
+                    {
+                        result = alternateResult;
+                        if (!oppositeMode && string.Equals(result.DemandId, cleanInput, StringComparison.OrdinalIgnoreCase))
+                        {
+                            result.DemandId = "N/A";
+                        }
+                    }
+                }
+
+                await TryCompleteFromEliaUconSafeAsync(
+                        result,
                         normalizedEnvironment,
                         token)
                     .ConfigureAwait(false);
 
-                // Automatic cross-environment fallback (D000 <-> Q000):
-                // If the Demand ID or Contract was not found in the selected environment,
-                // automatically check the other environment so D000/Q000 mismatches never block activation.
-                if (!result.FoundInElia || IsMissingValue(result.ContractNumber))
-                {
-                    string otherEnvironment = string.Equals(normalizedEnvironment, "Q000", StringComparison.OrdinalIgnoreCase)
-                        ? "D000"
-                        : "Q000";
+                await TryEnrichLookupFromResolvedDemandSafeAsync(
+                        result,
+                        normalizedEnvironment,
+                        token)
+                    .ConfigureAwait(false);
 
-                    try
-                    {
-                        ActivationLookupResult otherResult = await ResolveContractInEnvironmentInternalAsync(
-                                cleanInput,
-                                isDemandId,
-                                otherEnvironment,
-                                token)
-                            .ConfigureAwait(false);
+                await TryCompleteDirectDemandRoutingAsync(
+                        result,
+                        normalizedEnvironment,
+                        token)
+                    .ConfigureAwait(false);
 
-                        if (otherResult.FoundInElia && !IsMissingValue(otherResult.ContractNumber))
-                        {
-                            result = otherResult;
-                            result.ResolvedEnvironment = otherEnvironment;
-                        }
-                        else if (!result.FoundInElia && otherResult.FoundInElia)
-                        {
-                            result = otherResult;
-                            result.ResolvedEnvironment = otherEnvironment;
-                        }
-                    }
-                    catch (Exception crossEx) when (crossEx is not OperationCanceledException)
-                    {
-                        Debug.WriteLine($"[ActivationLookup] Cross-environment fallback note ({otherEnvironment}): {crossEx.Message}");
-                    }
-                }
+                await TryCompleteFromEliaUconSafeAsync(
+                        result,
+                        normalizedEnvironment,
+                        token)
+                    .ConfigureAwait(false);
+
+                await TryCompleteContractFundCountSafeAsync(
+                        result,
+                        normalizedEnvironment,
+                        token)
+                    .ConfigureAwait(false);
+
+                await TryCompleteLisaInformationAsync(
+                        result,
+                        normalizedEnvironment,
+                        token)
+                    .ConfigureAwait(false);
 
                 if (!result.FoundInElia && !result.IsDemandId && IsMissingValue(result.ContractNumber))
                 {
@@ -94,10 +135,7 @@ namespace AutoActivator.Services
                 }
 
                 NormalizeLookupResult(result);
-                DebugLookupResult(
-                    "Resolved lookup result",
-                    result,
-                    !string.IsNullOrWhiteSpace(result.ResolvedEnvironment) ? result.ResolvedEnvironment : normalizedEnvironment);
+                DebugLookupResult("Resolved lookup result", result, normalizedEnvironment);
             }
             catch (OperationCanceledException)
             {
@@ -117,156 +155,6 @@ namespace AutoActivator.Services
             }
 
             return result;
-        }
-
-        private async Task<ActivationLookupResult> ResolveContractInEnvironmentInternalAsync(
-            string cleanInput,
-            bool isDemandId,
-            string normalizedEnvironment,
-            CancellationToken token)
-        {
-            var result = new ActivationLookupResult
-            {
-                RawInput = cleanInput,
-                IsDemandId = isDemandId,
-                DemandId = isDemandId ? cleanInput : "N/A",
-                DbDiagnosticStatus = isDemandId
-                    ? "DEMAND NOT FOUND"
-                    : "CONTRACT NOT FOUND"
-            };
-
-            await TryResolveWithModeAsync(
-                    cleanInput,
-                    isDemandId,
-                    normalizedEnvironment,
-                    result,
-                    token)
-                .ConfigureAwait(false);
-
-            // Bidirectional auto-detection fallback:
-            // Run on an isolated lookup instance so a 0-row result in the opposite mode
-            // never overwrites FoundInElia / DemandId / UconId resolved by the primary mode.
-            if (!result.FoundInElia || IsMissingValue(result.ContractNumber))
-            {
-                bool oppositeMode = !isDemandId;
-                var oppositeResult = new ActivationLookupResult
-                {
-                    RawInput = cleanInput,
-                    IsDemandId = oppositeMode,
-                    DemandId = oppositeMode ? cleanInput : "N/A",
-                    DbDiagnosticStatus = oppositeMode
-                        ? "DEMAND NOT FOUND"
-                        : "CONTRACT NOT FOUND"
-                };
-
-                await TryResolveWithModeAsync(
-                        cleanInput,
-                        oppositeMode,
-                        normalizedEnvironment,
-                        oppositeResult,
-                        token)
-                    .ConfigureAwait(false);
-
-                if (oppositeResult.FoundInElia && !IsMissingValue(oppositeResult.ContractNumber))
-                {
-                    result = oppositeResult;
-                }
-                else if (!result.FoundInElia && oppositeResult.FoundInElia)
-                {
-                    result = oppositeResult;
-                }
-            }
-
-            // If UCON ID is known in ELIA but ContractNumber was not yet populated, resolve it directly from FJ1.TB5UCON
-            if (IsMissingValue(result.ContractNumber) && !IsMissingValue(result.EliaUconId))
-            {
-                await TryCompleteContractNumberFromUconSafeAsync(result, normalizedEnvironment, token)
-                    .ConfigureAwait(false);
-            }
-
-            await TryEnrichLookupFromResolvedDemandSafeAsync(
-                    result,
-                    normalizedEnvironment,
-                    token)
-                .ConfigureAwait(false);
-
-            if (IsMissingValue(result.ContractNumber) && !IsMissingValue(result.EliaUconId))
-            {
-                await TryCompleteContractNumberFromUconSafeAsync(result, normalizedEnvironment, token)
-                    .ConfigureAwait(false);
-            }
-
-            await TryCompleteDirectDemandRoutingAsync(
-                    result,
-                    normalizedEnvironment,
-                    token)
-                .ConfigureAwait(false);
-
-            await TryCompleteContractFundCountSafeAsync(
-                    result,
-                    normalizedEnvironment,
-                    token)
-                .ConfigureAwait(false);
-
-            await TryCompleteLisaInformationAsync(
-                    result,
-                    normalizedEnvironment,
-                    token)
-                .ConfigureAwait(false);
-
-            if (result.FoundInElia && string.IsNullOrWhiteSpace(result.ResolvedEnvironment))
-            {
-                result.ResolvedEnvironment = normalizedEnvironment;
-            }
-
-            NormalizeLookupResult(result);
-            return result;
-        }
-
-        private static async Task TryCompleteContractNumberFromUconSafeAsync(
-            ActivationLookupResult result,
-            string environment,
-            CancellationToken token)
-        {
-            if (!IsMissingValue(result.ContractNumber) || IsMissingValue(result.EliaUconId))
-            {
-                return;
-            }
-
-            try
-            {
-                var database = new DatabaseManager(environment);
-                ReadOnlyDictionary<string, string> envQueries = SqlQueries.GetQueries(environment);
-                if (!envQueries.TryGetValue("FJ1.TB5UCON", out string? uconQuery))
-                {
-                    return;
-                }
-
-                using DataTable table = await database.GetDataAsync(
-                        uconQuery,
-                        new Dictionary<string, object> { ["@EliaId"] = result.EliaUconId.Trim() },
-                        token)
-                    .ConfigureAwait(false);
-
-                if (table.Rows.Count > 0 && table.Columns.Contains("IT5UCONLREFEXN"))
-                {
-                    foreach (DataRow row in table.Rows)
-                    {
-                        string? contractNum = GetString(row, "IT5UCONLREFEXN");
-                        if (!string.IsNullOrWhiteSpace(contractNum))
-                        {
-                            result.ContractNumber = contractNum.Trim();
-                            result.JclContract = FormatContractStatic(result.ContractNumber);
-                            result.FoundInElia = true;
-                            break;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Debug.WriteLine($"[ActivationLookup] TB5UCON direct contract lookup warning: {ex.Message}");
-            }
         }
 
         private async Task TryResolveWithModeAsync(
@@ -378,12 +266,17 @@ namespace AutoActivator.Services
             }
         }
 
-        private static async Task TryCompleteContractFundCountSafeAsync(
+        private static async Task TryCompleteFromEliaUconSafeAsync(
             ActivationLookupResult result,
             string environment,
             CancellationToken token)
         {
-            if (result.FundFeatureCount > 0 || IsMissingValue(result.ContractNumber))
+            if (IsMissingValue(result.EliaUconId) ||
+                !decimal.TryParse(
+                    result.EliaUconId,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out decimal numericUconId))
             {
                 return;
             }
@@ -391,6 +284,186 @@ namespace AutoActivator.Services
             try
             {
                 var database = new DatabaseManager(environment);
+                var eliaParams = new Dictionary<string, object>
+                {
+                    ["@EliaId"] = numericUconId
+                };
+
+                result.FoundInElia = true;
+
+                if (IsMissingValue(result.ContractNumber) &&
+                    SqlQueries.ContainsQuery("FJ1.TB5UCON", environment))
+                {
+                    using DataTable uconTable = await database
+                        .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UCON", environment), eliaParams, token)
+                        .ConfigureAwait(false);
+                    foreach (DataRow row in uconTable.Rows)
+                    {
+                        string? refExn = GetString(row, "IT5UCONLREFEXN");
+                        if (!string.IsNullOrWhiteSpace(refExn))
+                        {
+                            result.ContractNumber = refExn.Trim();
+                            result.JclContract = FormatContractStatic(result.ContractNumber);
+                            break;
+                        }
+                    }
+                }
+
+                if ((IsMissingValue(result.RawPremium) || result.RawPremium == "0") &&
+                    SqlQueries.ContainsQuery("FJ1.TB5UPRP", environment))
+                {
+                    using DataTable prpTable = await database
+                        .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UPRP", environment), eliaParams, token)
+                        .ConfigureAwait(false);
+                    if (prpTable.Rows.Count > 0)
+                    {
+                        DataRow prpRow = prpTable.Rows[0];
+                        AssignIfAvailable(prpRow, "IT5UAVENSEQ", v =>
+                        {
+                            if (IsMissingValue(result.PremiumSequence))
+                                result.PremiumSequence = v.Trim();
+                        });
+                        AssignIfAvailable(prpRow, "IT5UPRPUBRU", v => result.RawPremium = v.Trim());
+                        AssignIfAvailable(prpRow, "IT5UPRPUNET", v =>
+                        {
+                            if (IsMissingValue(result.NetPremium))
+                                result.NetPremium = v.Trim();
+                        });
+                    }
+                }
+
+                if (result.FundFeatureCount == 0)
+                {
+                    int uconFundCount = 0;
+                    if (SqlQueries.ContainsQuery("FJ1.TB5UGFF", environment))
+                    {
+                        using DataTable gffTable = await database
+                            .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UGFF", environment), eliaParams, token)
+                            .ConfigureAwait(false);
+                        foreach (DataRow row in gffTable.Rows)
+                        {
+                            if (!string.IsNullOrWhiteSpace(GetString(row, "IT5UGFFCFND")) ||
+                                !string.IsNullOrWhiteSpace(GetString(row, "IT5UGFFCFNDDSI")))
+                            {
+                                uconFundCount++;
+                            }
+                        }
+                    }
+
+                    if (SqlQueries.ContainsQuery("FJ1.TB5UPRF", environment))
+                    {
+                        using DataTable prfTable = await database
+                            .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UPRF", environment), eliaParams, token)
+                            .ConfigureAwait(false);
+                        foreach (DataRow row in prfTable.Rows)
+                        {
+                            if (!string.IsNullOrWhiteSpace(GetString(row, "IT5UPRFCFND")))
+                            {
+                                uconFundCount++;
+                            }
+                        }
+                    }
+
+                    if (uconFundCount > 0)
+                    {
+                        result.FundFeatureCount = uconFundCount;
+                    }
+                }
+
+                if (IsMissingValue(result.ProductCode) ||
+                    IsMissingValue(result.ProcessCode) ||
+                    IsMissingValue(result.ChannelCode))
+                {
+                    using DataTable demandTable = await database
+                        .GetDataAsync(SqlQueries.GetQuery("GET_ELIA_DEMAND_IDS", environment), eliaParams, token)
+                        .ConfigureAwait(false);
+                    for (int i = demandTable.Rows.Count - 1; i >= 0; i--)
+                    {
+                        string? dId = GetString(demandTable.Rows[i], "IT5HDMDAIDN");
+                        if (string.IsNullOrWhiteSpace(dId))
+                            continue;
+
+                        if (IsMissingValue(result.DemandId))
+                        {
+                            result.DemandId = dId.Trim();
+                        }
+
+                        using DataTable dRoutingTable = await database
+                            .GetDataAsync(
+                                SqlQueries.GetQuery("GET_ELIA_DEMAND_ROUTING", environment),
+                                new Dictionary<string, object> { ["@DemandId"] = dId.Trim() },
+                                token)
+                            .ConfigureAwait(false);
+                        if (dRoutingTable.Rows.Count > 0)
+                        {
+                            DataRow dRow = dRoutingTable.Rows[0];
+                            AssignNormalizedIfMissing(result.ProductCode, GetString(dRow, "ProductCode"), v => result.ProductCode = v);
+                            AssignNormalizedIfMissing(result.ProcessCode, GetString(dRow, "ProcessCode"), v => result.ProcessCode = v);
+                            AssignNormalizedIfMissing(result.ChannelCode, GetString(dRow, "ChannelCode"), v => result.ChannelCode = v);
+                            AssignNormalizedIfMissing(result.ApplicationChannelCode, GetString(dRow, "ApplicationChannelCode"), v => result.ApplicationChannelCode = v);
+                            AssignNormalizedIfMissing(result.DemandStatus, GetString(dRow, "DemandStatus"), v => result.DemandStatus = v);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ActivationLookup] UCON completion warning: {ex.Message}");
+            }
+        }
+
+        private static async Task TryCompleteContractFundCountSafeAsync(
+            ActivationLookupResult result,
+            string environment,
+            CancellationToken token)
+        {
+            if (result.FundFeatureCount > 0)
+            {
+                return;
+            }
+
+            try
+            {
+                var database = new DatabaseManager(environment);
+
+                if (!IsMissingValue(result.DemandId) &&
+                    decimal.TryParse(
+                        result.DemandId,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out decimal numericDemandId))
+                {
+                    string demandCountQuery = SqlQueries.GetQuery("GET_ELIA_FUND_FEATURE_COUNT_BY_DEMAND", environment);
+                    using DataTable demandCountTable = await database
+                        .GetDataAsync(
+                            demandCountQuery,
+                            new Dictionary<string, object> { ["@DemandId"] = numericDemandId },
+                            token)
+                        .ConfigureAwait(false);
+                    if (demandCountTable.Rows.Count > 0 &&
+                        demandCountTable.Columns.Contains("FundFeatureCount") &&
+                        demandCountTable.Rows[0]["FundFeatureCount"] != DBNull.Value &&
+                        int.TryParse(
+                            demandCountTable.Rows[0]["FundFeatureCount"]?.ToString(),
+                            NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,
+                            out int demandFundCount) &&
+                        demandFundCount > 0)
+                    {
+                        result.FundFeatureCount = demandFundCount;
+                        return;
+                    }
+                }
+
+                if (IsMissingValue(result.ContractNumber))
+                {
+                    return;
+                }
+
                 var parameters = new Dictionary<string, object>
                 {
                     ["@ContractNumber"] = result.ContractNumber
@@ -657,10 +730,14 @@ namespace AutoActivator.Services
 
             result.PaymentMethodCode = routing.PaymentMethodCode ?? string.Empty;
             result.PremiumGroupType = routing.PremiumGroupType ?? string.Empty;
-            result.FundFeatureCount = routing.FundFeatureCount;
-            result.BranchClassification = routing.BranchClassification;
-            result.BranchDetectionSource = routing.BranchDetectionSource;
-            result.BranchDetectionReason = routing.BranchDetectionReason;
+            result.FundFeatureCount = Math.Max(result.FundFeatureCount, routing.FundFeatureCount);
+            if (routing.BranchClassification == ContractBranchClassification.Branch23 ||
+                result.BranchClassification != ContractBranchClassification.Branch23)
+            {
+                result.BranchClassification = routing.BranchClassification;
+                result.BranchDetectionSource = routing.BranchDetectionSource;
+                result.BranchDetectionReason = routing.BranchDetectionReason;
+            }
             result.RoutingStatus = routing.RoutingStatus;
             result.RoutingDiagnostic = routing.RoutingDiagnostic;
             result.DbDiagnosticStatus = BuildLookupDiagnosticStatus(routing);
@@ -781,7 +858,7 @@ namespace AutoActivator.Services
             {
                 result.ContractNumber = contractNumber.Trim();
             }
-            else if (!isDemandId)
+            else if (!isDemandId && IsMissingValue(result.ContractNumber))
             {
                 result.ContractNumber = cleanInput;
             }
@@ -813,7 +890,7 @@ namespace AutoActivator.Services
                     CultureInfo.InvariantCulture,
                     out int fundCount))
             {
-                result.FundFeatureCount = fundCount;
+                result.FundFeatureCount = Math.Max(result.FundFeatureCount, fundCount);
             }
 
             if (string.IsNullOrWhiteSpace(result.DbDiagnosticStatus))
@@ -987,8 +1064,7 @@ namespace AutoActivator.Services
 
                 if (string.IsNullOrWhiteSpace(contractNumber))
                 {
-                    throw new InvalidOperationException(
-                        "GET_CONTRACT_BY_DEMAND returned a row but no ContractNumber or IT5UCONLREFEXN value.");
+                    return null;
                 }
 
                 return contractNumber.Trim();
@@ -1101,29 +1177,27 @@ namespace AutoActivator.Services
             }
 
             // Classification Branche 21 / Branche 23 automatique
-            if (result.BranchClassification == ContractBranchClassification.Unknown)
+            if (Settings.PreActivationRouting.IsKnownBranch23Product(result.ProductCode))
             {
-                if (Settings.PreActivationRouting.IsKnownBranch23Product(result.ProductCode))
-                {
-                    result.BranchClassification = ContractBranchClassification.Branch23;
-                    result.BranchDetectionSource = BranchDetectionSource.EliaProductCode;
-                    result.BranchDetectionReason =
-                        $"ELIA ProductCode {result.ProductCode} is configured as Branche 23.";
-                }
-                else if (result.FundFeatureCount > 0)
-                {
-                    result.BranchClassification = ContractBranchClassification.Branch23;
-                    result.BranchDetectionSource = BranchDetectionSource.EliaFundFeatures;
-                    result.BranchDetectionReason =
-                        $"ELIA contract has {result.FundFeatureCount} fund feature(s) in TB5UGFF -> Branche 23.";
-                }
-                else if (!string.IsNullOrWhiteSpace(result.ProductCode) || result.FoundInElia)
-                {
-                    result.BranchClassification = ContractBranchClassification.Standard;
-                    result.BranchDetectionSource = BranchDetectionSource.EliaProductCode;
-                    result.BranchDetectionReason =
-                        $"ELIA ProductCode {DisplayValue(result.ProductCode)} with 0 fund features -> Branche 21.";
-                }
+                result.BranchClassification = ContractBranchClassification.Branch23;
+                result.BranchDetectionSource = BranchDetectionSource.EliaProductCode;
+                result.BranchDetectionReason =
+                    $"ELIA ProductCode {result.ProductCode} is configured as Branche 23.";
+            }
+            else if (result.FundFeatureCount > 0)
+            {
+                result.BranchClassification = ContractBranchClassification.Branch23;
+                result.BranchDetectionSource = BranchDetectionSource.EliaFundFeatures;
+                result.BranchDetectionReason =
+                    $"ELIA contract has {result.FundFeatureCount} fund feature(s) in TB5UGFF/TB5UPRF -> Branche 23.";
+            }
+            else if (result.BranchClassification == ContractBranchClassification.Unknown &&
+                     (!string.IsNullOrWhiteSpace(result.ProductCode) || result.FoundInElia))
+            {
+                result.BranchClassification = ContractBranchClassification.Standard;
+                result.BranchDetectionSource = BranchDetectionSource.EliaProductCode;
+                result.BranchDetectionReason =
+                    $"ELIA ProductCode {DisplayValue(result.ProductCode)} with 0 fund features -> Branche 21.";
             }
 
             // Enrichissement automatique du canal de paiement (BANK / BROKER_NEW_GEN)
@@ -1204,14 +1278,24 @@ namespace AutoActivator.Services
             return string.IsNullOrWhiteSpace(text) ? "<EMPTY>" : text.Trim();
         }
 
-        private static string CleanInput(string? value) =>
-            (value ?? string.Empty)
-                .Replace("=", string.Empty)
-                .Replace("\"", string.Empty)
-                .Replace("'", string.Empty)
+        private static string CleanInput(string? value)
+        {
+            string cleaned = (value ?? string.Empty)
                 .Replace("\u00A0", string.Empty)
                 .Replace("\uFEFF", string.Empty)
                 .Trim();
+
+            if (cleaned.Contains(',') || cleaned.Contains(';'))
+            {
+                string[] parts = cleaned.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0)
+                {
+                    cleaned = parts[parts.Length - 1].Trim();
+                }
+            }
+
+            return cleaned;
+        }
 
         private static string? GetString(DataRow row, string columnName)
         {

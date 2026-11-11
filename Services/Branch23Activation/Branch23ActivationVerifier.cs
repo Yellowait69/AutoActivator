@@ -83,7 +83,7 @@ SELECT DISTINCT
     LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))) AS NumeroContrat,
     NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
     d.IT5HDMDDCRE AS DemandCreationDate,
-    d.IT5HDMDDTISMAJDB2 AS LinkUpdateDate,
+    h.IT5HELTDTISMAJDB2 AS LinkUpdateDate,
     TRY_CONVERT(int, h.IT5HPRONSEQ) AS ProcessSequence,
     TRY_CONVERT(int, h.IT5HELTNSEQCON) AS ContractSequence,
     TRY_CONVERT(int, h.IT5HELTNSEQAVENOU) AS AmendmentSequence
@@ -93,12 +93,7 @@ INNER JOIN [FJ1].[TB5UCON] AS u WITH (NOLOCK)
 LEFT JOIN [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
     ON d.IT5HDMDAIDN = h.IT5HDMDAIDN
 WHERE TRY_CONVERT(decimal(15, 0), h.IT5HDMDAIDN) =
-      TRY_CONVERT(decimal(15, 0), @DemandId)
-   OR h.IT5HDMDAIDN IN (
-       SELECT d0.IT5HDMDAIDNDMDREF FROM [FJ1].[TB5HDMD] AS d0 WITH (NOLOCK) WHERE TRY_CONVERT(decimal(15, 0), d0.IT5HDMDAIDN) = TRY_CONVERT(decimal(15, 0), @DemandId) AND d0.IT5HDMDAIDNDMDREF IS NOT NULL
-       UNION
-       SELECT d0.IT5HDMDAIDNDMDLIE FROM [FJ1].[TB5HDMD] AS d0 WITH (NOLOCK) WHERE TRY_CONVERT(decimal(15, 0), d0.IT5HDMDAIDN) = TRY_CONVERT(decimal(15, 0), @DemandId) AND d0.IT5HDMDAIDNDMDLIE IS NOT NULL
-   );";
+      TRY_CONVERT(decimal(15, 0), @DemandId);";
 
         public const string EliaContractByNumber = @"
 SELECT DISTINCT
@@ -107,7 +102,7 @@ SELECT DISTINCT
     LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))) AS NumeroContrat,
     NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
     d.IT5HDMDDCRE AS DemandCreationDate,
-    d.IT5HDMDDTISMAJDB2 AS LinkUpdateDate,
+    h.IT5HELTDTISMAJDB2 AS LinkUpdateDate,
     TRY_CONVERT(int, h.IT5HPRONSEQ) AS ProcessSequence,
     TRY_CONVERT(int, h.IT5HELTNSEQCON) AS ContractSequence,
     TRY_CONVERT(int, h.IT5HELTNSEQAVENOU) AS AmendmentSequence
@@ -410,31 +405,15 @@ WHERE NO_CNT = @CoInterneLisa;";
             IReadOnlyList<Branch23EliaContractCandidate> candidates,
             string demandId)
         {
-            List<Branch23EliaContractCandidate> matching = candidates
-                .Where(candidate => string.Equals(
+            List<Branch23EliaContractCandidate> distinct = DistinctByEliaAndContract(
+                candidates.Where(candidate => string.Equals(
                     candidate.DemandId,
                     demandId,
-                    StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            List<Branch23EliaContractCandidate> distinct = DistinctByEliaAndContract(
-                matching.Count > 0 ? matching : candidates);
+                    StringComparison.OrdinalIgnoreCase)).ToList());
 
             if (distinct.Count == 1)
             {
                 return distinct[0];
-            }
-
-            if (distinct.Count > 1)
-            {
-                return distinct
-                    .OrderByDescending(candidate => candidate.IsActiveDemand)
-                    .ThenByDescending(candidate => candidate.ProcessSequence)
-                    .ThenByDescending(candidate => candidate.ContractSequence)
-                    .ThenByDescending(candidate => candidate.AmendmentSequence)
-                    .ThenByDescending(candidate => candidate.LinkUpdateDate)
-                    .ThenByDescending(candidate => candidate.DemandCreationDate)
-                    .First();
             }
 
             throw new Branch23ActivationException(
@@ -463,19 +442,6 @@ WHERE NO_CNT = @CoInterneLisa;";
             if (active.Count == 1)
             {
                 return active[0];
-            }
-
-            IReadOnlyList<Branch23EliaContractCandidate> pool = active.Count > 0 ? active : distinct;
-            if (pool.Count > 0)
-            {
-                return pool
-                    .OrderByDescending(candidate => candidate.IsActiveDemand)
-                    .ThenByDescending(candidate => candidate.ProcessSequence)
-                    .ThenByDescending(candidate => candidate.ContractSequence)
-                    .ThenByDescending(candidate => candidate.AmendmentSequence)
-                    .ThenByDescending(candidate => candidate.LinkUpdateDate)
-                    .ThenByDescending(candidate => candidate.DemandCreationDate)
-                    .First();
             }
 
             throw new Branch23ActivationException(

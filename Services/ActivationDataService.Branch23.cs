@@ -308,74 +308,44 @@ SELECT DISTINCT
     h.IT5HELTNSEQAVEREF AS ReferenceAddendumSequence,
     h.IT5HELTNSEQAVENOU AS NewAddendumSequence,
     u.IT5UCONLREFEXN AS ContractNumber
-FROM {qualifiedLife}.[FJ1].[TB5HELT] AS h WITH (NOLOCK)
-LEFT JOIN {qualifiedLife}.[FJ1].[TB5UCON] AS u WITH (NOLOCK)
+FROM {qualifiedLife}.[FJ1].[TB5HELT] AS h
+LEFT JOIN {qualifiedLife}.[FJ1].[TB5UCON] AS u
     ON u.IT5UCONAIDN = h.IT5UCONAIDN
-WHERE h.IT5HDMDAIDN = @DemandId
-   OR h.IT5HDMDAIDN IN (
-       SELECT d.IT5HDMDAIDNDMDREF FROM {qualifiedLife}.[FJ1].[TB5HDMD] AS d WITH (NOLOCK) WHERE d.IT5HDMDAIDN = @DemandId AND d.IT5HDMDAIDNDMDREF IS NOT NULL
-       UNION
-       SELECT d.IT5HDMDAIDNDMDLIE FROM {qualifiedLife}.[FJ1].[TB5HDMD] AS d WITH (NOLOCK) WHERE d.IT5HDMDAIDN = @DemandId AND d.IT5HDMDAIDNDMDLIE IS NOT NULL
-   );";
+WHERE h.IT5HDMDAIDN = @DemandId;";
             using DataTable context = await database.GetDataAsync(
                 query,
                 new Dictionary<string, object> { ["@DemandId"] = demandId },
                 token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
-            if (context.Rows.Count == 0)
+            if (context.Rows.Count != 1)
                 throw new InvalidOperationException(
-                    "BR23_ATTACHMENT_NOT_FOUND: no contract attachment found in TB5HELT for Demand ID " + demandId + ".");
+                    "BR23_ATTACHMENT_AMBIGUOUS: expected exactly one distinct " +
+                    "contract attachment for this demand; found " + context.Rows.Count +
+                    ". No historical addendum was selected.");
 
-            string target = FormatContractStatic(targetContract);
-            DataRow? selectedRow = null;
-            decimal selectedSeq = 0;
-
-            foreach (DataRow candidate in context.Rows)
-            {
-                string? linked = GetString(candidate, "ContractNumber");
-                if (!IsMissingValue(linked) &&
-                    string.Equals(FormatContractStatic(linked), target, StringComparison.Ordinal))
-                {
-                    decimal cSeq = TryReadBranch23AttachmentInteger(candidate, "ContractSequence");
-                    decimal rSeq = TryReadBranch23AttachmentInteger(candidate, "ReferenceAddendumSequence");
-                    decimal nSeq = TryReadBranch23AttachmentInteger(candidate, "NewAddendumSequence");
-                    decimal maxSeq = Math.Max(cSeq, Math.Max(rSeq, nSeq));
-                    if (selectedRow == null || maxSeq >= selectedSeq)
-                    {
-                        selectedRow = candidate;
-                        selectedSeq = maxSeq;
-                    }
-                }
-            }
-
-            DataRow row = selectedRow ?? context.Rows[context.Rows.Count - 1];
+            DataRow row = context.Rows[0];
             string? linkedContract = GetString(row, "ContractNumber");
+            string target = FormatContractStatic(targetContract);
             if (target.Length != 9 || target.Any(c => c < '0' || c > '9') ||
-                (!IsMissingValue(linkedContract) &&
-                 !string.Equals(FormatContractStatic(linkedContract), target, StringComparison.Ordinal)))
+                IsMissingValue(linkedContract) ||
+                !string.Equals(FormatContractStatic(linkedContract), target, StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "BR23_ATTACHMENT_CONTRACT_MISMATCH: the demand attachment does not confirm the activation target.");
 
             decimal id = ReadBranch23AttachmentInteger(row, "EliaContractId");
-            decimal contractSequence = TryReadBranch23AttachmentInteger(row, "ContractSequence");
-            decimal referenceSequence = TryReadBranch23AttachmentInteger(row, "ReferenceAddendumSequence");
-            decimal newSequence = TryReadBranch23AttachmentInteger(row, "NewAddendumSequence");
-            decimal effectiveSequence = Math.Max(contractSequence, Math.Max(referenceSequence, newSequence));
+            decimal contractSequence = ReadBranch23AttachmentInteger(row, "ContractSequence");
+            decimal referenceSequence = ReadBranch23AttachmentInteger(row, "ReferenceAddendumSequence");
+            decimal newSequence = ReadBranch23AttachmentInteger(row, "NewAddendumSequence");
             if (id <= 0)
                 throw new InvalidOperationException("Invalid ELIA attachment contract identifier.");
+            if (contractSequence != referenceSequence || contractSequence != newSequence)
+                throw new InvalidOperationException(
+                    "BR23_ATTACHMENT_SEQUENCE_AMBIGUOUS: contract=" + contractSequence +
+                    ", reference=" + referenceSequence + ", new=" + newSequence +
+                    ". A process-specific mapping is required; no maximum sequence was selected.");
 
             Debug.WriteLine("[BR23 ATTACHMENT] " + FormatDataRow(row));
-            return (id, effectiveSequence);
-        }
-
-        private static decimal TryReadBranch23AttachmentInteger(DataRow row, string column)
-        {
-            string? text = GetString(row, column);
-            if (decimal.TryParse(text, NumberStyles.Number,
-                    CultureInfo.InvariantCulture, out decimal value) &&
-                value >= 0 && decimal.Truncate(value) == value)
-                return value;
-            return 0m;
+            return (id, contractSequence);
         }
 
         private static decimal ReadBranch23AttachmentInteger(DataRow row, string column)
