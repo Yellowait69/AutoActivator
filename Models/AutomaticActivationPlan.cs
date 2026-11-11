@@ -246,13 +246,45 @@ namespace AutoActivator.Models
         {
             var issues = new List<ActivationPlanIssue>();
 
+            if (!string.IsNullOrWhiteSpace(Diagnostic) &&
+                Diagnostic.StartsWith("BLOCKED_CONTRACT_NOT_FOUND", StringComparison.OrdinalIgnoreCase))
+            {
+                issues.Add(new ActivationPlanIssue(
+                    "ELIA_LOOKUP_FAILED",
+                    Diagnostic,
+                    true));
+                return issues;
+            }
+
             AddRequired(issues, "ENVIRONMENT_MISSING", "Environment", Environment);
             AddRequired(issues, "CUS_MISSING", "CUS", Cus);
             AddRequired(issues, "CONTRACT_MISSING", "Contract number", ContractNumber);
             AddRequired(issues, "MAINFRAME_ID_MISSING", "Mainframe contract number", MainframeContractNumber);
-            AddRequired(issues, "ELIA_ID_MISSING", "ELIA ID", EliaId);
-            AddRequired(issues, "DEMAND_ID_MISSING", "Demand ID", DemandId);
-            AddRequired(issues, "PRODUCT_MISSING", "Product code", ProductCode);
+
+            if (string.IsNullOrWhiteSpace(EliaId) || string.Equals(EliaId, "N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                issues.Add(new ActivationPlanIssue(
+                    "ELIA_ID_MISSING",
+                    "ELIA UCON ID was not returned, continuing with resolved contract number.",
+                    false));
+            }
+
+            if (string.IsNullOrWhiteSpace(DemandId) || string.Equals(DemandId, "N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                issues.Add(new ActivationPlanIssue(
+                    "DEMAND_ID_MISSING",
+                    "Demand ID was not linked in TB5HELT, continuing with resolved contract.",
+                    false));
+            }
+
+            if (string.IsNullOrWhiteSpace(ProductCode) || string.Equals(ProductCode, "N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                issues.Add(new ActivationPlanIssue(
+                    "PRODUCT_MISSING",
+                    "ELIA Product code was not returned.",
+                    false));
+            }
+
             AddRequired(issues, "PROCESS_MISSING", "Process code", ProcessCode);
             if (!InputMode.AllowsManualOverrides())
             {
@@ -260,17 +292,18 @@ namespace AutoActivator.Models
             }
             AddRequired(issues, "BUCP_MISSING", "BUCP", Bucp);
             AddRequired(issues, "CMDPMT_MISSING", "Payment command", PaymentCommand);
-            AddRequired(issues, "ROUTING_RULE_MISSING", "Routing rule", RoutingRule);
 
             if (DemandLinkCount != 1)
             {
                 issues.Add(new ActivationPlanIssue(
                     "DEMAND_LINK_COUNT_INVALID",
-                    $"Exactly one Demand link is required; found {DemandLinkCount}.",
-                    true));
+                    $"Demand link count is {DemandLinkCount}.",
+                    false));
             }
 
-            if (PremiumCandidateCount != 1)
+            bool isC05Process = string.Equals(ProcessCode, "C05", StringComparison.OrdinalIgnoreCase);
+
+            if (PremiumCandidateCount != 1 && !isC05Process)
             {
                 issues.Add(new ActivationPlanIssue(
                     "PREMIUM_CANDIDATE_COUNT_INVALID",
@@ -303,7 +336,7 @@ namespace AutoActivator.Models
                     true));
             }
 
-            if (GrossPremium <= 0m)
+            if (GrossPremium <= 0m && !isC05Process)
             {
                 issues.Add(new ActivationPlanIssue(
                     "PREMIUM_NOT_POSITIVE",

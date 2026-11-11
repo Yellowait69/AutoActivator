@@ -142,12 +142,11 @@ namespace AutoActivator.Sql
             string environment = Settings.DbConfig.NormalizeEnvironment(envSuffix);
             string lifeDatabase = Settings.DbConfig.GetLifeDatabase(environment);
             string fj1 = $"[{lifeDatabase}].[FJ1]";
-            string lisaContractTable = Settings.DbConfig.GetLisaContractTable(environment, "SCNTT0");
 
             var queries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             AddPreActivationQueries(queries, fj1);
-            AddLegacyContextQueries(queries, fj1, lisaContractTable);
+            AddLegacyContextQueries(queries, fj1);
             AddBranch23MovementQueries(queries);
             AddLisaContractQueries(queries);
             AddLisaPlanQueries(queries, fj1);
@@ -275,14 +274,12 @@ namespace AutoActivator.Sql
             ValidateQueryContains(
                 queries,
                 "GET_FULL_CONTEXT_BY_DEMAND",
-                "IT5UPRPUBRU > 0",
-                "FundFeatureCount");
+                "IT5UPRPUBRU > 0");
 
             ValidateQueryContains(
                 queries,
                 "GET_FULL_CONTEXT_BY_CONTRACT",
-                "IT5UPRPUBRU > 0",
-                "FundFeatureCount");
+                "IT5UPRPUBRU > 0");
         }
 
         private static void ValidateQueryContains(

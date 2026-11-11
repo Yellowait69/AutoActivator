@@ -601,9 +601,9 @@ namespace AutoActivator.Services
             public int? PremiumSequence { get; init; }
             public decimal? GrossPremium { get; init; }
             public decimal? NetPremium { get; init; }
-            public DateTime? FirstPaymentDate { get; init; }
-            public DateTime? PaymentDate { get; init; }
-            public DateTime? ContractStartDate { get; init; }
+            public DateTime? FirstPaymentDate { get; set; }
+            public DateTime? PaymentDate { get; set; }
+            public DateTime? ContractStartDate { get; set; }
             public string PaymentMethodCode { get; init; } = string.Empty;
             public string PremiumGroupType { get; init; } = string.Empty;
             public string RawRoutingStatus { get; init; } = string.Empty;

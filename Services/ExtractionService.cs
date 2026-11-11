@@ -62,24 +62,47 @@ namespace AutoActivator.Services
             long? internalIdValue = null;
 
             // 1. Resolve full context (DemandId, UconId, ContractNumber, InternalId, GrossPremium, Product, Process, Channel, FundFeatureCount)
-            string contextQueryKey = isDemandId ? "GET_FULL_CONTEXT_BY_DEMAND" : "GET_FULL_CONTEXT_BY_CONTRACT";
-            string contextParamName = isDemandId ? "@DemandId" : "@ContractNumber";
+            bool canQueryAsDemand = decimal.TryParse(
+                cleanedInput,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out _);
+            bool effectiveFirstIsDemand = isDemandId && canQueryAsDemand;
 
-            DataTable dtContext = await db.GetDataAsync(
-                envQueries[contextQueryKey],
-                new Dictionary<string, object> { { contextParamName, cleanedInput } },
-                token).ConfigureAwait(false);
+            string contextQueryKey = effectiveFirstIsDemand ? "GET_FULL_CONTEXT_BY_DEMAND" : "GET_FULL_CONTEXT_BY_CONTRACT";
+            string contextParamName = effectiveFirstIsDemand ? "@DemandId" : "@ContractNumber";
+
+            DataTable dtContext = new DataTable();
+            try
+            {
+                dtContext = await db.GetDataAsync(
+                    envQueries[contextQueryKey],
+                    new Dictionary<string, object> { { contextParamName, cleanedInput } },
+                    token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ExtractionService] Primary context query warning: {ex.Message}");
+            }
 
             // Auto-detect fallback: if nothing was found with the selected mode, try the opposite mode (Demand ID <-> Contract Number)
-            if (dtContext.Rows.Count == 0)
+            if (dtContext.Rows.Count == 0 && (!effectiveFirstIsDemand ? canQueryAsDemand : true))
             {
                 dtContext.Dispose();
-                string alternateQueryKey = !isDemandId ? "GET_FULL_CONTEXT_BY_DEMAND" : "GET_FULL_CONTEXT_BY_CONTRACT";
-                string alternateParamName = !isDemandId ? "@DemandId" : "@ContractNumber";
-                dtContext = await db.GetDataAsync(
-                    envQueries[alternateQueryKey],
-                    new Dictionary<string, object> { { alternateParamName, cleanedInput } },
-                    token).ConfigureAwait(false);
+                dtContext = new DataTable();
+                string alternateQueryKey = !effectiveFirstIsDemand ? "GET_FULL_CONTEXT_BY_DEMAND" : "GET_FULL_CONTEXT_BY_CONTRACT";
+                string alternateParamName = !effectiveFirstIsDemand ? "@DemandId" : "@ContractNumber";
+                try
+                {
+                    dtContext = await db.GetDataAsync(
+                        envQueries[alternateQueryKey],
+                        new Dictionary<string, object> { { alternateParamName, cleanedInput } },
+                        token).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ExtractionService] Alternate context query warning: {ex.Message}");
+                }
             }
 
             using (dtContext)

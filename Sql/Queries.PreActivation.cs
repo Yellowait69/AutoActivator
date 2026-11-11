@@ -45,12 +45,9 @@ SELECT TOP (1)
     demand.LastEliaUpdate,
     h.IT5UCONAIDN AS EliaContractId,
     NULLIF(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '') AS ContractNumber,
-    u.IT5UCONDDEB AS ContractStartDate,
     premium.PremiumSequence,
     premium.GrossPremium,
     premium.NetPremium,
-    premium.FirstPaymentDate,
-    premium.PaymentDate,
     payment.PaymentMethodCode,
     payment.PremiumGroupType,
     ISNULL(fundInfo.FundFeatureCount, 0) AS FundFeatureCount,
@@ -72,14 +69,11 @@ OUTER APPLY
     SELECT TOP (1)
         p.IT5UAVENSEQ AS PremiumSequence,
         p.IT5UPRPUBRU AS GrossPremium,
-        p.IT5UPRPUNET AS NetPremium,
-        p.IT5UPRPDPMRPAI AS FirstPaymentDate,
-        p.IT5UPRPDVRS AS PaymentDate
+        p.IT5UPRPUNET AS NetPremium
     FROM {fj1}.[TB5UPRP] AS p WITH (NOLOCK)
     WHERE p.IT5UCONAIDN = h.IT5UCONAIDN
     ORDER BY
         CASE WHEN p.IT5UPRPUBRU IS NOT NULL AND p.IT5UPRPUBRU > 0 THEN 0 ELSE 1 END,
-        CASE WHEN LTRIM(RTRIM(p.IT5UPRPCTYPGRPPRI)) = '01' AND LTRIM(RTRIM(p.IT5UPRPCTYPPRI)) = '02' THEN 0 ELSE 1 END,
         p.IT5UAVENSEQ DESC,
         CASE WHEN p.IT5UPRPUNET IS NOT NULL THEN 0 ELSE 1 END,
         p.IT5UPRPUBRU DESC,
@@ -97,16 +91,11 @@ OUTER APPLY
 OUTER APPLY
 (
     SELECT
-        (SELECT COUNT_BIG(*)
-         FROM {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
-         WHERE ff.IT5UCONAIDN = h.IT5UCONAIDN
-           AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
-             OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL))
-      + (SELECT COUNT_BIG(*)
-         FROM {fj1}.[TB5UPRF] AS pf WITH (NOLOCK)
-         WHERE pf.IT5UCONAIDN = h.IT5UCONAIDN
-           AND NULLIF(LTRIM(RTRIM(pf.IT5UPRFCFND)), '') IS NOT NULL)
-      AS FundFeatureCount
+        COUNT_BIG(*) AS FundFeatureCount
+    FROM {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
+    WHERE ff.IT5UCONAIDN = h.IT5UCONAIDN
+      AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
+        OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL)
 ) AS fundInfo
 ORDER BY
     CASE WHEN h.IT5UCONAIDN IS NULL THEN 1 ELSE 0 END,
@@ -312,8 +301,7 @@ WHERE h.IT5HDMDAIDN = @DemandId
 
         private static void AddLegacyContextQueries(
             IDictionary<string, string> queries,
-            string fj1,
-            string lisaContractTable)
+            string fj1)
         {
             queries["GET_INTERNAL_ID"] = @"
 SELECT TOP (1)
@@ -330,7 +318,8 @@ ORDER BY NO_CNT;";
 
             queries["GET_ELIA_ID"] = $@"
 SELECT TOP (1)
-    IT5UCONAIDN
+    IT5UCONAIDN,
+    NULLIF(LTRIM(RTRIM(IT5UCONLREFEXN)), '') AS ContractNumber
 FROM {fj1}.[TB5UCON] WITH (NOLOCK)
 WHERE REPLACE(REPLACE(LTRIM(RTRIM(IT5UCONLREFEXN)), '-', ''), ' ', '') LIKE
       REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '') + '%'
@@ -413,7 +402,6 @@ SELECT TOP (1)
     premium.PremiumSequence,
     premium.GrossPremium,
     premium.NetPremium,
-    ISNULL(fundInfo.FundFeatureCount, 0) AS FundFeatureCount,
     CASE
         WHEN contractData.DemandId IS NULL THEN 'DEMAND NOT FOUND'
         WHEN contractData.UconId IS NULL THEN 'DEMAND FOUND - ELIA CONTRACT NOT LINKED'
@@ -431,7 +419,7 @@ OUTER APPLY
     SELECT TOP (1)
         s.NO_CNT AS InternalId,
         LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
-    FROM {lisaContractTable} AS s WITH (NOLOCK)
+    FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
     WHERE REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
           REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', '')
     ORDER BY s.NO_CNT
@@ -446,26 +434,11 @@ OUTER APPLY
     WHERE p.IT5UCONAIDN = contractData.UconId
     ORDER BY
         CASE WHEN p.IT5UPRPUBRU IS NOT NULL AND p.IT5UPRPUBRU > 0 THEN 0 ELSE 1 END,
-        CASE WHEN LTRIM(RTRIM(p.IT5UPRPCTYPGRPPRI)) = '01' AND LTRIM(RTRIM(p.IT5UPRPCTYPPRI)) = '02' THEN 0 ELSE 1 END,
         p.IT5UAVENSEQ DESC,
         CASE WHEN p.IT5UPRPUNET IS NOT NULL THEN 0 ELSE 1 END,
         p.IT5UPRPUBRU DESC,
         p.IT5UPRPUNET DESC
-) AS premium
-OUTER APPLY
-(
-    SELECT
-        (SELECT COUNT_BIG(*)
-         FROM {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
-         WHERE ff.IT5UCONAIDN = contractData.UconId
-           AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
-             OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL))
-      + (SELECT COUNT_BIG(*)
-         FROM {fj1}.[TB5UPRF] AS pf WITH (NOLOCK)
-         WHERE pf.IT5UCONAIDN = contractData.UconId
-           AND NULLIF(LTRIM(RTRIM(pf.IT5UPRFCFND)), '') IS NOT NULL)
-      AS FundFeatureCount
-) AS fundInfo;";
+) AS premium;";
 
             queries["GET_FULL_CONTEXT_BY_CONTRACT"] = $@"
 ;WITH ContractData AS
@@ -524,7 +497,6 @@ SELECT TOP (1)
     premium.PremiumSequence,
     premium.GrossPremium,
     premium.NetPremium,
-    ISNULL(fundInfo.FundFeatureCount, 0) AS FundFeatureCount,
     CASE
         WHEN contractData.ContractNumber IS NULL THEN 'CONTRACT NOT FOUND'
         WHEN contractData.ProductCode IS NULL THEN 'ELIA FOUND - PRODUCT NOT FOUND'
@@ -540,7 +512,7 @@ OUTER APPLY
     SELECT TOP (1)
         s.NO_CNT AS InternalId,
         LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
-    FROM {lisaContractTable} AS s WITH (NOLOCK)
+    FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
     WHERE REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
           REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', '')
     ORDER BY s.NO_CNT
@@ -555,26 +527,11 @@ OUTER APPLY
     WHERE p.IT5UCONAIDN = contractData.UconId
     ORDER BY
         CASE WHEN p.IT5UPRPUBRU IS NOT NULL AND p.IT5UPRPUBRU > 0 THEN 0 ELSE 1 END,
-        CASE WHEN LTRIM(RTRIM(p.IT5UPRPCTYPGRPPRI)) = '01' AND LTRIM(RTRIM(p.IT5UPRPCTYPPRI)) = '02' THEN 0 ELSE 1 END,
         p.IT5UAVENSEQ DESC,
         CASE WHEN p.IT5UPRPUNET IS NOT NULL THEN 0 ELSE 1 END,
         p.IT5UPRPUBRU DESC,
         p.IT5UPRPUNET DESC
-) AS premium
-OUTER APPLY
-(
-    SELECT
-        (SELECT COUNT_BIG(*)
-         FROM {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
-         WHERE ff.IT5UCONAIDN = contractData.UconId
-           AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
-             OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL))
-      + (SELECT COUNT_BIG(*)
-         FROM {fj1}.[TB5UPRF] AS pf WITH (NOLOCK)
-         WHERE pf.IT5UCONAIDN = contractData.UconId
-           AND NULLIF(LTRIM(RTRIM(pf.IT5UPRFCFND)), '') IS NOT NULL)
-      AS FundFeatureCount
-) AS fundInfo;";
+) AS premium;";
         }
 
         private static void AddBranch23MovementQueries(IDictionary<string, string> queries)

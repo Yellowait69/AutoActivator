@@ -45,36 +45,7 @@ namespace AutoActivator.Services
 
             try
             {
-                if (isDemandId)
-                {
-                    bool routed = await TryResolveFromPreActivationRoutingAsync(
-                            cleanInput,
-                            normalizedEnvironment,
-                            result,
-                            token)
-                        .ConfigureAwait(false);
-
-                    await TryCompleteDirectDemandRoutingAsync(
-                            result,
-                            normalizedEnvironment,
-                            token)
-                        .ConfigureAwait(false);
-
-                    if (routed)
-                    {
-                        await TryCompleteLisaInformationAsync(
-                                result,
-                                normalizedEnvironment,
-                                token)
-                            .ConfigureAwait(false);
-
-                        NormalizeLookupResult(result);
-                        DebugLookupResult("Preactivation result", result, normalizedEnvironment);
-                        return result;
-                    }
-                }
-
-                await ResolveUsingLegacyCombinedQueryAsync(
+                await TryResolveWithModeAsync(
                         cleanInput,
                         isDemandId,
                         normalizedEnvironment,
@@ -82,53 +53,31 @@ namespace AutoActivator.Services
                         token)
                     .ConfigureAwait(false);
 
-                if (isDemandId && IsMissingValue(result.ContractNumber))
+                // Bidirectional auto-detection fallback:
+                // If not found in ELIA with the initial mode (e.g. 9-digit JCL contract treated as Demand ID,
+                // or Demand ID treated as Contract), automatically try the opposite mode.
+                if (!result.FoundInElia || IsMissingValue(result.ContractNumber))
                 {
-                    await ResolveUsingFallbackAsync(
+                    bool oppositeMode = !isDemandId;
+                    await TryResolveWithModeAsync(
                             cleanInput,
-                            true,
+                            oppositeMode,
                             normalizedEnvironment,
                             result,
                             token)
                         .ConfigureAwait(false);
-                }
 
-                // Auto-detect fallback: if user selected Contract Number mode but pasted a Demand ID (or vice-versa)
-                if (IsMissingValue(result.ContractNumber))
-                {
-                    if (!isDemandId)
+                    if (result.FoundInElia && !IsMissingValue(result.ContractNumber))
                     {
-                        bool routedAsDemand = await TryResolveFromPreActivationRoutingAsync(
-                                cleanInput,
-                                normalizedEnvironment,
-                                result,
-                                token)
-                            .ConfigureAwait(false);
-
-                        if (!routedAsDemand && IsMissingValue(result.ContractNumber))
+                        result.IsDemandId = oppositeMode;
+                        if (!oppositeMode && string.Equals(result.DemandId, cleanInput, StringComparison.OrdinalIgnoreCase))
                         {
-                            await ResolveUsingLegacyCombinedQueryAsync(
-                                    cleanInput,
-                                    isDemandId: true,
-                                    normalizedEnvironment,
-                                    result,
-                                    token)
-                                .ConfigureAwait(false);
+                            result.DemandId = "N/A";
                         }
                     }
-                    else
-                    {
-                        await ResolveUsingLegacyCombinedQueryAsync(
-                                cleanInput,
-                                isDemandId: false,
-                                normalizedEnvironment,
-                                result,
-                                token)
-                            .ConfigureAwait(false);
-                    }
                 }
 
-                await TryEnrichLookupFromResolvedDemandAsync(
+                await TryEnrichLookupFromResolvedDemandSafeAsync(
                         result,
                         normalizedEnvironment,
                         token)
@@ -140,14 +89,26 @@ namespace AutoActivator.Services
                         token)
                     .ConfigureAwait(false);
 
+                await TryCompleteContractFundCountSafeAsync(
+                        result,
+                        normalizedEnvironment,
+                        token)
+                    .ConfigureAwait(false);
+
                 await TryCompleteLisaInformationAsync(
                         result,
                         normalizedEnvironment,
                         token)
                     .ConfigureAwait(false);
 
+                if (!result.FoundInElia && !result.IsDemandId && IsMissingValue(result.ContractNumber))
+                {
+                    result.ContractNumber = cleanInput;
+                    result.JclContract = FormatContractStatic(cleanInput);
+                }
+
                 NormalizeLookupResult(result);
-                DebugLookupResult("Legacy result", result, normalizedEnvironment);
+                DebugLookupResult("Resolved lookup result", result, normalizedEnvironment);
             }
             catch (OperationCanceledException)
             {
@@ -155,53 +116,10 @@ namespace AutoActivator.Services
             }
             catch (Exception exception)
             {
-                AppendDatabaseError(result, "Primary lookup", exception);
+                AppendDatabaseError(result, "Lookup pipeline", exception);
                 Debug.WriteLine(
-                    "[ActivationLookup] Primary lookup failed | " +
+                    "[ActivationLookup] Lookup pipeline failed | " +
                     $"Input={cleanInput} | Environment={normalizedEnvironment} | Error={exception}");
-
-                try
-                {
-                    await ResolveUsingFallbackAsync(
-                            cleanInput,
-                            isDemandId,
-                            normalizedEnvironment,
-                            result,
-                            token)
-                        .ConfigureAwait(false);
-
-                    await TryEnrichLookupFromResolvedDemandAsync(
-                            result,
-                            normalizedEnvironment,
-                            token)
-                        .ConfigureAwait(false);
-
-                    await TryCompleteDirectDemandRoutingAsync(
-                            result,
-                            normalizedEnvironment,
-                            token)
-                        .ConfigureAwait(false);
-
-                    await TryCompleteLisaInformationAsync(
-                            result,
-                            normalizedEnvironment,
-                            token)
-                        .ConfigureAwait(false);
-
-                    NormalizeLookupResult(result);
-                    DebugLookupResult("Fallback result", result, normalizedEnvironment);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception fallbackException)
-                {
-                    AppendDatabaseError(result, "Fallback lookup", fallbackException);
-                    Debug.WriteLine(
-                        "[ActivationLookup] Fallback failed | " +
-                        $"Input={cleanInput} | Environment={normalizedEnvironment} | Error={fallbackException}");
-                }
             }
             finally
             {
@@ -210,6 +128,164 @@ namespace AutoActivator.Services
             }
 
             return result;
+        }
+
+        private async Task TryResolveWithModeAsync(
+            string cleanInput,
+            bool asDemandId,
+            string normalizedEnvironment,
+            ActivationLookupResult result,
+            CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+
+            if (asDemandId)
+            {
+                if (!decimal.TryParse(
+                        cleanInput,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out _))
+                {
+                    return;
+                }
+
+                try
+                {
+                    bool routed = await TryResolveFromPreActivationRoutingAsync(
+                            cleanInput,
+                            normalizedEnvironment,
+                            result,
+                            token)
+                        .ConfigureAwait(false);
+
+                    if (routed && !IsMissingValue(result.ContractNumber))
+                    {
+                        return;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    AppendDatabaseError(result, "PreActivation routing", ex);
+                    Debug.WriteLine($"[ActivationLookup] PreActivation routing warning: {ex.Message}");
+                }
+            }
+
+            try
+            {
+                await ResolveUsingLegacyCombinedQueryAsync(
+                        cleanInput,
+                        asDemandId,
+                        normalizedEnvironment,
+                        result,
+                        token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                AppendDatabaseError(result, asDemandId ? "Combined demand lookup" : "Combined contract lookup", ex);
+                Debug.WriteLine($"[ActivationLookup] Combined query warning ({asDemandId}): {ex.Message}");
+            }
+
+            if (!result.FoundInElia || IsMissingValue(result.ContractNumber))
+            {
+                try
+                {
+                    await ResolveUsingFallbackAsync(
+                            cleanInput,
+                            asDemandId,
+                            normalizedEnvironment,
+                            result,
+                            token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    AppendDatabaseError(result, asDemandId ? "Fallback demand lookup" : "Fallback contract lookup", ex);
+                    Debug.WriteLine($"[ActivationLookup] Fallback lookup warning ({asDemandId}): {ex.Message}");
+                }
+            }
+        }
+
+        private async Task TryEnrichLookupFromResolvedDemandSafeAsync(
+            ActivationLookupResult result,
+            string environment,
+            CancellationToken token)
+        {
+            try
+            {
+                await TryEnrichLookupFromResolvedDemandAsync(result, environment, token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ActivationLookup] Demand enrichment warning: {ex.Message}");
+            }
+        }
+
+        private static async Task TryCompleteContractFundCountSafeAsync(
+            ActivationLookupResult result,
+            string environment,
+            CancellationToken token)
+        {
+            if (result.FundFeatureCount > 0 || IsMissingValue(result.ContractNumber))
+            {
+                return;
+            }
+
+            try
+            {
+                var database = new DatabaseManager(environment);
+                var parameters = new Dictionary<string, object>
+                {
+                    ["@ContractNumber"] = result.ContractNumber
+                };
+
+                string gffQuery = SqlQueries.GetQuery("GET_ELIA_FUND_FEATURES_BY_CONTRACT", environment);
+                using DataTable gffTable = await database
+                    .GetDataAsync(gffQuery, parameters, token)
+                    .ConfigureAwait(false);
+
+                int count = gffTable.Rows.Count;
+
+                if (count == 0)
+                {
+                    string prfQuery = SqlQueries.GetQuery("GET_ELIA_PREMIUM_FUNDS_BY_CONTRACT", environment);
+                    using DataTable prfTable = await database
+                        .GetDataAsync(prfQuery, parameters, token)
+                        .ConfigureAwait(false);
+                    count += prfTable.Rows.Count;
+                }
+
+                if (count > 0)
+                {
+                    result.FundFeatureCount = count;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ActivationLookup] Contract fund count warning: {ex.Message}");
+            }
         }
 
         private async Task<bool> TryResolveFromPreActivationRoutingAsync(
@@ -552,11 +628,6 @@ namespace AutoActivator.Services
             {
                 result.FoundInElia = false;
                 result.DbDiagnosticStatus = isDemandId ? "DEMAND NOT FOUND" : "CONTRACT NOT FOUND";
-                if (!isDemandId)
-                {
-                    result.ContractNumber = cleanInput;
-                    result.JclContract = FormatContractStatic(cleanInput);
-                }
                 return;
             }
 
@@ -618,7 +689,8 @@ namespace AutoActivator.Services
             ActivationLookupResult result,
             CancellationToken token)
         {
-            string? resolvedContract = cleanInput;
+            string? resolvedContract = null;
+            var database = new DatabaseManager(environment);
 
             if (isDemandId)
             {
@@ -627,6 +699,34 @@ namespace AutoActivator.Services
                         environment,
                         token)
                     .ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(resolvedContract))
+                {
+                    result.DemandId = cleanInput;
+                }
+            }
+            else
+            {
+                using DataTable uconTable = await database.GetDataAsync(
+                        SqlQueries.GetQuery("GET_ELIA_ID", environment),
+                        new Dictionary<string, object> { ["@ContractNumber"] = cleanInput },
+                        token)
+                    .ConfigureAwait(false);
+
+                if (uconTable.Rows.Count > 0)
+                {
+                    DataRow uconRow = uconTable.Rows[0];
+                    string? uconId = GetString(uconRow, "IT5UCONAIDN");
+                    if (!string.IsNullOrWhiteSpace(uconId))
+                    {
+                        result.EliaUconId = uconId.Trim();
+                    }
+
+                    string? dbContractNumber = GetString(uconRow, "ContractNumber");
+                    resolvedContract = !string.IsNullOrWhiteSpace(dbContractNumber)
+                        ? dbContractNumber.Trim()
+                        : cleanInput;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(resolvedContract))
@@ -651,7 +751,6 @@ namespace AutoActivator.Services
             {
                 try
                 {
-                    var database = new DatabaseManager(environment);
                     if (IsMissingValue(result.EliaUconId))
                     {
                         using DataTable uconTable = await database.GetDataAsync(
@@ -720,7 +819,7 @@ namespace AutoActivator.Services
                     CultureInfo.InvariantCulture,
                     out decimal numericDemandId))
             {
-                throw new ArgumentException($"Invalid ELIA Demand ID: '{demandId}'.", nameof(demandId));
+                return null;
             }
 
             string normalizedEnvironment = Settings.NormalizeEnvironmentSuffix(envSuffix);

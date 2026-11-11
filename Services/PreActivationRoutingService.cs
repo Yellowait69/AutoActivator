@@ -253,65 +253,195 @@ namespace AutoActivator.Services
 
             string normalizedEnvironment = Settings.DbConfig.NormalizeEnvironment(environment);
             var database = new DatabaseManager(normalizedEnvironment);
-            string query = SqlQueries.GetQuery("GET_PRE_ACTIVATION_ROUTING", normalizedEnvironment);
-
             var parameters = new Dictionary<string, object>
             {
                 ["@DemandId"] = demandId
             };
 
-            using DataTable table = await database
-                .GetDataAsync(query, parameters, cancellationToken)
+            try
+            {
+                string query = SqlQueries.GetQuery("GET_PRE_ACTIVATION_ROUTING", normalizedEnvironment);
+
+                using DataTable table = await database
+                    .GetDataAsync(query, parameters, cancellationToken)
+                    .ConfigureAwait(false);
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                Debug.WriteLine(
+                    "[PreActivationRouting] Main SQL completed | " +
+                    $"Demand={demandId} | Environment={normalizedEnvironment} | " +
+                    $"Rows={table.Rows.Count} | Columns={GetColumnNames(table)}");
+
+                if (table.Rows.Count == 0)
+                {
+                    return null;
+                }
+
+                DataRow row = SelectBestRoutingRow(table);
+
+                var candidate = new EnvironmentRoutingCandidate
+                {
+                    Environment = normalizedEnvironment,
+                    DemandId = GetDecimal(row, "DemandId") ?? demandId,
+                    DemandCreationDate = GetDateTime(row, "DemandCreationDate"),
+                    ProductCode = GetString(row, "ProductCode"),
+                    ProcessCode = GetString(row, "ProcessCode"),
+                    ChannelCode = GetString(row, "ChannelCode"),
+                    ApplicationChannelCode = GetString(row, "ApplicationChannelCode"),
+                    DemandStatus = GetString(row, "DemandStatus"),
+                    EliaContractId = GetDecimal(row, "EliaContractId"),
+                    ContractNumber = GetString(row, "ContractNumber"),
+                    PremiumSequence = GetInt32(row, "PremiumSequence"),
+                    GrossPremium = GetDecimal(row, "GrossPremium"),
+                    NetPremium = GetDecimal(row, "NetPremium"),
+                    FirstPaymentDate = GetDateTime(row, "FirstPaymentDate"),
+                    PaymentDate = GetDateTime(row, "PaymentDate"),
+                    ContractStartDate = GetDateTime(row, "ContractStartDate"),
+                    PaymentMethodCode = GetString(row, "PaymentMethodCode"),
+                    PremiumGroupType = GetString(row, "PremiumGroupType"),
+                    ReferenceDemandId = GetDecimal(row, "ReferenceDemandId"),
+                    LinkedDemandId = GetDecimal(row, "LinkedDemandId"),
+                    AddendumSequence = GetInt32(row, "AddendumSequence"),
+                    LastEliaUpdate = GetDateTime(row, "LastEliaUpdate"),
+                    RawRoutingStatus = GetString(row, "RoutingStatus"),
+                    MainQuerySucceeded = true,
+                    DemandRoutingFallbackUsed = false
+                };
+
+                EnvironmentRoutingCandidate completedCandidate =
+                    await CompleteMissingDemandRoutingAsync(candidate, cancellationToken)
+                        .ConfigureAwait(false);
+
+                await TryEnrichContractDatesSafeAsync(database, completedCandidate, normalizedEnvironment, cancellationToken)
+                    .ConfigureAwait(false);
+
+                return completedCandidate;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception mainEx)
+            {
+                Debug.WriteLine(
+                    "[PreActivationRouting] GET_PRE_ACTIVATION_ROUTING failed, falling back to individual queries | " +
+                    $"Demand={demandId} | Environment={normalizedEnvironment} | Error={mainEx.Message}");
+
+                return await TryLoadFallbackRoutingCandidateAsync(
+                        database,
+                        demandId,
+                        normalizedEnvironment,
+                        parameters,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private static async Task<EnvironmentRoutingCandidate?> TryLoadFallbackRoutingCandidateAsync(
+            DatabaseManager database,
+            decimal demandId,
+            string normalizedEnvironment,
+            Dictionary<string, object> parameters,
+            CancellationToken cancellationToken)
+        {
+            string demandQuery = SqlQueries.GetQuery("GET_ELIA_DEMAND_ROUTING", normalizedEnvironment);
+            using DataTable demandTable = await database
+                .GetDataAsync(demandQuery, parameters, cancellationToken)
                 .ConfigureAwait(false);
 
-            cancellationToken.ThrowIfCancellationRequested();
-
-            Debug.WriteLine(
-                "[PreActivationRouting] Main SQL completed | " +
-                $"Demand={demandId} | Environment={normalizedEnvironment} | " +
-                $"Rows={table.Rows.Count} | Columns={GetColumnNames(table)}");
-
-            if (table.Rows.Count == 0)
+            if (demandTable.Rows.Count == 0)
             {
                 return null;
             }
 
-            DataRow row = SelectBestRoutingRow(table);
+            DataRow dRow = SelectBestDemandRoutingRow(demandTable);
 
-            var candidate = new EnvironmentRoutingCandidate
+            decimal? eliaContractId = null;
+            string contractNumber = string.Empty;
+            try
+            {
+                string contractContextQuery = SqlQueries.GetQuery("GET_ELIA_DEMAND_CONTRACT_CONTEXT", normalizedEnvironment);
+                using DataTable ctxTable = await database
+                    .GetDataAsync(contractContextQuery, parameters, cancellationToken)
+                    .ConfigureAwait(false);
+                if (ctxTable.Rows.Count > 0)
+                {
+                    DataRow cRow = ctxTable.Rows[ctxTable.Rows.Count - 1];
+                    eliaContractId = GetDecimal(cRow, "EliaContractId");
+                    contractNumber = GetString(cRow, "ContractNumber");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Debug.WriteLine($"[PreActivationRouting] Fallback contract context warning: {ex.Message}");
+            }
+
+            if (string.IsNullOrWhiteSpace(contractNumber))
+            {
+                try
+                {
+                    string contractByDemandQuery = SqlQueries.GetQuery("GET_CONTRACT_BY_DEMAND", normalizedEnvironment);
+                    using DataTable cbdTable = await database
+                        .GetDataAsync(contractByDemandQuery, parameters, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (cbdTable.Rows.Count > 0)
+                    {
+                        contractNumber = GetString(cbdTable.Rows[0], "IT5UCONLREFEXN");
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Debug.WriteLine($"[PreActivationRouting] Fallback GET_CONTRACT_BY_DEMAND warning: {ex.Message}");
+                }
+            }
+
+            int? premiumSequence = null;
+            decimal? grossPremium = null;
+            decimal? netPremium = null;
+            try
+            {
+                string premiumQuery = SqlQueries.GetQuery("GET_ELIA_PREMIUM_BY_DEMAND", normalizedEnvironment);
+                using DataTable pTable = await database
+                    .GetDataAsync(premiumQuery, parameters, cancellationToken)
+                    .ConfigureAwait(false);
+                if (pTable.Rows.Count > 0)
+                {
+                    DataRow pRow = pTable.Rows[0];
+                    eliaContractId ??= GetDecimal(pRow, "EliaContractId");
+                    premiumSequence = GetInt32(pRow, "PremiumSequence");
+                    grossPremium = GetDecimal(pRow, "GrossPremium");
+                    netPremium = GetDecimal(pRow, "NetPremium");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Debug.WriteLine($"[PreActivationRouting] Fallback GET_ELIA_PREMIUM_BY_DEMAND warning: {ex.Message}");
+            }
+
+            return new EnvironmentRoutingCandidate
             {
                 Environment = normalizedEnvironment,
-                DemandId = GetDecimal(row, "DemandId") ?? demandId,
-                DemandCreationDate = GetDateTime(row, "DemandCreationDate"),
-                ProductCode = GetString(row, "ProductCode"),
-                ProcessCode = GetString(row, "ProcessCode"),
-                ChannelCode = GetString(row, "ChannelCode"),
-                ApplicationChannelCode = GetString(row, "ApplicationChannelCode"),
-                DemandStatus = GetString(row, "DemandStatus"),
-                EliaContractId = GetDecimal(row, "EliaContractId"),
-                ContractNumber = GetString(row, "ContractNumber"),
-                PremiumSequence = GetInt32(row, "PremiumSequence"),
-                GrossPremium = GetDecimal(row, "GrossPremium"),
-                NetPremium = GetDecimal(row, "NetPremium"),
-                FirstPaymentDate = GetDateTime(row, "FirstPaymentDate"),
-                PaymentDate = GetDateTime(row, "PaymentDate"),
-                ContractStartDate = GetDateTime(row, "ContractStartDate"),
-                PaymentMethodCode = GetString(row, "PaymentMethodCode"),
-                PremiumGroupType = GetString(row, "PremiumGroupType"),
-                ReferenceDemandId = GetDecimal(row, "ReferenceDemandId"),
-                LinkedDemandId = GetDecimal(row, "LinkedDemandId"),
-                AddendumSequence = GetInt32(row, "AddendumSequence"),
-                LastEliaUpdate = GetDateTime(row, "LastEliaUpdate"),
-                RawRoutingStatus = GetString(row, "RoutingStatus"),
-                MainQuerySucceeded = true,
-                DemandRoutingFallbackUsed = false
+                DemandId = GetDecimal(dRow, "DemandId") ?? demandId,
+                DemandCreationDate = GetDateTime(dRow, "DemandCreationDate"),
+                ProductCode = GetString(dRow, "ProductCode"),
+                ProcessCode = GetString(dRow, "ProcessCode"),
+                ChannelCode = GetString(dRow, "ChannelCode"),
+                ApplicationChannelCode = GetString(dRow, "ApplicationChannelCode"),
+                DemandStatus = GetString(dRow, "DemandStatus"),
+                ReferenceDemandId = GetDecimal(dRow, "ReferenceDemandId"),
+                LinkedDemandId = GetDecimal(dRow, "LinkedDemandId"),
+                AddendumSequence = GetInt32(dRow, "AddendumSequence"),
+                LastEliaUpdate = GetDateTime(dRow, "LastEliaUpdate"),
+                EliaContractId = eliaContractId,
+                ContractNumber = contractNumber,
+                PremiumSequence = premiumSequence,
+                GrossPremium = grossPremium,
+                NetPremium = netPremium,
+                RawRoutingStatus = "FALLBACK_OK",
+                MainQuerySucceeded = false,
+                DemandRoutingFallbackUsed = true
             };
-
-            EnvironmentRoutingCandidate completedCandidate =
-                await CompleteMissingDemandRoutingAsync(candidate, cancellationToken)
-                    .ConfigureAwait(false);
-
-            return completedCandidate;
         }
 
         private static async Task<EnvironmentRoutingCandidate> CompleteMissingDemandRoutingAsync(
@@ -387,6 +517,55 @@ namespace AutoActivator.Services
                 MainQuerySucceeded = candidate.MainQuerySucceeded,
                 DemandRoutingFallbackUsed = true
             };
+        }
+
+        private static async Task TryEnrichContractDatesSafeAsync(
+            DatabaseManager database,
+            EnvironmentRoutingCandidate candidate,
+            string normalizedEnvironment,
+            CancellationToken cancellationToken)
+        {
+            if (!candidate.EliaContractId.HasValue)
+            {
+                return;
+            }
+
+            try
+            {
+                var eliaParams = new Dictionary<string, object>
+                {
+                    ["@EliaId"] = candidate.EliaContractId.Value
+                };
+
+                if (SqlQueries.ContainsQuery("FJ1.TB5UPRP", normalizedEnvironment))
+                {
+                    using DataTable prpTable = await database
+                        .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UPRP", normalizedEnvironment), eliaParams, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (prpTable.Rows.Count > 0)
+                    {
+                        DataRow prpRow = prpTable.Rows[0];
+                        candidate.FirstPaymentDate ??= GetDateTime(prpRow, "IT5UPRPDPMRPAI");
+                        candidate.PaymentDate ??= GetDateTime(prpRow, "IT5UPRPDVRS");
+                    }
+                }
+
+                if (SqlQueries.ContainsQuery("FJ1.TB5UCON", normalizedEnvironment))
+                {
+                    using DataTable uconTable = await database
+                        .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UCON", normalizedEnvironment), eliaParams, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (uconTable.Rows.Count > 0)
+                    {
+                        DataRow uconRow = uconTable.Rows[0];
+                        candidate.ContractStartDate ??= GetDateTime(uconRow, "IT5UCONDDEB");
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Debug.WriteLine($"[PreActivationRouting] Optional date enrichment note: {ex.Message}");
+            }
         }
 
         private static DataRow SelectBestRoutingRow(DataTable table)

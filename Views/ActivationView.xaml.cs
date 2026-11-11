@@ -873,10 +873,16 @@ namespace AutoActivator.Gui.Views
                         !input.JobSelection.RequiresPremelia &&
                         input.JobSelection.HasAnyBranch23Step;
 
+                    bool bypassPrimeValidation =
+                        skipPrime || onlyRunningPostActivationBranch23Steps;
+
                     IReadOnlyList<ActivationPlanIssue> blockingIssues = plan
                         .Validate()
                         .Where(issue => issue.IsBlocking &&
-                                        !(onlyRunningPostActivationBranch23Steps && issue.Code == "ALREADY_ACTIVE"))
+                                        !(onlyRunningPostActivationBranch23Steps && issue.Code == "ALREADY_ACTIVE") &&
+                                        !(bypassPrimeValidation &&
+                                          (issue.Code == "PREMIUM_NOT_POSITIVE" ||
+                                           issue.Code == "PREMIUM_CANDIDATE_COUNT_INVALID")))
                         .ToList();
                     if (blockingIssues.Count > 0)
                     {

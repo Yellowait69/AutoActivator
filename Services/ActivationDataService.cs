@@ -99,7 +99,40 @@ namespace AutoActivator.Services
                 await ResolveContractForActivationAsync(
                     input, isDemandId, environment, token).ConfigureAwait(false);
 
+            if (!lookup.FoundInElia && inputMode == ActivationInputMode.Manual && !isDemandId && !string.IsNullOrWhiteSpace(input))
+            {
+                lookup.ContractNumber = input;
+                lookup.JclContract = FormatContractStatic(input);
+                lookup.FoundInElia = true;
+            }
+
             if (!lookup.FoundInElia || IsMissingValue(lookup.ContractNumber))
+            {
+                string notFoundDetail = $"BLOCKED_CONTRACT_NOT_FOUND: '{input}' introuvable dans ELIA ({environment}) [Statut: {lookup.DbDiagnosticStatus}]";
+                if (!string.IsNullOrWhiteSpace(lookup.DbError))
+                {
+                    notFoundDetail += $" | SQL Error: {lookup.DbError}";
+                }
+                else
+                {
+                    string otherEnv = string.Equals(environment, "Q000", StringComparison.OrdinalIgnoreCase)
+                        ? "D000"
+                        : "Q000";
+                    try
+                    {
+                        ActivationLookupResult otherLookup = await ResolveContractForActivationAsync(
+                            input, isDemandId, otherEnv, token).ConfigureAwait(false);
+                        if (otherLookup.FoundInElia && !IsMissingValue(otherLookup.ContractNumber))
+                        {
+                            notFoundDetail += $" | ATTENTION : '{input}' existe dans {otherEnv} (Contrat {otherLookup.ContractNumber}) ! Basculez l'environnement cible sur {otherEnv[0]}.";
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Debug.WriteLine($"[AutomaticActivationPlan] Cross-environment check note: {ex.Message}");
+                    }
+                }
+
                 return new AutomaticActivationPlan
                 {
                     InputMode = inputMode,
@@ -110,8 +143,9 @@ namespace AutoActivator.Services
                     Cus = normalizedCus,
                     ResumeStrategy = ActivationResumeStrategy.Blocked,
                     Overrides = effectiveOverrides,
-                    Diagnostic = "BLOCKED_CONTRACT_NOT_FOUND"
+                    Diagnostic = notFoundDetail
                 };
+            }
 
             effectiveOverrides.TryGetValue("BUCP", out string? bucpOverride);
             effectiveOverrides.TryGetValue("CMDPMT", out string? cmdpmtOverride);
