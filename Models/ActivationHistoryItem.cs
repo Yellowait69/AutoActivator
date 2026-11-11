@@ -64,5 +64,58 @@ namespace AutoActivator.Models
         public string DiagnosticSummary { get; set; } = string.Empty;
 
         public ContractActivationTrace? FullTrace { get; set; }
+
+        public bool IsFailed =>
+            string.Equals(Status, "FAILED", System.StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Status, "CANCELLED", System.StringComparison.OrdinalIgnoreCase);
+
+        public bool IsGreen => !IsFailed;
+
+        public string StatusBadgeText => Status switch
+        {
+            "SUCCESS" => "🟢 ACTIVÉ",
+            "ALREADY ACTIVE" => "🟢 DÉJÀ ACTIF",
+            "PENDING ASYNC LISA CREATION" => "🟢 DÉJÀ ACTIF",
+            "CANCELLED" => "🔴 ANNULÉ",
+            _ => "🔴 ÉCHEC"
+        };
+
+        public string ProductProcessDisplay
+        {
+            get
+            {
+                bool hasProd = !string.IsNullOrWhiteSpace(ProductCode) && ProductCode != "-";
+                bool hasProc = !string.IsNullOrWhiteSpace(ProcessCode) && ProcessCode != "-";
+                if (hasProd && hasProc) return $"{ProductCode} ({ProcessCode})";
+                if (hasProd) return ProductCode;
+                if (hasProc) return ProcessCode;
+                return "-";
+            }
+        }
+
+        public string ChannelPaymentDisplay
+        {
+            get
+            {
+                string channelLabel = BusinessChannel switch
+                {
+                    "BANK" => "BANK",
+                    "BROKER_NEW_GEN" => "BROKER",
+                    _ => !string.IsNullOrWhiteSpace(BusinessChannel) && BusinessChannel != "UNKNOWN"
+                        ? BusinessChannel
+                        : "-"
+                };
+
+                bool hasBucp = !string.IsNullOrWhiteSpace(Bucp) && Bucp != "-";
+                bool hasCmd = !string.IsNullOrWhiteSpace(Cmdpmt) && Cmdpmt != "-";
+
+                if (hasBucp || hasCmd)
+                {
+                    return $"{channelLabel} ({(hasBucp ? Bucp : "-")}/{(hasCmd ? Cmdpmt : "-")})";
+                }
+
+                return channelLabel;
+            }
+        }
     }
 }

@@ -227,5 +227,47 @@ namespace AutoActivator.Models
         public int TablesExtractedCount { get; set; }
 
         public string FilePath { get; set; } = string.Empty;
+
+        public bool IsGreen => string.Equals(Status, "OK", StringComparison.OrdinalIgnoreCase);
+
+        public bool IsFailed => !IsGreen;
+
+        public string StatusBadgeText =>
+            string.Equals(Status, "OK", StringComparison.OrdinalIgnoreCase)
+                ? "🟢 ACTIF"
+                : string.Equals(Status, "ELIA ONLY", StringComparison.OrdinalIgnoreCase)
+                    ? "🔴 ELIA ONLY"
+                    : "🔴 KO";
+
+        public string ProductProcessDisplay =>
+            !string.IsNullOrWhiteSpace(ProcessCode) && ProcessCode != "-"
+                ? $"{ProductCode} ({ProcessCode})"
+                : ProductCode;
+
+        public string ChannelPaymentDisplay =>
+            !string.IsNullOrWhiteSpace(Bucp) && Bucp != "-"
+                ? $"{BusinessChannel} ({Bucp}/{Cmdpmt})"
+                : BusinessChannel;
+
+        public string SummaryDisplay
+        {
+            get
+            {
+                if (IsGreen)
+                {
+                    string fundsPart = !string.IsNullOrWhiteSpace(FundsSummary) && FundsSummary != "-"
+                        ? $"{FundsSummary} · "
+                        : string.Empty;
+                    return $"{fundsPart}{TablesExtractedCount} tables extraites (Date N: {RunDate})";
+                }
+
+                if (string.Equals(Status, "ELIA ONLY", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Non actif dans LISA (présent uniquement dans ELIA — UCON {Ucon})";
+                }
+
+                return "Contrat / Demand ID introuvable dans LISA et ELIA";
+            }
+        }
     }
 }

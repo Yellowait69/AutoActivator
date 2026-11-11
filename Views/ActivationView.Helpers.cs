@@ -483,15 +483,6 @@ namespace AutoActivator.Gui.Views
                 _batchStopwatch.Stop();
             }
 
-            if (TxtBatchProgressMode != null)
-            {
-                TxtBatchProgressMode.Text = !string.IsNullOrWhiteSpace(modeLabel)
-                    ? modeLabel
-                    : normalizedStatus == "READY"
-                        ? "PRÊT (UNITAIRE / BATCH)"
-                        : "EXÉCUTION BATCH";
-            }
-
             if (TxtBatchProcessedCount != null)
             {
                 TxtBatchProcessedCount.Text =
@@ -502,11 +493,6 @@ namespace AutoActivator.Gui.Views
             {
                 TxtBatchPlannedCount.Text =
                     _batchPlannedCount.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (TxtBatchRemainingCount != null)
-            {
-                TxtBatchRemainingCount.Text = remaining.ToString(CultureInfo.InvariantCulture);
             }
 
             if (TxtBatchElapsedTime != null)
@@ -531,27 +517,13 @@ namespace AutoActivator.Gui.Views
             if (TxtBatchCurrentContract != null)
             {
                 TxtBatchCurrentContract.Text = string.IsNullOrWhiteSpace(currentContract)
-                    ? "-"
+                    ? "Prêt"
                     : currentContract;
             }
 
             if (TxtBatchProgressPercentage != null)
             {
                 TxtBatchProgressPercentage.Text = $"{percentage:F0}%";
-            }
-
-            if (TxtBatchProgressStatus != null)
-            {
-                TxtBatchProgressStatus.Text = normalizedStatus;
-                TxtBatchProgressStatus.Foreground = normalizedStatus switch
-                {
-                    "COMPLETED" => Brushes.DarkGreen,
-                    "ALREADY_ACTIVE" => Brushes.DarkOrange,
-                    "CANCELLED" => Brushes.DarkOrange,
-                    "FAILED" => Brushes.DarkRed,
-                    "READY" => Brushes.SlateGray,
-                    _ => Brushes.RoyalBlue
-                };
             }
 
             if (ProgressBatchActivation != null)
@@ -563,10 +535,8 @@ namespace AutoActivator.Gui.Views
                     _batchPlannedCount);
                 ProgressBatchActivation.Foreground = normalizedStatus switch
                 {
-                    "COMPLETED" => Brushes.MediumSeaGreen,
-                    "ALREADY_ACTIVE" => Brushes.DarkOrange,
-                    "CANCELLED" => Brushes.DarkOrange,
-                    "FAILED" => Brushes.IndianRed,
+                    "COMPLETED" or "ALREADY_ACTIVE" => Brushes.MediumSeaGreen,
+                    "CANCELLED" or "FAILED" => Brushes.Crimson,
                     _ => Brushes.RoyalBlue
                 };
             }
@@ -977,11 +947,15 @@ namespace AutoActivator.Gui.Views
             BtnCancelSingleAct.IsEnabled = running;
             BtnRunSingleAct.IsEnabled = !running;
             BtnSkipPrimeSingleAct.IsEnabled = !running;
+            BtnRunBatchAct.IsEnabled = !running;
+            BtnSkipPrimeBatchAct.IsEnabled = !running;
         }
 
         private void SetBatchActivationButtons(bool running)
         {
-            BtnCancelBatchAct.IsEnabled = running;
+            BtnCancelSingleAct.IsEnabled = running;
+            BtnRunSingleAct.IsEnabled = !running;
+            BtnSkipPrimeSingleAct.IsEnabled = !running;
             BtnRunBatchAct.IsEnabled = !running;
             BtnSkipPrimeBatchAct.IsEnabled = !running;
         }

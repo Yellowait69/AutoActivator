@@ -102,6 +102,39 @@ namespace AutoActivator.Gui.Views
             _historyCollectionView?.Refresh();
         }
 
+        private void BadgeExtAll_Click(object sender, MouseButtonEventArgs e)
+        {
+            SetStatusFilterTag("ALL");
+        }
+
+        private void BadgeExtGreen_Click(object sender, MouseButtonEventArgs e)
+        {
+            SetStatusFilterTag("OK");
+        }
+
+        private void BadgeExtFailed_Click(object sender, MouseButtonEventArgs e)
+        {
+            SetStatusFilterTag("KO_OR_ELIA");
+        }
+
+        private void SetStatusFilterTag(string targetTag)
+        {
+            if (CmbFilterExtStatus == null)
+            {
+                return;
+            }
+
+            foreach (object entry in CmbFilterExtStatus.Items)
+            {
+                if (entry is ComboBoxItem item &&
+                    string.Equals(item.Tag?.ToString(), targetTag, StringComparison.OrdinalIgnoreCase))
+                {
+                    CmbFilterExtStatus.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
         private bool FilterExtractionPredicate(object obj)
         {
             if (obj is not ExtractionItem item)
@@ -122,8 +155,22 @@ namespace AutoActivator.Gui.Views
             if (CmbFilterExtStatus?.SelectedItem is ComboBoxItem statusItem)
             {
                 string statusTag = statusItem.Tag?.ToString() ?? "ALL";
-                if (!string.Equals(statusTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.Status, statusTag, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(statusTag, "OK", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!item.IsGreen)
+                    {
+                        return false;
+                    }
+                }
+                else if (string.Equals(statusTag, "KO_OR_ELIA", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!item.IsFailed)
+                    {
+                        return false;
+                    }
+                }
+                else if (!string.Equals(statusTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
+                         !string.Equals(item.Status, statusTag, StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }
@@ -274,30 +321,67 @@ namespace AutoActivator.Gui.Views
                 _branch21Count++;
             }
 
-            int insertIndex = isKoOrEliaOnly ? 0 : _koExtractionCount;
-            int limit = isKoOrEliaOnly ? _koExtractionCount : ExtractionHistory.Count;
-
-            while (insertIndex < limit)
-            {
-                if (GetRowNumValue(ExtractionHistory[insertIndex].RowNum) > newItemRow)
-                {
-                    break;
-                }
-                insertIndex++;
-            }
-
-            ExtractionHistory.Insert(insertIndex, item);
-
             if (isKoOrEliaOnly)
             {
+                // Échecs / Non actifs insérés tout en haut du tableau (index 0)
+                ExtractionHistory.Insert(0, item);
+                ListHistory.SelectedItem = item;
                 _koExtractionCount++;
             }
             else
             {
+                int insertIndex = _koExtractionCount;
+                while (insertIndex < ExtractionHistory.Count)
+                {
+                    if (GetRowNumValue(ExtractionHistory[insertIndex].RowNum) > newItemRow)
+                    {
+                        break;
+                    }
+                    insertIndex++;
+                }
+                ExtractionHistory.Insert(insertIndex, item);
+                if (ListHistory.SelectedItem == null)
+                {
+                    ListHistory.SelectedItem = item;
+                }
                 _okExtractionCount++;
             }
 
+            UpdateExtractionResultBanner(item);
             UpdateKpiCounters();
+        }
+
+        private void UpdateExtractionResultBanner(ExtractionItem latestItem)
+        {
+            if (BannerExtractionResult == null)
+            {
+                return;
+            }
+
+            BannerExtractionResult.Visibility = Visibility.Visible;
+
+            if (latestItem.IsFailed)
+            {
+                // ROUGE : Contrat non actif dans LISA (ELIA ONLY) ou introuvable (KO)
+                BannerExtractionResult.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEE2E2"));
+                BannerExtractionResult.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FCA5A5"));
+                TxtBannerExtIcon.Text = "🔴";
+                TxtBannerExtTitle.Text = $"NON ACTIF LISA / ÉCHEC ({latestItem.Status}) — Contrat : {latestItem.ContractId} (Demand : {latestItem.Hdmd})";
+                TxtBannerExtTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
+                TxtBannerExtDetail.Text = latestItem.SummaryDisplay;
+                TxtBannerExtDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B91C1C"));
+            }
+            else if (_koExtractionCount == 0)
+            {
+                // VERT : Contrat actif dans LISA + ELIA (et aucun échec dans la session)
+                BannerExtractionResult.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DCFCE7"));
+                BannerExtractionResult.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#86EFAC"));
+                TxtBannerExtIcon.Text = "🟢";
+                TxtBannerExtTitle.Text = $"ACTIF LISA + ELIA — Contrat : {latestItem.ContractId} (LISA ID : {latestItem.InternalId})";
+                TxtBannerExtTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#15803D"));
+                TxtBannerExtDetail.Text = $"{latestItem.BranchDisplay} · {latestItem.ProductProcessDisplay} · {latestItem.ChannelPaymentDisplay} · {latestItem.SummaryDisplay}";
+                TxtBannerExtDetail.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#166534"));
+            }
         }
 
         private void UpdateKpiCounters()
@@ -305,8 +389,6 @@ namespace AutoActivator.Gui.Views
             if (TxtTotalCount != null) TxtTotalCount.Text = _totalExtractionCount.ToString(CultureInfo.InvariantCulture);
             if (TxtOkCount != null) TxtOkCount.Text = _okExtractionCount.ToString(CultureInfo.InvariantCulture);
             if (TxtKoCount != null) TxtKoCount.Text = _koExtractionCount.ToString(CultureInfo.InvariantCulture);
-            if (TxtExtBranch21Count != null) TxtExtBranch21Count.Text = _branch21Count.ToString(CultureInfo.InvariantCulture);
-            if (TxtExtBranch23Count != null) TxtExtBranch23Count.Text = _branch23Count.ToString(CultureInfo.InvariantCulture);
         }
 
         private readonly Stopwatch _extProgressStopwatch = new Stopwatch();
@@ -346,19 +428,9 @@ namespace AutoActivator.Gui.Views
                 _extProgressStopwatch.Stop();
             }
 
-            if (TxtExtProgressMode != null)
-            {
-                TxtExtProgressMode.Text = !string.IsNullOrWhiteSpace(modeLabel)
-                    ? modeLabel
-                    : normalizedStatus == "READY"
-                        ? "PRÊT (UNITAIRE / BATCH)"
-                        : "EXTRACTION BATCH EXCEL";
-            }
-
             if (TxtExtBatchProcessedCount != null) TxtExtBatchProcessedCount.Text = _batchProcessedCount.ToString(CultureInfo.InvariantCulture);
             if (TxtExtBatchPlannedCount != null) TxtExtBatchPlannedCount.Text = _batchPlannedCount.ToString(CultureInfo.InvariantCulture);
-            if (TxtExtBatchRemainingCount != null) TxtExtBatchRemainingCount.Text = remaining.ToString(CultureInfo.InvariantCulture);
-            if (TxtExtBatchCurrentContract != null) TxtExtBatchCurrentContract.Text = string.IsNullOrWhiteSpace(currentContract) ? "-" : currentContract;
+            if (TxtExtBatchCurrentContract != null) TxtExtBatchCurrentContract.Text = string.IsNullOrWhiteSpace(currentContract) ? "Prêt" : currentContract;
             if (TxtExtBatchProgressPercentage != null) TxtExtBatchProgressPercentage.Text = $"{percentage:F0}%";
 
             if (TxtExtElapsedTime != null)
@@ -380,20 +452,6 @@ namespace AutoActivator.Gui.Views
                 }
             }
 
-            if (TxtExtBatchProgressStatus != null)
-            {
-                TxtExtBatchProgressStatus.Text = normalizedStatus;
-                TxtExtBatchProgressStatus.Foreground = normalizedStatus switch
-                {
-                    "COMPLETED" => Brushes.DarkGreen,
-                    "ELIA_ONLY" => Brushes.DarkOrange,
-                    "CANCELLED" => Brushes.DarkOrange,
-                    "FAILED" => Brushes.DarkRed,
-                    "READY" => Brushes.SlateGray,
-                    _ => Brushes.RoyalBlue
-                };
-            }
-
             if (ProgressBatchExtraction != null)
             {
                 ProgressBatchExtraction.Minimum = 0;
@@ -402,9 +460,7 @@ namespace AutoActivator.Gui.Views
                 ProgressBatchExtraction.Foreground = normalizedStatus switch
                 {
                     "COMPLETED" => Brushes.MediumSeaGreen,
-                    "ELIA_ONLY" => Brushes.DarkOrange,
-                    "CANCELLED" => Brushes.DarkOrange,
-                    "FAILED" => Brushes.IndianRed,
+                    "ELIA_ONLY" or "CANCELLED" or "FAILED" => Brushes.Crimson,
                     _ => Brushes.RoyalBlue
                 };
             }
@@ -849,8 +905,7 @@ namespace AutoActivator.Gui.Views
 
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(AddExtractionItemToHistory);
 
-            BtnCancelSingleExt.IsEnabled = true;
-            BtnRunSingle.IsEnabled = false;
+            SetExtractionButtons(running: true);
             UpdateBatchProgressDisplay(0, 5, $"{rawInput} — Initialisation de l'extraction SQL ({envValue}000)...", "STARTING", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
 
             await mainWindow.RunProcessAsync(async () =>
@@ -885,11 +940,7 @@ namespace AutoActivator.Gui.Views
                 }
                 finally
                 {
-                    Dispatcher.Invoke(() =>
-                    {
-                        BtnCancelSingleExt.IsEnabled = false;
-                        BtnRunSingle.IsEnabled = true;
-                    });
+                    Dispatcher.Invoke(() => SetExtractionButtons(running: false));
                 }
             });
         }
@@ -1070,8 +1121,7 @@ namespace AutoActivator.Gui.Views
                 });
             });
 
-            BtnCancelBatchExt.IsEnabled = true;
-            BtnRunBatch.IsEnabled = false;
+            SetExtractionButtons(running: true);
 
             await mainWindow.RunProcessAsync(async () =>
             {
@@ -1123,13 +1173,16 @@ namespace AutoActivator.Gui.Views
                 }
                 finally
                 {
-                    Dispatcher.Invoke(() =>
-                    {
-                        BtnCancelBatchExt.IsEnabled = false;
-                        BtnRunBatch.IsEnabled = true;
-                    });
+                    Dispatcher.Invoke(() => SetExtractionButtons(running: false));
                 }
             });
+        }
+
+        private void SetExtractionButtons(bool running)
+        {
+            BtnCancelSingleExt.IsEnabled = running;
+            BtnRunSingle.IsEnabled = !running;
+            BtnRunBatch.IsEnabled = !running;
         }
 
         private void BtnClearHistory_Click(object sender, RoutedEventArgs e)
@@ -1142,6 +1195,10 @@ namespace AutoActivator.Gui.Views
             _totalExtractionCount = 0;
             _batchPlannedCount = 0;
             _batchProcessedCount = 0;
+            if (BannerExtractionResult != null)
+            {
+                BannerExtractionResult.Visibility = Visibility.Collapsed;
+            }
             UpdateKpiCounters();
             UpdateBatchProgressDisplay(0, 0, null, "READY");
         }

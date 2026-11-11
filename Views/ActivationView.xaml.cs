@@ -116,35 +116,17 @@ namespace AutoActivator.Gui.Views
                 return false;
             }
 
-            if (CmbFilterActBranch?.SelectedItem is ComboBoxItem branchItem)
-            {
-                string branchTag = branchItem.Tag?.ToString() ?? "ALL";
-                if (!string.Equals(branchTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.BranchDisplay, branchTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
             if (CmbFilterActStatus?.SelectedItem is ComboBoxItem statusItem)
             {
                 string statusTag = statusItem.Tag?.ToString() ?? "ALL";
-                if (string.Equals(statusTag, "SUCCESS", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.Status, "SUCCESS", StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                if (string.Equals(statusTag, "ALREADY", StringComparison.OrdinalIgnoreCase) &&
-                    !item.Status.Contains("ALREADY", StringComparison.OrdinalIgnoreCase) &&
-                    !item.Status.Contains("PENDING", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(statusTag, "GREEN", StringComparison.OrdinalIgnoreCase) &&
+                    !item.IsGreen)
                 {
                     return false;
                 }
 
                 if (string.Equals(statusTag, "FAILED", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.Status, "FAILED", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase))
+                    !item.IsFailed)
                 {
                     return false;
                 }
@@ -163,11 +145,10 @@ namespace AutoActivator.Gui.Views
                    (item.ContractId?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.JclContract?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.LisaId?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.ProductCode?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.ProcessCode?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.BusinessChannel?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.FundsSummary?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (item.ProductProcessDisplay?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (item.ChannelPaymentDisplay?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.BranchDisplay?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (item.DiagnosticSummary?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.Status?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
         }
 
@@ -293,13 +274,63 @@ namespace AutoActivator.Gui.Views
 
             UpdateHistoryCounters();
 
-            if (item.Status is "FAILED" or "CANCELLED")
+            if (item.IsFailed)
             {
                 ActivationHistory.Insert(0, item);
+                if (ListActivationHistory != null)
+                {
+                    ListActivationHistory.SelectedItem = item;
+                }
             }
             else
             {
                 ActivationHistory.Add(item);
+            }
+
+            UpdateResultBanner(item);
+        }
+
+        private void UpdateResultBanner(ActivationHistoryItem latestItem)
+        {
+            if (BannerActivationResult == null || TxtBannerTitle == null || TxtBannerDetail == null)
+            {
+                return;
+            }
+
+            BannerActivationResult.Visibility = Visibility.Visible;
+
+            // If the latest item failed (or if there is any failed item pinned at the top), display the RED banner above everything
+            ActivationHistoryItem? topFailed = latestItem.IsFailed
+                ? latestItem
+                : ActivationHistory.FirstOrDefault(x => x.IsFailed);
+
+            if (topFailed != null)
+            {
+                BannerActivationResult.Background = new SolidColorBrush(Color.FromRgb(254, 226, 226)); // #FEE2E2
+                BannerActivationResult.BorderBrush = new SolidColorBrush(Color.FromRgb(248, 113, 113)); // #F87171
+                TxtBannerTitle.Foreground = new SolidColorBrush(Color.FromRgb(153, 27, 27)); // #991B1B
+                TxtBannerDetail.Foreground = new SolidColorBrush(Color.FromRgb(185, 28, 28)); // #B91C1C
+
+                string rowPrefix = topFailed.RowNum != "Unit" && topFailed.RowNum != "-"
+                    ? $"[Row #{topFailed.RowNum}] "
+                    : string.Empty;
+
+                TxtBannerTitle.Text =
+                    $"🔴 ÉCHEC D'ACTIVATION {rowPrefix}— Contrat : {topFailed.ContractId} ({topFailed.Env})" +
+                    (_failCount > 1 ? $"  [+{_failCount - 1} autre(s) échec(s) en haut du tableau]" : string.Empty);
+                TxtBannerDetail.Text = topFailed.DiagnosticSummary;
+            }
+            else
+            {
+                BannerActivationResult.Background = new SolidColorBrush(Color.FromRgb(220, 252, 231)); // #DCFCE7
+                BannerActivationResult.BorderBrush = new SolidColorBrush(Color.FromRgb(74, 222, 128)); // #4ADE80
+                TxtBannerTitle.Foreground = new SolidColorBrush(Color.FromRgb(21, 128, 61)); // #15803D
+                TxtBannerDetail.Foreground = new SolidColorBrush(Color.FromRgb(22, 101, 52)); // #166534
+
+                TxtBannerTitle.Text =
+                    $"{latestItem.StatusBadgeText} — Contrat : {latestItem.ContractId} ({latestItem.BranchDisplay} | {latestItem.Env})";
+                TxtBannerDetail.Text =
+                    $"{latestItem.ChannelPaymentDisplay} | Prime : {latestItem.Premium} | Durée : {latestItem.Duration} | {latestItem.DiagnosticSummary}";
             }
         }
 
@@ -312,22 +343,8 @@ namespace AutoActivator.Gui.Views
 
             if (TxtActSuccessCount != null)
             {
-                TxtActSuccessCount.Text = _successCount.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (TxtActBranch21Count != null)
-            {
-                TxtActBranch21Count.Text = _branch21Count.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (TxtActBranch23Count != null)
-            {
-                TxtActBranch23Count.Text = _branch23Count.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (TxtActAlreadyCount != null)
-            {
-                TxtActAlreadyCount.Text = _alreadyActiveCount.ToString(CultureInfo.InvariantCulture);
+                int greenTotal = _successCount + _alreadyActiveCount;
+                TxtActSuccessCount.Text = greenTotal.ToString(CultureInfo.InvariantCulture);
             }
 
             if (TxtActFailCount != null)
@@ -349,6 +366,11 @@ namespace AutoActivator.Gui.Views
             _branch23Count = 0;
             _batchPlannedCount = 0;
             _batchProcessedCount = 0;
+
+            if (BannerActivationResult != null)
+            {
+                BannerActivationResult.Visibility = Visibility.Collapsed;
+            }
 
             UpdateHistoryCounters();
             UpdateBatchProgressDisplay(0, 0, null, "READY");
@@ -761,20 +783,20 @@ namespace AutoActivator.Gui.Views
         private void BtnJobPresetFull_Click(object sender, RoutedEventArgs e) =>
             ApplyJobSelectionToUi(ActivationJobSelection.FullChain());
 
-        private void BtnJobPresetPremeliaOnly_Click(object sender, RoutedEventArgs e) =>
-            ApplyJobSelectionToUi(ActivationJobSelection.PremeliaOnly());
-
-        private void BtnJobPresetNoAddPrct_Click(object sender, RoutedEventArgs e) =>
-            ApplyJobSelectionToUi(ActivationJobSelection.SkipAddPrct());
-
-        private void BtnJobPresetImsOnly_Click(object sender, RoutedEventArgs e) =>
-            ApplyJobSelectionToUi(ActivationJobSelection.ImsOnly());
-
-        private void BtnJobPresetBr23LvdqOnly_Click(object sender, RoutedEventArgs e) =>
-            ApplyJobSelectionToUi(ActivationJobSelection.Branch23FundsAndConsolidationOnly());
-
-        private void BtnJobPresetBr23ConsolidateOnly_Click(object sender, RoutedEventArgs e) =>
-            ApplyJobSelectionToUi(ActivationJobSelection.Branch23VniAndConsolidationOnly());
+        private void BtnJobUncheckAll_Click(object sender, RoutedEventArgs e) =>
+            ApplyJobSelectionToUi(new ActivationJobSelection
+            {
+                RunAddPrct = false,
+                UseSqlPrctInsert = false,
+                RunLvpp06u = false,
+                RunLvpg22u = false,
+                RunLi1j04d0 = false,
+                RunLi1j04d2 = false,
+                RunLvdqFg03 = false,
+                RunBranch23SqlVni = false,
+                RunLvdqFg01 = false,
+                RunLvd1Pe01 = false
+            });
 
         // =============================================================
         // ACTIVATION UNITAIRE
