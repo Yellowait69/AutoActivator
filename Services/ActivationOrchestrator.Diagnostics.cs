@@ -51,6 +51,40 @@ namespace AutoActivator.Services
                 "If the contract still requires IMS activation, rerun with Skip Prime to bypass ADDPRCT, LVPP06U and LVPG22U.";
         }
 
+        private static readonly Regex MainframeErrorLineRegex = new Regex(
+            @"(?:\bIEF(?:212I|450I|452I|453I|C\d{3}I)\b|\bJCLCM\d+\b|\bJOB\s+NOT\s+RUN\b|\bDSNT408I\b|\bSQLCODE\s*=\s*-[0-9]+\b|\bDFS[0-9]{3,4}[A-Z]?\b|\bABEND(?:ED)?\b|\bS(?:0C[0-9A-F]|222|322|806|B37|D37|E37)\b|\bU[0-9]{4}\b|\bCEE3\d+[A-Z]?\b|\bIGZ[0-9]+[A-Z]?\b|\b(?:ICE|WER)[0-9]{3}A\b|\bDATASET\s+NOT\s+FOUND\b|\bNOT\s+CATALOGED\b|\b(?:ERREUR|REJET|ANOMALIE|ERROR|REJECTED)\b)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        public static IReadOnlyList<string> ExtractMainframeSpoolErrors(string? spool)
+        {
+            if (string.IsNullOrWhiteSpace(spool))
+            {
+                return Array.Empty<string>();
+            }
+
+            var extracted = new List<string>();
+            foreach (string rawLine in spool.Replace("\r", string.Empty).Split('\n'))
+            {
+                string trimmed = rawLine.Trim();
+                if (trimmed.Length < 4 ||
+                    trimmed.StartsWith("===", StringComparison.Ordinal) ||
+                    trimmed.StartsWith("---", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (MainframeErrorLineRegex.IsMatch(trimmed))
+                {
+                    extracted.Add(trimmed);
+                }
+            }
+
+            return extracted
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(6)
+                .ToList();
+        }
+
         private static void PopulateFailureDiagnostics(
             ContractActivationTrace trace,
             JobStepExecutionInfo stepInfo,
@@ -61,6 +95,16 @@ namespace AutoActivator.Services
                 ? "Unknown"
                 : stepInfo.ReturnCode;
 
+            IReadOnlyList<string> spoolErrors = ExtractMainframeSpoolErrors(stepInfo.SpoolExcerpt);
+            string spoolSummary = spoolErrors.Count > 0
+                ? string.Join(" || ", spoolErrors.Take(3))
+                : string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(spoolSummary))
+            {
+                stepInfo.ErrorMessage = spoolSummary;
+            }
+
             trace.FailureStage = isSystemCrash
                 ? $"MAINFRAME_CRASH_{stepInfo.Status}"
                 : $"BUSINESS_RC_ERROR_{jobName}";
@@ -68,8 +112,10 @@ namespace AutoActivator.Services
             trace.FailedJobNum = stepInfo.JobNum;
             trace.FailedReturnCode = returnCode;
             trace.FailureReason = isSystemCrash
-                ? $"System failure on {jobName} ({stepInfo.JobNum}). Status={stepInfo.Status}, Code={returnCode}."
-                : $"Business error on {jobName} ({stepInfo.JobNum}). Return code={returnCode}.";
+                ? $"System failure on {jobName} ({stepInfo.JobNum}). Status={stepInfo.Status}, Code={returnCode}." +
+                  (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Spool: {spoolSummary}")
+                : $"Business error on {jobName} ({stepInfo.JobNum}). Return code={returnCode}." +
+                  (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Spool: {spoolSummary}");
 
             if (string.Equals(stepInfo.Status, "JCLError", StringComparison.OrdinalIgnoreCase))
             {
@@ -77,18 +123,21 @@ namespace AutoActivator.Services
                     "JCL error, missing dataset, allocation error or invalid job-card parameter.";
                 trace.RootCauseAnalysis =
                     $"{jobName} failed with JCLError before or during allocation. Possible causes include a missing " +
-                    "dataset, a locked dataset, an invalid symbolic parameter or an invalid SCHENV.";
+                    "dataset, a locked dataset, an invalid symbolic parameter or an invalid SCHENV." +
+                    (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Detected messages: {spoolSummary}");
                 trace.RecommendedAction =
                     "Inspect JESYSMSG and JESMSGLG to identify the DD, DSN or symbolic parameter that caused the error.";
                 return;
             }
 
-            if (string.Equals(stepInfo.Status, "Abend", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(stepInfo.Status, "Abend", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(stepInfo.Status, "Abended", StringComparison.OrdinalIgnoreCase))
             {
                 stepInfo.DiagnosticHint = $"Program Abend {returnCode} during {jobName}.";
                 trace.RootCauseAnalysis =
                     $"{jobName} terminated abnormally. Possible causes include invalid numeric data, a missing load module, " +
-                    "a DB2 failure, an IMS failure or a data inconsistency.";
+                    "a DB2 failure, an IMS failure or a data inconsistency." +
+                    (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Detected messages: {spoolSummary}");
                 trace.RecommendedAction =
                     "Inspect SYSOUT, SYSPRINT and dumps. Verify contract, premium, BUCP, CMDPMT, CUS and environment values.";
                 return;
@@ -98,7 +147,8 @@ namespace AutoActivator.Services
             {
                 stepInfo.DiagnosticHint = $"ADDPRCT rejected the payment injection with RC={returnCode}.";
                 trace.RootCauseAnalysis =
-                    $"ADDPRCT rejected CMDPMT={trace.Cmdpmt}, BUCP={trace.Bucp}, contract={trace.JclContract} or the supplied premium.";
+                    $"ADDPRCT rejected CMDPMT={trace.Cmdpmt}, BUCP={trace.Bucp}, contract={trace.JclContract} or the supplied premium." +
+                    (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Spool: {spoolSummary}");
                 trace.RecommendedAction =
                     "Inspect the ADDPRCT Spool. Verify BUCP/CMDPMT mapping, CUS, contract and applicable distribution channel.";
                 return;
@@ -108,7 +158,8 @@ namespace AutoActivator.Services
             {
                 stepInfo.DiagnosticHint = $"Premium accounting failed in {jobName} with RC={returnCode}.";
                 trace.RootCauseAnalysis =
-                    $"{jobName} failed after ADDPRCT. The premium, accounting office, payment method or financial state may be inconsistent.";
+                    $"{jobName} failed after ADDPRCT. The premium, accounting office, payment method or financial state may be inconsistent." +
+                    (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Spool: {spoolSummary}");
                 trace.RecommendedAction =
                     "Inspect SYSOUT and SYSPRINT. If ADDPRCT already registered the premium, use Skip Prime on retry.";
                 return;
@@ -118,7 +169,8 @@ namespace AutoActivator.Services
             {
                 stepInfo.DiagnosticHint = $"IMS activation failed in {jobName} with RC={returnCode}.";
                 trace.RootCauseAnalysis =
-                    $"{jobName}, including subjob {stepInfo.SubJobName}, failed in IMS environment IM7{trace.EnvIms}. FASTCTRL={trace.FastCtrlDsn}.";
+                    $"{jobName}, including subjob {stepInfo.SubJobName}, failed in IMS environment IM7{trace.EnvIms}. FASTCTRL={trace.FastCtrlDsn}." +
+                    (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Spool: {spoolSummary}");
                 trace.RecommendedAction =
                     "Inspect the Spool and IMS messages. Since billing may already have succeeded, retry with Skip Prime after resolving the IMS issue.";
                 return;
@@ -130,7 +182,8 @@ namespace AutoActivator.Services
                     $"BR23 job {jobName}, template {stepInfo.JclName}, failed with RC={returnCode}.";
                 trace.RootCauseAnalysis =
                     $"The BR23 phase failed after the standard activation. Fund events, NAV consolidation or FP01 processing was rejected. " +
-                    $"Consolidation={trace.Branch23ConsolidationDate:yyyyMMdd}.";
+                    $"Consolidation={trace.Branch23ConsolidationDate:yyyyMMdd}." +
+                    (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Spool: {spoolSummary}");
                 trace.RecommendedAction =
                     "Inspect the Spool. Verify the generated movement, fund codes, NAV values and BR23 JCL parameters. " +
                     "Do not replay completed billing steps.";
@@ -139,7 +192,8 @@ namespace AutoActivator.Services
 
             stepInfo.DiagnosticHint = $"Job {jobName} failed. Status={stepInfo.Status}, RC={returnCode}.";
             trace.RootCauseAnalysis =
-                $"{jobName} did not return an accepted condition code. AutoActivator accepts only RC=0000 and RC=0004.";
+                $"{jobName} did not return an accepted condition code. AutoActivator accepts only RC=0000 and RC=0004." +
+                (string.IsNullOrWhiteSpace(spoolSummary) ? string.Empty : $" Spool: {spoolSummary}");
             trace.RecommendedAction =
                 "Inspect the Mainframe Spool and correct the reported business or technical error.";
         }

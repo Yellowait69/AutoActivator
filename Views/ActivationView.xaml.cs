@@ -25,8 +25,9 @@ namespace AutoActivator.Gui.Views
     {
         private readonly ActivationDataService _activationDataService;
         private readonly IActivationRoutingService _activationRoutingService;
-        private CancellationTokenSource? _cts;
+        private readonly OperationProgressController _progressController;
         private ICollectionView? _historyCollectionView;
+        private bool _isCustomBatchFileSelected;
 
         public ObservableCollection<ActivationHistoryItem> ActivationHistory { get; } =
             new ObservableCollection<ActivationHistoryItem>();
@@ -49,6 +50,14 @@ namespace AutoActivator.Gui.Views
 
             _activationDataService = new ActivationDataService();
             _activationRoutingService = new ActivationRoutingService();
+            _progressController = new OperationProgressController(
+                Dispatcher,
+                ProgressBatchActivation,
+                TxtBatchCurrentContract,
+                TxtBatchProcessedCount,
+                TxtBatchPlannedCount,
+                TxtBatchElapsedTime,
+                TxtBatchProgressPercentage);
 
             _historyCollectionView = CollectionViewSource.GetDefaultView(ActivationHistory);
             if (_historyCollectionView != null)
@@ -60,7 +69,7 @@ namespace AutoActivator.Gui.Views
             ApplyActivationInputModeState();
             UpdateBatchActCsvPath();
             UpdateSingleActivationControls();
-            UpdateBatchProgressDisplay(0, 0, null, "READY");
+            _progressController.Reset("Prêt");
         }
 
         /// <summary>
@@ -451,18 +460,20 @@ namespace AutoActivator.Gui.Views
                     "Data Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|" +
                     "CSV Files (*.csv)|*.csv|" +
                     "Excel Files (*.xls;*.xlsx)|*.xls;*.xlsx",
-                Title = "Select file for batch activation",
-                InitialDirectory = Path.GetFullPath(Settings.InputDir)
+                Title = "Sélectionner un fichier Excel ou CSV d'activation Batch",
+                InitialDirectory = Directory.Exists(Settings.InputDir) ? Path.GetFullPath(Settings.InputDir) : Environment.CurrentDirectory
             };
 
             if (openFileDialog.ShowDialog() == true)
             {
+                _isCustomBatchFileSelected = true;
                 TxtBatchActCsv.Text = openFileDialog.FileName;
-                if (TxtActContract != null)
-                {
-                    TxtActContract.Text = string.Empty;
-                }
             }
+        }
+
+        private void BtnOpenBatchActFile_Click(object sender, RoutedEventArgs e)
+        {
+            MainWindow.TryOpenFileDirect(TxtBatchActCsv?.Text, "Fichier Batch Activation (Excel / CSV)");
         }
 
         private void BtnPreviewBatchFile_Click(object sender, RoutedEventArgs e)
@@ -528,11 +539,19 @@ namespace AutoActivator.Gui.Views
 
         private void UpdateBatchActCsvPath()
         {
-            // No automatic default QC file prefill; the user explicitly selects a batch file or enters a contract.
+            if (_isCustomBatchFileSelected || TxtBatchActCsv == null)
+            {
+                return;
+            }
+
+            string envLetter = GetSelectedEnvironment();
+            string process = GetSelectedProcess();
+            TxtBatchActCsv.Text = Settings.GetDefaultTestingExcelPath(process, envLetter);
         }
 
         private void BtnUseDefaultQcActFile_Click(object sender, RoutedEventArgs e)
         {
+            _isCustomBatchFileSelected = false;
             UpdateBatchActCsvPath();
         }
 
@@ -542,12 +561,7 @@ namespace AutoActivator.Gui.Views
 
         private void TxtActContract_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (!string.IsNullOrWhiteSpace(TxtActContract?.Text) &&
-                TxtBatchActCsv != null &&
-                !string.IsNullOrEmpty(TxtBatchActCsv.Text))
-            {
-                TxtBatchActCsv.Text = string.Empty;
-            }
+            // Never clear TxtBatchActCsv when typing a single contract/Demand ID: Single and Batch have dedicated buttons.
         }
 
         private void CmbActEnv_SelectionChanged(
@@ -580,6 +594,11 @@ namespace AutoActivator.Gui.Views
             if (BtnSkipPrimeSingleAct != null)
             {
                 BtnSkipPrimeSingleAct.Visibility = visibility;
+            }
+
+            if (BtnSkipPrimeBatchAct != null)
+            {
+                BtnSkipPrimeBatchAct.Visibility = visibility;
             }
         }
 
@@ -617,19 +636,9 @@ namespace AutoActivator.Gui.Views
 
         private void BtnCancelActivation_Click(object sender, RoutedEventArgs e)
         {
-            if (_cts == null || _cts.IsCancellationRequested)
-            {
-                return;
-            }
-
-            _cts.Cancel();
-
             if (Window.GetWindow(this) is MainWindow mainWindow)
             {
                 mainWindow.CancelCurrentProcess();
-                mainWindow.TxtStatus.Text =
-                    "Canceling. The current sequence will stop shortly.";
-                mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
             }
         }
 
@@ -746,7 +755,7 @@ namespace AutoActivator.Gui.Views
 
         private void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e)
         {
-            ExecuteSmartActivation(skipPrime: false);
+            TriggerSingleActivationFromUi(skipPrime: false);
         }
 
         private void TxtActContract_KeyDown(object sender, KeyEventArgs e)
@@ -754,36 +763,32 @@ namespace AutoActivator.Gui.Views
             if (e.Key == Key.Enter && BtnRunSingleAct?.IsEnabled == true)
             {
                 e.Handled = true;
-                ExecuteSmartActivation(skipPrime: false);
+                TriggerSingleActivationFromUi(skipPrime: false);
             }
         }
 
         private void BtnSkipPrimeSingleAct_Click(object sender, RoutedEventArgs e)
         {
-            ExecuteSmartActivation(skipPrime: true);
+            TriggerSingleActivationFromUi(skipPrime: true);
         }
 
-        private void ExecuteSmartActivation(bool skipPrime)
+        private void TriggerSingleActivationFromUi(bool skipPrime)
         {
             string singleInput = TxtActContract?.Text?.Trim() ?? string.Empty;
-            string batchPath = TxtBatchActCsv?.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(singleInput))
+            {
+                _progressController.Reset(
+                    "Veuillez saisir un N° de Contrat ou Demand ID pour une activation unitaire (ou utilisez « 📁 Lancer Batch »).");
+                if (Window.GetWindow(this) is MainWindow mw)
+                {
+                    mw.TxtStatus.Text = "Saisissez un Contrat / Demand ID unitaire, ou cliquez sur « 📁 Lancer Batch » pour traiter le fichier Excel.";
+                    mw.TxtStatus.Foreground = Brushes.DarkOrange;
+                }
+                TxtActContract?.Focus();
+                return;
+            }
 
-            if (!string.IsNullOrWhiteSpace(singleInput))
-            {
-                RunSingleActivation(skipPrime);
-            }
-            else if (!string.IsNullOrWhiteSpace(batchPath))
-            {
-                RunBatchActivation(skipPrime);
-            }
-            else
-            {
-                UpdateBatchProgressDisplay(
-                    0,
-                    0,
-                    "Veuillez saisir un N° de Contrat / Demand ID ou sélectionner un fichier Batch Excel.",
-                    "READY");
-            }
+            RunSingleActivation(skipPrime);
         }
 
         private async void RunSingleActivation(bool skipPrime)
@@ -793,10 +798,9 @@ namespace AutoActivator.Gui.Views
                 return;
             }
 
-            ResetCancellationToken();
             SetSingleActivationButtons(running: true);
 
-            await mainWindow.RunProcessAsync(async () =>
+            await mainWindow.RunProcessAsync(async token =>
             {
                 var stopwatch = Stopwatch.StartNew();
                 var trace = new ContractActivationTrace
@@ -817,13 +821,18 @@ namespace AutoActivator.Gui.Views
                     ValidateSingleInput(input.RawInput);
                     PopulateInitialTrace(trace, input, skipPrime);
 
-                    UpdateBatchProgressDisplay(
-                        1,
-                        input.ForceBranch23 ? 10 : 7,
+                    int initialSteps = input.ForceBranch23 ? 10 : 7;
+                    _progressController.Start(
                         $"{input.RawInput} — Résolution SQL Autocomplete & Préchargement JCL ({input.Environment}000)...",
-                        "STARTING",
-                        "ACTIVATION UNITAIRE (ÉTAPES JCL/SQL)",
-                        stopwatch.Elapsed.TotalSeconds);
+                        totalUnits: initialSteps,
+                        showEta: false);
+                    _progressController.Report(
+                        0.5,
+                        initialSteps,
+                        $"{input.RawInput} — Résolution SQL Autocomplete & Préchargement JCL ({input.Environment}000)...",
+                        showEta: false,
+                        processedDisplay: "1",
+                        plannedDisplay: initialSteps.ToString(CultureInfo.InvariantCulture));
 
                     await SetStatusAsync(
                             mainWindow,
@@ -843,7 +852,7 @@ namespace AutoActivator.Gui.Views
                             input.ForceBranch23,
                             input.InputMode,
                             BuildUiOverrides(input),
-                            _cts!.Token);
+                            token);
 
                     Task preloadTask = jclProcessor.PreloadTemplatesAsync(
                         JclProcessorService.StandardActivationJobs
@@ -895,7 +904,14 @@ namespace AutoActivator.Gui.Views
                     ActivationRoutingResult paymentRouting = ResolveInputRouting(
                         input,
                         plan.ChannelCode);
-                    if (!paymentRouting.IsResolved)
+
+                    bool requiresAddPrctPaymentRouting =
+                        !skipPrime &&
+                        !string.Equals(effectiveProcess, "C05", StringComparison.OrdinalIgnoreCase) &&
+                        (input.JobSelection == null ||
+                         (input.JobSelection.RunAddPrct && !input.JobSelection.UseSqlPrctInsert));
+
+                    if (!paymentRouting.IsResolved && requiresAddPrctPaymentRouting)
                     {
                         trace.FailureStage = "PAYMENT_ROUTING";
                         trace.FailureReason = paymentRouting.DiagnosticMessage;
@@ -1005,7 +1021,7 @@ namespace AutoActivator.Gui.Views
                                 SetStatusWithoutAwait(mainWindow, message);
                                 UpdateSingleActivationStepProgress(trace, stopwatch, message, "RUNNING");
                             },
-                            _cts.Token,
+                            token,
                             trace,
                             isBranch23,
                             branch23FundSource,
@@ -1062,6 +1078,7 @@ namespace AutoActivator.Gui.Views
                         mainWindow.TxtStatus.Text = "Activation cancelled.";
                         mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
                     });
+                    throw;
                 }
                 catch (Exception exception)
                     when (string.Equals(
@@ -1070,19 +1087,18 @@ namespace AutoActivator.Gui.Views
                         StringComparison.Ordinal))
                 {
                     CompleteTrace(trace, stopwatch, "ALREADY_ACTIVE");
-                    UpdateSingleActivationStepProgress(trace, stopwatch, "Contrat déjà actif (ADDPRCT RC=0008).", "ALREADY_ACTIVE");
+                    UpdateSingleActivationStepProgress(trace, stopwatch, "Contrat déjà actif dans LISA (LV.SCNTT0 / ADDPRCT RC=0008).", "ALREADY_ACTIVE");
 
                     await Dispatcher.InvokeAsync(() =>
                     {
                         mainWindow.TxtStatus.Text =
-                            $"Contract {trace.ResolvedContract} is already active. " +
-                            "ADDPRCT returned RC=0008.";
+                            $"Contract {trace.ResolvedContract} is already active in LISA.";
                         mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
 
                         MessageBox.Show(
                             $"Contract {trace.ResolvedContract} is already active.\n\n" +
-                            $"Job: {trace.FailedJobName} {trace.FailedJobNum}\n" +
-                            $"Return code: {trace.FailedReturnCode}\n\n" +
+                            $"Job: {Display(trace.FailedJobName)} {Display(trace.FailedJobNum)}\n" +
+                            $"Return code: {Display(trace.FailedReturnCode)}\n\n" +
                             "Use Skip Prime only when the remaining IMS " +
                             "activation jobs must be replayed.",
                             "Contract Already Active",
@@ -1133,10 +1149,12 @@ namespace AutoActivator.Gui.Views
                     }
 
                     string reportPath = SaveSingleActivationReport(trace, skipPrime);
-                    mainWindow.LastGeneratedPath = reportPath;
 
-                    await Dispatcher.InvokeAsync(
-                        () => SetSingleActivationButtons(running: false));
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        mainWindow.LastGeneratedPath = reportPath;
+                        SetSingleActivationButtons(running: false);
+                    });
                 }
             });
         }
@@ -1155,14 +1173,6 @@ namespace AutoActivator.Gui.Views
             RunBatchActivation(skipPrime: true);
         }
 
-        public string PrepareCsvFromExcel(string excelFilePath)
-        {
-            return ExcelHelper.ConvertExcelToCsv(
-                excelFilePath,
-                Settings.OutputDir,
-                "Converted_Act");
-        }
-
         private async void RunBatchActivation(bool skipPrime)
         {
             if (Window.GetWindow(this) is not MainWindow mainWindow)
@@ -1170,14 +1180,17 @@ namespace AutoActivator.Gui.Views
                 return;
             }
 
-            ResetCancellationToken();
             SetBatchActivationButtons(running: true);
+            _batchPlannedCount = 0;
+            _batchProcessedCount = 0;
+            _progressController.Start(
+                "Lecture directe en mémoire du fichier Excel / CSV et initialisation du lot...",
+                totalUnits: 0,
+                showEta: true);
 
-            await Dispatcher.InvokeAsync(() =>
-                UpdateBatchProgressDisplay(0, 0, null, "STARTING"));
-
-            await mainWindow.RunProcessAsync(async () =>
+            await mainWindow.RunProcessAsync(async token =>
             {
+                var batchService = new BatchActivationService(_activationDataService);
                 try
                 {
                     BatchActivationInput input =
@@ -1193,33 +1206,10 @@ namespace AutoActivator.Gui.Views
                             input.FilePath);
                     }
 
-                    string inputPath = input.FilePath;
-
-                    if (inputPath.EndsWith(
-                            ".xls",
-                            StringComparison.OrdinalIgnoreCase) ||
-                        inputPath.EndsWith(
-                            ".xlsx",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        await SetStatusAsync(
-                                mainWindow,
-                                "Converting Excel file to local CSV (preserving 1:1 Excel row numbering).")
-                            .ConfigureAwait(false);
-
-                        inputPath = await Task.Run(
-                                () => PrepareCsvFromExcel(inputPath),
-                                _cts!.Token)
-                            .ConfigureAwait(false);
-                    }
-
-                    _cts!.Token.ThrowIfCancellationRequested();
-
-                    var batchService =
-                        new BatchActivationService(_activationDataService);
+                    token.ThrowIfCancellationRequested();
 
                     var result = await batchService.RunBatchAsync(
-                            inputPath,
+                            input.FilePath,
                             input.IsDemandId,
                             input.Environment,
                             input.Cus,
@@ -1231,22 +1221,23 @@ namespace AutoActivator.Gui.Views
                             input.Password,
                             Settings.OutputDir,
                             message => SetStatusWithoutAwait(mainWindow, message),
-                            _cts.Token,
+                            token,
                             AddTraceToHistory,
                             input.MarkAllAsBranch23,
                             input.DefaultBranch23Funds,
-                            progress => Dispatcher.InvokeAsync(
-                                () => HandleBatchProgress(mainWindow, progress)),
+                            progress => HandleBatchProgress(mainWindow, progress),
                             input.InputMode,
                             input.JobSelection,
                             manualPaymentOverride: input.InputMode.AllowsManualOverrides(),
-                            uiOverrides: BuildBatchUiOverrides(input))
+                            uiOverrides: BuildBatchUiOverrides(input),
+                            onReportSaved: savedPath =>
+                                Dispatcher.InvokeAsync(() => mainWindow.LastGeneratedPath = savedPath))
                         .ConfigureAwait(false);
-
-                    mainWindow.LastGeneratedPath = result.reportPath;
 
                     await Dispatcher.InvokeAsync(() =>
                     {
+                        mainWindow.LastGeneratedPath = result.reportPath;
+
                         int finalProcessed =
                             result.successCount +
                             result.alreadyActiveCount +
@@ -1256,11 +1247,14 @@ namespace AutoActivator.Gui.Views
                             finalProcessed,
                             _batchPlannedCount);
 
-                        UpdateBatchProgressDisplay(
-                            finalProcessed,
-                            finalTotal,
-                            null,
-                            "COMPLETED");
+                        _batchProcessedCount = finalProcessed;
+                        _batchPlannedCount = finalTotal;
+
+                        _progressController.Complete(
+                            $"Batch terminé — Activés : {result.successCount} | Déjà actifs : {result.alreadyActiveCount} | Échecs : {result.errorCount}",
+                            warning: result.errorCount > 0,
+                            finalProcessed: finalProcessed,
+                            finalTotal: finalTotal);
 
                         mainWindow.TxtStatus.Text =
                             $"Batch completed. {finalProcessed}/{finalTotal} " +
@@ -1289,33 +1283,42 @@ namespace AutoActivator.Gui.Views
                 {
                     await Dispatcher.InvokeAsync(() =>
                     {
+                        if (!string.IsNullOrWhiteSpace(batchService.LastGeneratedReportPath))
+                        {
+                            mainWindow.LastGeneratedPath = batchService.LastGeneratedReportPath;
+                        }
+
                         int remaining = Math.Max(
                             0,
                             _batchPlannedCount - _batchProcessedCount);
 
-                        UpdateBatchProgressDisplay(
-                            _batchProcessedCount,
-                            _batchPlannedCount,
-                            null,
-                            "CANCELLED");
+                        _progressController.Cancel(
+                            $"Batch annulé — {_batchProcessedCount}/{_batchPlannedCount} traités ({remaining} restants). Rapport partiel sauvegardé.",
+                            finalProcessed: _batchProcessedCount,
+                            finalTotal: _batchPlannedCount);
 
                         mainWindow.TxtStatus.Text =
                             $"Batch activation cancelled. " +
                             $"{_batchProcessedCount}/{_batchPlannedCount} " +
                             $"completed, {remaining} remaining. " +
-                            "A partial report may have been generated.";
+                            "Partial report saved.";
                         mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
                     });
+                    throw;
                 }
                 catch (Exception exception)
                 {
                     await Dispatcher.InvokeAsync(() =>
                     {
-                        UpdateBatchProgressDisplay(
-                            _batchProcessedCount,
-                            _batchPlannedCount,
-                            null,
-                            "FAILED");
+                        if (!string.IsNullOrWhiteSpace(batchService.LastGeneratedReportPath))
+                        {
+                            mainWindow.LastGeneratedPath = batchService.LastGeneratedReportPath;
+                        }
+
+                        _progressController.Fail(
+                            $"Échec Batch : {exception.Message}",
+                            finalProcessed: _batchProcessedCount,
+                            finalTotal: _batchPlannedCount);
 
                         mainWindow.TxtStatus.Text =
                             $"Batch activation failed: {exception.Message}";

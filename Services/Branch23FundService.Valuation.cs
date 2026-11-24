@@ -25,6 +25,20 @@ namespace AutoActivator.Services
                     WHERE C_FONDS = @fund
                 ) AS OpenRows;";
 
+        private const string ExistingClosedNavRangeSql = @"
+            SELECT DISTINCT CAST(D_CALC_EVOL_FONDS AS date) AS NavDate
+            FROM [LV].[GFEVT0] WITH (NOLOCK)
+            WHERE C_FONDS = @fund
+              AND D_CALC_EVOL_FONDS >= @firstDate
+              AND D_CALC_EVOL_FONDS <= @lastDate;";
+
+        private const string ExistingOpenNavRangeSql = @"
+            SELECT DISTINCT CAST(D_COURS AS date) AS NavDate
+            FROM [LV].[GFCRT0] WITH (NOLOCK)
+            WHERE C_FONDS = @fund
+              AND D_COURS >= @firstDate
+              AND D_COURS <= @lastDate;";
+
         private const string ClosedNavExistsSql = @"
             SELECT COUNT_BIG(1)
             FROM [LV].[GFEVT0] WITH (NOLOCK)
@@ -185,7 +199,7 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Recherche les fonds associés à un contrat dans LISA (LV000FD0.LV.FMVDT0 / LV.FPLCT0)
+        /// Recherche les fonds associés à un contrat dans LISA (LV000FD0.LV.FMVDT0)
         /// après exécution de LVDQFG03 ou lors d'une reprise sur contrat déjà créé en LISA.
         /// </summary>
         public async Task<IReadOnlyList<string>> DiscoverContractFundsFromLisaAsync(
@@ -220,15 +234,18 @@ namespace AutoActivator.Services
                     CommandTimeout = SqlCommandTimeoutSeconds
                 };
                 cmd.Parameters.AddWithValue("@NoCnt", noCnt);
-                using SqlDataReader reader = await cmd.ExecuteReaderAsync(token).ConfigureAwait(false);
-                while (await reader.ReadAsync(token).ConfigureAwait(false))
+                using (token.Register(static s => TryCancelCommand((SqlCommand)s!), cmd))
+                using (SqlDataReader reader = await cmd.ExecuteReaderAsync(token).ConfigureAwait(false))
                 {
-                    if (!reader.IsDBNull(0))
+                    while (await reader.ReadAsync(token).ConfigureAwait(false))
                     {
-                        string code = reader.GetString(0).Trim().ToUpperInvariant();
-                        if (code.Length is > 0 and <= 6)
+                        if (!reader.IsDBNull(0))
                         {
-                            discovered.Add(code);
+                            string code = reader.GetString(0).Trim().ToUpperInvariant();
+                            if (code.Length is > 0 and <= 6)
+                            {
+                                discovered.Add(code);
+                            }
                         }
                     }
                 }
@@ -236,6 +253,10 @@ namespace AutoActivator.Services
             catch (OperationCanceledException)
             {
                 throw;
+            }
+            catch (Exception) when (token.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(token);
             }
             catch
             {
@@ -248,164 +269,288 @@ namespace AutoActivator.Services
                 .ToList();
         }
 
-        private async Task ProcessFundAsync(
-            Branch23NavResult result,
+        /// <summary>
+        /// Traite l'ensemble de la fenêtre de dates pour un fonds donné de manière strictement séquentielle
+        /// sur la connexion SQL fournie :
+        /// 1. Classification unique du fonds (1 requête au lieu de N jours).
+        /// 2. Lecture groupée des dates déjà cotées sur la fenêtre (1 requête au lieu de N jours).
+        /// 3. Insertion séquentielle uniquement des dates réellement manquantes.
+        /// </summary>
+        private async Task<List<Branch23NavResult>> ProcessFundWindowSequentiallyAsync(
+            SqlConnection connection,
+            string fundCode,
+            DateTime firstDate,
+            DateTime lastDate,
             CancellationToken token)
         {
-            await ClassifyAsync(result, token).ConfigureAwait(false);
+            int dayCount = (lastDate - firstDate).Days + 1;
+            var results = new List<Branch23NavResult>(dayCount);
 
-            if (!result.Kind.HasValue)
+            (Branch23FundKind? kind, string kindSource, string classifyError) =
+                await ClassifyFundOnceAsync(connection, fundCode, token).ConfigureAwait(false);
+
+            if (!kind.HasValue)
             {
-                if (string.IsNullOrWhiteSpace(result.Error))
+                for (int offset = 0; offset < dayCount; offset++)
                 {
-                    result.Error = "The fund type could not be determined.";
+                    results.Add(new Branch23NavResult
+                    {
+                        FundCode = fundCode,
+                        NavDate = firstDate.AddDays(offset),
+                        KindSource = kindSource,
+                        Error = string.IsNullOrWhiteSpace(classifyError)
+                            ? "The fund type could not be determined."
+                            : classifyError
+                    });
                 }
-
-                return;
+                return results;
             }
 
-            bool isClosed = result.Kind.Value == Branch23FundKind.Closed;
-            string existsSql = isClosed ? ClosedNavExistsSql : OpenNavExistsSql;
-
-            bool exists = await NavExistsAsync(
-                    existsSql,
-                    result.FundCode,
-                    result.NavDate,
-                    token)
-                .ConfigureAwait(false);
-
-            if (exists)
+            bool isClosed = kind.Value == Branch23FundKind.Closed;
+            HashSet<DateTime> existingDates;
+            try
             {
-                result.AlreadyExisted = true;
-                return;
+                existingDates = await LoadExistingNavDatesOnConnectionAsync(
+                        connection,
+                        isClosed,
+                        fundCode,
+                        firstDate,
+                        lastDate,
+                        token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception) when (token.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(token);
+            }
+            catch (Exception ex)
+            {
+                string err = BuildErrorMessage(ex);
+                for (int offset = 0; offset < dayCount; offset++)
+                {
+                    results.Add(new Branch23NavResult
+                    {
+                        FundCode = fundCode,
+                        Kind = kind,
+                        KindSource = kindSource,
+                        NavDate = firstDate.AddDays(offset),
+                        Error = err
+                    });
+                }
+                return results;
             }
 
             decimal increment = isClosed
                 ? Settings.Branch23.ClosedFundUnitIncrement ?? DefaultClosedFundUnitIncrement
                 : Settings.Branch23.OpenFundNavIncrement ?? DefaultOpenFundNavIncrement;
 
-            result.AppliedIncrement = increment;
+            string existsSql = isClosed ? ClosedNavExistsSql : OpenNavExistsSql;
+            string insertSql = isClosed ? InsertClosedNavSql : InsertOpenNavSql;
 
-            result.SourceNavDate = await GetLatestSourceNavDateAsync(
-                    isClosed,
-                    result.FundCode,
-                    result.NavDate,
-                    token)
-                .ConfigureAwait(false);
-
-            if (!result.SourceNavDate.HasValue)
+            for (int offset = 0; offset < dayCount; offset++)
             {
-                result.Error =
-                    $"No reference NAV was found for fund {result.FundCode} in " +
-                    $"{ValuationDatabaseName}.{(isClosed ? "LV.GFEVT0" : "LV.GFCRT0")}. " +
-                    "The NAV cannot be copied automatically.";
-                return;
+                token.ThrowIfCancellationRequested();
+
+                DateTime navDate = firstDate.AddDays(offset);
+                var item = new Branch23NavResult
+                {
+                    FundCode = fundCode,
+                    Kind = kind,
+                    KindSource = kindSource,
+                    NavDate = navDate
+                };
+                results.Add(item);
+
+                if (existingDates.Contains(navDate))
+                {
+                    item.AlreadyExisted = true;
+                    continue;
+                }
+
+                try
+                {
+                    item.AppliedIncrement = increment;
+                    item.SourceNavDate = await GetLatestSourceNavDateOnConnectionAsync(
+                            connection,
+                            isClosed,
+                            fundCode,
+                            navDate,
+                            token)
+                        .ConfigureAwait(false);
+
+                    if (!item.SourceNavDate.HasValue)
+                    {
+                        item.Error =
+                            $"No reference NAV was found for fund {fundCode} in " +
+                            $"{ValuationDatabaseName}.{(isClosed ? "LV.GFEVT0" : "LV.GFCRT0")}. " +
+                            "The NAV cannot be copied automatically.";
+                        continue;
+                    }
+
+                    int insertedRows = await InsertNavOnConnectionAsync(
+                            connection,
+                            insertSql,
+                            fundCode,
+                            navDate,
+                            increment,
+                            token)
+                        .ConfigureAwait(false);
+
+                    item.InsertedRows = insertedRows;
+                    if (insertedRows > 0)
+                    {
+                        item.Created = true;
+                        existingDates.Add(navDate);
+                        continue;
+                    }
+
+                    bool existsAfterInsert = await NavExistsOnConnectionAsync(
+                            connection,
+                            existsSql,
+                            fundCode,
+                            navDate,
+                            token)
+                        .ConfigureAwait(false);
+
+                    if (existsAfterInsert)
+                    {
+                        item.CreatedConcurrently = true;
+                        existingDates.Add(navDate);
+                    }
+                    else
+                    {
+                        item.Error =
+                            $"No NAV row was inserted for fund {fundCode} in " +
+                            $"{ValuationDatabaseName}.{(isClosed ? "LV.GFEVT0" : "LV.GFCRT0")}.";
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception) when (token.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(token);
+                }
+                catch (Exception exception)
+                {
+                    item.Error = BuildErrorMessage(exception);
+                }
             }
 
-            int insertedRows = await InsertNavAsync(
-                    isClosed ? InsertClosedNavSql : InsertOpenNavSql,
-                    result.FundCode,
-                    result.NavDate,
-                    increment,
-                    token)
-                .ConfigureAwait(false);
-
-            result.InsertedRows = insertedRows;
-
-            if (insertedRows > 0)
-            {
-                result.Created = true;
-                return;
-            }
-
-            bool existsAfterInsert = await NavExistsAsync(
-                    existsSql,
-                    result.FundCode,
-                    result.NavDate,
-                    token)
-                .ConfigureAwait(false);
-
-            if (existsAfterInsert)
-            {
-                result.CreatedConcurrently = true;
-                return;
-            }
-
-            result.Error =
-                $"No NAV row was inserted for fund {result.FundCode} in " +
-                $"{ValuationDatabaseName}.{(isClosed ? "LV.GFEVT0" : "LV.GFCRT0")}.";
+            return results;
         }
 
-        private async Task ClassifyAsync(
-            Branch23NavResult result,
+        private async Task<(Branch23FundKind? Kind, string KindSource, string Error)> ClassifyFundOnceAsync(
+            SqlConnection connection,
+            string fundCode,
             CancellationToken token)
         {
-            if (Settings.Branch23.ClosedFunds.Contains(
-                    result.FundCode,
-                    StringComparer.OrdinalIgnoreCase))
+            if (Settings.Branch23.ClosedFunds.Contains(fundCode, StringComparer.OrdinalIgnoreCase))
             {
-                result.Kind = Branch23FundKind.Closed;
-                result.KindSource = "Settings.Branch23.ClosedFunds";
-                return;
+                return (Branch23FundKind.Closed, "Settings.Branch23.ClosedFunds", string.Empty);
             }
 
-            using SqlConnection connection =
-                await OpenValuationConnectionAsync(token).ConfigureAwait(false);
+            try
+            {
+                using var command = new SqlCommand(FundHistorySql, connection)
+                {
+                    CommandTimeout = SqlCommandTimeoutSeconds
+                };
+                AddFundParameter(command, fundCode);
 
-            using var command = new SqlCommand(FundHistorySql, connection)
+                long closedRows = 0;
+                long openRows = 0;
+
+                using (token.Register(static s => TryCancelCommand((SqlCommand)s!), command))
+                using (SqlDataReader reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false))
+                {
+                    if (await reader.ReadAsync(token).ConfigureAwait(false))
+                    {
+                        closedRows = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
+                        openRows = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    }
+                }
+
+                if (closedRows > 0 && openRows == 0)
+                {
+                    return (Branch23FundKind.Closed, $"{ValuationDatabaseName}.LV.GFEVT0", string.Empty);
+                }
+
+                if (openRows > 0 && closedRows == 0)
+                {
+                    return (Branch23FundKind.Open, $"{ValuationDatabaseName}.LV.GFCRT0", string.Empty);
+                }
+
+                if (openRows > 0 && closedRows > 0)
+                {
+                    return (Branch23FundKind.Open, $"{ValuationDatabaseName}.LV.GFCRT0 (open priority)", string.Empty);
+                }
+
+                return (
+                    null,
+                    string.Empty,
+                    $"Fund {fundCode} was not found in {ValuationDatabaseName}.LV.GFEVT0 or LV.GFCRT0.");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception) when (token.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(token);
+            }
+            catch (Exception ex)
+            {
+                return (null, string.Empty, BuildErrorMessage(ex));
+            }
+        }
+
+        private static async Task<HashSet<DateTime>> LoadExistingNavDatesOnConnectionAsync(
+            SqlConnection connection,
+            bool isClosed,
+            string fund,
+            DateTime firstDate,
+            DateTime lastDate,
+            CancellationToken token)
+        {
+            var dates = new HashSet<DateTime>();
+            string sql = isClosed ? ExistingClosedNavRangeSql : ExistingOpenNavRangeSql;
+
+            using var command = new SqlCommand(sql, connection)
             {
                 CommandTimeout = SqlCommandTimeoutSeconds
             };
+            AddFundParameter(command, fund);
+            command.Parameters.Add("@firstDate", SqlDbType.Date).Value = firstDate.Date;
+            command.Parameters.Add("@lastDate", SqlDbType.Date).Value = lastDate.Date;
 
-            AddFundParameter(command, result.FundCode);
-
-            using SqlDataReader reader =
-                await command.ExecuteReaderAsync(token).ConfigureAwait(false);
-
-            long closedRows = 0;
-            long openRows = 0;
-
-            if (await reader.ReadAsync(token).ConfigureAwait(false))
+            using (token.Register(static s => TryCancelCommand((SqlCommand)s!), command))
+            using (SqlDataReader reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false))
             {
-                closedRows = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
-                openRows = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                while (await reader.ReadAsync(token).ConfigureAwait(false))
+                {
+                    if (!reader.IsDBNull(0))
+                    {
+                        dates.Add(Convert.ToDateTime(reader.GetValue(0), CultureInfo.InvariantCulture).Date);
+                    }
+                }
             }
 
-            if (closedRows > 0 && openRows == 0)
-            {
-                result.Kind = Branch23FundKind.Closed;
-                result.KindSource = $"{ValuationDatabaseName}.LV.GFEVT0";
-                return;
-            }
-
-            if (openRows > 0 && closedRows == 0)
-            {
-                result.Kind = Branch23FundKind.Open;
-                result.KindSource = $"{ValuationDatabaseName}.LV.GFCRT0";
-                return;
-            }
-
-            if (openRows > 0 && closedRows > 0)
-            {
-                // Si présent dans les deux et non référencé comme fermé, privilégier GFCRT0 (fonds ouvert).
-                result.Kind = Branch23FundKind.Open;
-                result.KindSource = $"{ValuationDatabaseName}.LV.GFCRT0 (open priority)";
-                return;
-            }
-
-            result.Error =
-                $"Fund {result.FundCode} was not found in {ValuationDatabaseName}.LV.GFEVT0 or LV.GFCRT0.";
+            return dates;
         }
 
-        private async Task<bool> NavExistsAsync(
+        private static async Task<bool> NavExistsOnConnectionAsync(
+            SqlConnection connection,
             string sql,
             string fund,
             DateTime navDate,
             CancellationToken token)
         {
-            using SqlConnection connection =
-                await OpenValuationConnectionAsync(token).ConfigureAwait(false);
-
             using var command = new SqlCommand(sql, connection)
             {
                 CommandTimeout = SqlCommandTimeoutSeconds
@@ -414,14 +559,19 @@ namespace AutoActivator.Services
             AddFundParameter(command, fund);
             AddDateParameter(command, navDate);
 
-            object? scalar = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+            object? scalar;
+            using (token.Register(static s => TryCancelCommand((SqlCommand)s!), command))
+            {
+                scalar = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+            }
 
             return scalar != null &&
                    scalar != DBNull.Value &&
                    Convert.ToInt64(scalar, CultureInfo.InvariantCulture) > 0;
         }
 
-        private async Task<DateTime?> GetLatestSourceNavDateAsync(
+        private static async Task<DateTime?> GetLatestSourceNavDateOnConnectionAsync(
+            SqlConnection connection,
             bool isClosed,
             string fund,
             DateTime navDate,
@@ -429,9 +579,6 @@ namespace AutoActivator.Services
         {
             string sql = isClosed ? LatestClosedNavDateSql : LatestOpenNavDateSql;
 
-            using SqlConnection connection =
-                await OpenValuationConnectionAsync(token).ConfigureAwait(false);
-
             using var command = new SqlCommand(sql, connection)
             {
                 CommandTimeout = SqlCommandTimeoutSeconds
@@ -440,7 +587,11 @@ namespace AutoActivator.Services
             AddFundParameter(command, fund);
             AddDateParameter(command, navDate);
 
-            object? scalar = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+            object? scalar;
+            using (token.Register(static s => TryCancelCommand((SqlCommand)s!), command))
+            {
+                scalar = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+            }
 
             if (scalar == null || scalar == DBNull.Value)
             {
@@ -450,16 +601,14 @@ namespace AutoActivator.Services
             return Convert.ToDateTime(scalar, CultureInfo.InvariantCulture).Date;
         }
 
-        private async Task<int> InsertNavAsync(
+        private static async Task<int> InsertNavOnConnectionAsync(
+            SqlConnection connection,
             string sql,
             string fund,
             DateTime navDate,
             decimal increment,
             CancellationToken token)
         {
-            using SqlConnection connection =
-                await OpenValuationConnectionAsync(token).ConfigureAwait(false);
-
             using SqlTransaction transaction =
                 connection.BeginTransaction(IsolationLevel.Serializable);
 
@@ -479,7 +628,12 @@ namespace AutoActivator.Services
 
             try
             {
-                object? scalar = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+                object? scalar;
+                using (token.Register(static s => TryCancelCommand((SqlCommand)s!), command))
+                {
+                    scalar = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
+                }
+
                 int insertedRows = scalar == null || scalar == DBNull.Value
                     ? 0
                     : Convert.ToInt32(scalar, CultureInfo.InvariantCulture);
@@ -492,10 +646,26 @@ namespace AutoActivator.Services
                 SafeRollback(transaction);
                 throw;
             }
+            catch (Exception) when (token.IsCancellationRequested)
+            {
+                SafeRollback(transaction);
+                throw new OperationCanceledException(token);
+            }
             catch
             {
                 SafeRollback(transaction);
                 throw;
+            }
+        }
+
+        private static void TryCancelCommand(SqlCommand command)
+        {
+            try
+            {
+                command.Cancel();
+            }
+            catch
+            {
             }
         }
 

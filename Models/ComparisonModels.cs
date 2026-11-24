@@ -1,8 +1,123 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace AutoActivator.Models
 {
+    /// <summary>
+    /// Catégorie exacte de la règle ayant ignoré une différence colonne.
+    /// </summary>
+    public enum ExclusionRuleCategory
+    {
+        SpecificTable,
+        Global,
+        TechnicalAudit
+    }
+
+    /// <summary>
+    /// Événement de progression temps réel pour l'orchestrateur de comparaison.
+    /// </summary>
+    public sealed class ComparisonProgressInfo
+    {
+        public int CurrentStep { get; init; }
+
+        public int TotalSteps { get; init; }
+
+        public string Message { get; init; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Écart métier actif cellule par cellule (affiché côte à côte SOURCE vs TARGET).
+    /// </summary>
+    public sealed class CellDifferenceItem
+    {
+        public int RowNumber { get; init; }
+
+        public string RowLabel { get; init; } = string.Empty;
+
+        public string RowContextKey { get; init; } = "-";
+
+        public string ColumnName { get; init; } = string.Empty;
+
+        public string SourceValue { get; init; } = string.Empty;
+
+        public string TargetValue { get; init; } = string.Empty;
+
+        public string DiffKind { get; init; } = "VALUE_DIFF";
+
+        public string SourceDisplay =>
+            string.IsNullOrEmpty(SourceValue) ? "(vide / NULL)" : SourceValue;
+
+        public string TargetDisplay =>
+            string.IsNullOrEmpty(TargetValue) ? "(vide / NULL)" : TargetValue;
+
+        public string DiffKindBadge => DiffKind switch
+        {
+            "MISSING_IN_TARGET" => "− Absent Target",
+            "EXTRA_IN_TARGET" => "+ Ajout Target",
+            _ => "≠ Écart Valeur"
+        };
+    }
+
+    /// <summary>
+    /// Différence détectée sur une colonne exclue par les règles d'exclusion.
+    /// RÈGLE IMPÉRATIVE : n'impacte JAMAIS le score de comparaison, le taux de conformité ni le statut OK/KO.
+    /// </summary>
+    public sealed class IgnoredDifferenceItem
+    {
+        public string TestId { get; init; } = string.Empty;
+
+        public string ExcelRowDisplay { get; init; } = "-";
+
+        public string ContractNumber { get; init; } = "-";
+
+        public string SystemType { get; init; } = string.Empty;
+
+        public string BranchDisplay { get; init; } = string.Empty;
+
+        public string ProductCode { get; init; } = "-";
+
+        public string TableName { get; init; } = string.Empty;
+
+        public string CleanTableName { get; init; } = string.Empty;
+
+        public string ColumnName { get; init; } = string.Empty;
+
+        public int RowNumber { get; init; }
+
+        public string RowContextKey { get; init; } = "-";
+
+        public string SourceValue { get; init; } = string.Empty;
+
+        public string TargetValue { get; init; } = string.Empty;
+
+        public ExclusionRuleCategory Category { get; init; } = ExclusionRuleCategory.Global;
+
+        public bool IsSpecificTableRule => Category == ExclusionRuleCategory.SpecificTable;
+
+        public bool IsTechnicalAuditRule => Category == ExclusionRuleCategory.TechnicalAudit;
+
+        public string SourceDisplay =>
+            string.IsNullOrEmpty(SourceValue) ? "(vide / NULL)" : SourceValue;
+
+        public string TargetDisplay =>
+            string.IsNullOrEmpty(TargetValue) ? "(vide / NULL)" : TargetValue;
+
+        public string ContractAndTestDisplay =>
+            !string.IsNullOrWhiteSpace(ContractNumber) &&
+            ContractNumber != "-" &&
+            !string.Equals(ContractNumber, TestId, StringComparison.OrdinalIgnoreCase)
+                ? $"{ContractNumber} [{TestId}]"
+                : TestId;
+
+        public string CategoryBadge => Category switch
+        {
+            ExclusionRuleCategory.SpecificTable => "⚠️ Spécifique Table",
+            ExclusionRuleCategory.TechnicalAudit => "⏱️ Audit / Timestamp",
+            _ => "🌐 Exclusion Globale"
+        };
+    }
+
     /// <summary>
     /// Métriques d'évaluation d'un test ou d'un produit lors de la comparaison SQL/CSV.
     /// </summary>
@@ -31,6 +146,14 @@ namespace AutoActivator.Models
 
         public int TotalDifferencesFound { get; set; }
 
+        public int TotalActiveCellDifferences { get; set; }
+
+        public int TotalTablesCompared { get; set; }
+
+        public int TotalTablesWithDifferences { get; set; }
+
+        public int TotalDifferingColumnsDistinct { get; set; }
+
         public int TotalBaseTests { get; set; }
 
         public int TotalTargetTests { get; set; }
@@ -49,6 +172,21 @@ namespace AutoActivator.Models
 
         public List<FileComparisonResult> FileResults { get; set; } =
             new List<FileComparisonResult>();
+
+        /// <summary>
+        /// Liste exhaustive des écarts filtrés par les règles d'exclusion (0 impact sur le score).
+        /// </summary>
+        public List<IgnoredDifferenceItem> IgnoredDifferences { get; set; } =
+            new List<IgnoredDifferenceItem>();
+
+        public int IgnoredSpecificTableCount =>
+            IgnoredDifferences.Count(item => item.Category == ExclusionRuleCategory.SpecificTable);
+
+        public int IgnoredGlobalCount =>
+            IgnoredDifferences.Count(item => item.Category == ExclusionRuleCategory.Global);
+
+        public int IgnoredTechnicalAuditCount =>
+            IgnoredDifferences.Count(item => item.Category == ExclusionRuleCategory.TechnicalAudit);
     }
 
     /// <summary>
@@ -124,6 +262,19 @@ namespace AutoActivator.Models
 
         public string DifferingColumnsSummary { get; set; } = "-";
 
+        public List<string> DifferingColumns { get; set; } = new List<string>();
+
+        public List<CellDifferenceItem> ActiveDifferences { get; set; } =
+            new List<CellDifferenceItem>();
+
+        public int ActiveCellDifferencesCount { get; set; }
+
+        public int IgnoredDifferencesCount { get; set; }
+
+        public int BaseRowCount { get; set; }
+
+        public int TargetRowCount { get; set; }
+
         public int TotalRows { get; set; }
 
         public int ErrorRows { get; set; }
@@ -132,8 +283,21 @@ namespace AutoActivator.Models
 
         public string RowsSummary => $"{SuccessfulRows}/{TotalRows}";
 
+        public string VolumeDisplay => $"{BaseRowCount} ➔ {TargetRowCount}";
+
         public bool IsMatch =>
             string.Equals(Status, "OK", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(Status, "OK_EMPTY", StringComparison.OrdinalIgnoreCase);
+
+        public bool HasError => !IsMatch;
+
+        public string StatusBadge => Status switch
+        {
+            "OK" => "✓ IDENTIQUE",
+            "OK_EMPTY" => "✓ VIDE (0/0)",
+            "KO_ROW_COUNT" => "⚠️ ÉCART VOLUME",
+            "KO_MISSING_DATA" => "🔴 DONNÉES MANQUANTES",
+            _ => "🔴 ÉCART MÉTIER"
+        };
     }
 }

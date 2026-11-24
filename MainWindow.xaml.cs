@@ -20,8 +20,19 @@ namespace AutoActivator.Gui
 
         private CancellationTokenSource? _cts;
         private bool _isProcessRunning;
+        private string _lastGeneratedPath = string.Empty;
 
-        public string LastGeneratedPath { get; set; } = string.Empty;
+        public bool IsProcessRunning => _isProcessRunning;
+
+        public string LastGeneratedPath
+        {
+            get => _lastGeneratedPath;
+            set
+            {
+                _lastGeneratedPath = value ?? string.Empty;
+                RefreshGeneratedPathBar();
+            }
+        }
 
         public MainWindow()
         {
@@ -100,9 +111,83 @@ namespace AutoActivator.Gui
         {
             if (_cts != null && !_cts.IsCancellationRequested)
             {
-                _cts.Cancel();
-                TxtStatus.Text = "Canceling... The operation will stop shortly.";
-                TxtStatus.Foreground = Brushes.DarkOrange;
+                try
+                {
+                    _cts.Cancel();
+                }
+                catch
+                {
+                    // Ignore if already disposed
+                }
+
+                if (Dispatcher.CheckAccess())
+                {
+                    TxtStatus.Text = "Arrêt demandé... Annulation propre des requêtes et étapes en cours.";
+                    TxtStatus.Foreground = Brushes.DarkOrange;
+                }
+                else
+                {
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        TxtStatus.Text = "Arrêt demandé... Annulation propre des requêtes et étapes en cours.";
+                        TxtStatus.Foreground = Brushes.DarkOrange;
+                    });
+                }
+            }
+        }
+
+        public void RefreshGeneratedPathBar()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.InvokeAsync(RefreshGeneratedPathBar);
+                return;
+            }
+
+            if (PanelOutputFileActions == null)
+            {
+                return;
+            }
+
+            string path = _lastGeneratedPath;
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            {
+                string fileName = Path.GetFileName(path);
+                if (fileName.Length > 44)
+                {
+                    fileName = fileName.Substring(0, 41) + "...";
+                }
+
+                if (TxtOpenGeneratedFileLabel != null)
+                {
+                    TxtOpenGeneratedFileLabel.Text = $"📄 Ouvrir : {fileName}";
+                }
+                if (BtnOpenGeneratedFile != null)
+                {
+                    BtnOpenGeneratedFile.Visibility = Visibility.Visible;
+                    BtnOpenGeneratedFile.ToolTip = $"Ouvrir directement le fichier :\n{path}";
+                }
+                if (BtnRevealGeneratedFolder != null)
+                {
+                    BtnRevealGeneratedFolder.ToolTip = $"Afficher dans le dossier :\n{path}";
+                }
+                PanelOutputFileActions.Visibility = Visibility.Visible;
+            }
+            else if (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+            {
+                if (BtnOpenGeneratedFile != null)
+                {
+                    BtnOpenGeneratedFile.Visibility = Visibility.Collapsed;
+                }
+                if (BtnRevealGeneratedFolder != null)
+                {
+                    BtnRevealGeneratedFolder.ToolTip = $"Ouvrir le dossier :\n{path}";
+                }
+                PanelOutputFileActions.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                PanelOutputFileActions.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -241,16 +326,24 @@ namespace AutoActivator.Gui
         }
 
         /// <summary>
-        /// Centralized wrapper for executing long-running asynchronous tasks from the sub-views.
-        /// It manages the global loading bar, cancellation token lifecycle, status text colors, and catches unhandled exceptions safely.
+        /// Centralized wrapper for executing long-running asynchronous tasks from the sub-views
+        /// with a single unified CancellationTokenSource.
         /// </summary>
-        public async Task RunProcessAsync(Func<Task> action)
+        public Task RunProcessAsync(Func<Task> action)
         {
+            ArgumentNullException.ThrowIfNull(action);
+            return RunProcessAsync(_ => action());
+        }
+
+        public async Task RunProcessAsync(Func<CancellationToken, Task> action)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+
             if (_isProcessRunning)
             {
                 MessageBox.Show(
-                    "An operation is already in progress. Please wait for it to finish or cancel it first.",
-                    "Operation in Progress",
+                    "Une opération est déjà en cours d'exécution. Veuillez attendre sa fin ou cliquer sur Stop.",
+                    "Opération en cours",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -259,52 +352,102 @@ namespace AutoActivator.Gui
             _isProcessRunning = true;
             _cts?.Dispose();
             _cts = new CancellationTokenSource();
+            CancellationToken token = _cts.Token;
 
-            PrgLoading.Visibility = Visibility.Visible;
-            LnkFile.Visibility = Visibility.Collapsed;
             TxtStatus.Foreground = Brushes.RoyalBlue;
+            if (TxtStatusDot != null)
+            {
+                TxtStatusDot.Foreground = Brushes.RoyalBlue;
+            }
 
             try
             {
-                await action();
+                await action(token);
                 UpdateSessionBadge();
-
-                if (!string.IsNullOrEmpty(LastGeneratedPath) &&
-                    (Directory.Exists(LastGeneratedPath) || File.Exists(LastGeneratedPath)))
-                {
-                    LnkFile.Visibility = Visibility.Visible;
-                }
+                RefreshGeneratedPathBar();
 
                 if (_cts != null && _cts.IsCancellationRequested)
                 {
                     TxtStatus.Foreground = Brushes.DarkOrange;
+                    if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.DarkOrange;
                 }
                 else if (TxtStatus.Foreground == Brushes.RoyalBlue)
                 {
                     TxtStatus.Foreground = Brushes.ForestGreen;
+                    if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.ForestGreen;
                 }
             }
             catch (OperationCanceledException)
             {
-                TxtStatus.Text = "Operation canceled by user.";
+                TxtStatus.Text = "Opération arrêtée proprement par l'utilisateur.";
                 TxtStatus.Foreground = Brushes.DarkOrange;
+                if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.DarkOrange;
+                RefreshGeneratedPathBar();
             }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Error: {ex.Message}";
+                TxtStatus.Text = $"Erreur : {ex.Message}";
                 TxtStatus.Foreground = Brushes.Crimson;
-                MessageBox.Show(ex.Message, "Execution Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
-                if (!string.IsNullOrEmpty(LastGeneratedPath) &&
-                    (Directory.Exists(LastGeneratedPath) || File.Exists(LastGeneratedPath)))
-                {
-                    LnkFile.Visibility = Visibility.Visible;
-                }
+                if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.Crimson;
+                RefreshGeneratedPathBar();
+                MessageBox.Show(ex.Message, "Erreur d'exécution", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
-                PrgLoading.Visibility = Visibility.Collapsed;
+                RefreshGeneratedPathBar();
                 _isProcessRunning = false;
+            }
+        }
+
+        public static void TryOpenFileDirect(string? filePath, string contextTitle = "Ouverture de fichier")
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                MessageBox.Show(
+                    "Aucun fichier n'est sélectionné.",
+                    contextTitle,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string trimmed = filePath.Trim();
+            if (!File.Exists(trimmed))
+            {
+                MessageBox.Show(
+                    $"Le fichier est introuvable ou inaccessible (vérifiez le chemin ou la connexion VPN) :\n\n{trimmed}",
+                    contextTitle,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(Path.GetFullPath(trimmed))
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Impossible d'ouvrir le fichier :\n{trimmed}\n\nDétail : {ex.Message}",
+                    contextTitle,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private void BtnOpenGeneratedFile_Click(object sender, RoutedEventArgs e)
+        {
+            if (File.Exists(_lastGeneratedPath))
+            {
+                TryOpenFileDirect(_lastGeneratedPath, "Rapport généré");
+            }
+            else
+            {
+                Hyperlink_Click(sender, e);
             }
         }
 

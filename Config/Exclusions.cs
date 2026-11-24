@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using AutoActivator.Models;
 
 namespace AutoActivator.Config
 {
@@ -109,6 +110,12 @@ namespace AutoActivator.Config
             return clean;
         }
 
+        private static readonly HashSet<string> GlobalIgnoreSet =
+            new HashSet<string>(IgnoreColumns, StringComparer.OrdinalIgnoreCase);
+
+        private static readonly ConcurrentDictionary<string, HashSet<string>> CachedSpecificSets =
+            new ConcurrentDictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>
         /// Utility method to retrieve all columns to exclude for a given table (cached and case-insensitive).
         /// </summary>
@@ -130,6 +137,74 @@ namespace AutoActivator.Config
 
                 return exclusions;
             });
+        }
+
+        public static bool IsTechnicalAuditColumn(string? columnName)
+        {
+            if (string.IsNullOrWhiteSpace(columnName))
+            {
+                return false;
+            }
+
+            string upper = columnName.Trim().ToUpperInvariant();
+            return upper.StartsWith("TSTAMP_", StringComparison.Ordinal) ||
+                   upper.StartsWith("D_JOB_", StringComparison.Ordinal) ||
+                   upper.StartsWith("NM_JOB_", StringComparison.Ordinal) ||
+                   upper.Equals("D_GEST_DMOD", StringComparison.Ordinal) ||
+                   upper.Equals("C_ID_GEST_DMOD", StringComparison.Ordinal) ||
+                   upper.Equals("TY_DMOD", StringComparison.Ordinal) ||
+                   upper.Contains("DTISMAJ", StringComparison.Ordinal) ||
+                   upper.Contains("CUSMAJ", StringComparison.Ordinal) ||
+                   upper.Contains("PGMMAJ", StringComparison.Ordinal) ||
+                   upper.Contains("TIMMAJ", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Determines whether a column is excluded for the given table and classifies the exact exclusion rule.
+        /// Table-specific exclusions are checked first so critical business overrides (e.g. M_CAP_VIE) are clearly highlighted.
+        /// </summary>
+        public static bool TryGetExclusionCategory(
+            string tableName,
+            string columnName,
+            bool ignoreTechnicalColumns,
+            out ExclusionRuleCategory category)
+        {
+            string cleanTable = NormalizeTableName(tableName);
+            string cleanCol = (columnName ?? string.Empty).Trim();
+
+            if (cleanCol.Length == 0)
+            {
+                category = ExclusionRuleCategory.Global;
+                return false;
+            }
+
+            if (SpecificExclusions.TryGetValue(cleanTable, out IReadOnlyList<string>? specificList))
+            {
+                HashSet<string> specificSet = CachedSpecificSets.GetOrAdd(
+                    cleanTable,
+                    _ => new HashSet<string>(specificList, StringComparer.OrdinalIgnoreCase));
+
+                if (specificSet.Contains(cleanCol))
+                {
+                    category = ExclusionRuleCategory.SpecificTable;
+                    return true;
+                }
+            }
+
+            if (GlobalIgnoreSet.Contains(cleanCol))
+            {
+                category = ExclusionRuleCategory.Global;
+                return true;
+            }
+
+            if (ignoreTechnicalColumns && IsTechnicalAuditColumn(cleanCol))
+            {
+                category = ExclusionRuleCategory.TechnicalAudit;
+                return true;
+            }
+
+            category = ExclusionRuleCategory.Global;
+            return false;
         }
     }
 }

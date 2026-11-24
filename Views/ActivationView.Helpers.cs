@@ -429,10 +429,8 @@ namespace AutoActivator.Gui.Views
         }
 
         // =============================================================
-        // PROGRESSION UNIFIÉE (UNITAIRE & BATCH)
+        // PROGRESSION UNIFIÉE (UNITAIRE & BATCH) VIA OperationProgressController
         // =============================================================
-
-        private readonly Stopwatch _batchStopwatch = new Stopwatch();
 
         private void UpdateBatchProgressDisplay(
             int processed,
@@ -442,103 +440,64 @@ namespace AutoActivator.Gui.Views
             string? modeLabel = null,
             double? elapsedSecondsOverride = null)
         {
-            if (!Dispatcher.CheckAccess())
-            {
-                Dispatcher.InvokeAsync(() => UpdateBatchProgressDisplay(
-                    processed,
-                    total,
-                    currentContract,
-                    status,
-                    modeLabel,
-                    elapsedSecondsOverride));
-                return;
-            }
-
+            _ = elapsedSecondsOverride;
             _batchProcessedCount = Math.Max(0, processed);
             _batchPlannedCount = Math.Max(0, total);
-
-            if (_batchProcessedCount > _batchPlannedCount)
+            if (_batchPlannedCount > 0 && _batchProcessedCount > _batchPlannedCount)
             {
                 _batchProcessedCount = _batchPlannedCount;
             }
 
-            int remaining = Math.Max(
-                0,
-                _batchPlannedCount - _batchProcessedCount);
-
-            double percentage = _batchPlannedCount > 0
-                ? (double)_batchProcessedCount / _batchPlannedCount * 100.0
-                : 0.0;
-
             string normalizedStatus = string.IsNullOrWhiteSpace(status)
                 ? "RUNNING"
                 : status.Trim().ToUpperInvariant();
+            bool isBatch = modeLabel == null ||
+                           modeLabel.Contains("BATCH", StringComparison.OrdinalIgnoreCase);
 
-            if (normalizedStatus == "STARTING")
+            switch (normalizedStatus)
             {
-                _batchStopwatch.Restart();
-            }
-            else if (normalizedStatus is "COMPLETED" or "CANCELLED" or "FAILED" or "READY" or "ALREADY_ACTIVE")
-            {
-                _batchStopwatch.Stop();
-            }
-
-            if (TxtBatchProcessedCount != null)
-            {
-                TxtBatchProcessedCount.Text =
-                    _batchProcessedCount.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (TxtBatchPlannedCount != null)
-            {
-                TxtBatchPlannedCount.Text =
-                    _batchPlannedCount.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (TxtBatchElapsedTime != null)
-            {
-                double elapsedSec = elapsedSecondsOverride ?? _batchStopwatch.Elapsed.TotalSeconds;
-                if (normalizedStatus == "READY" && elapsedSec <= 0.01)
-                {
-                    TxtBatchElapsedTime.Text = "   ⏱️ 0.0s";
-                }
-                else if (remaining > 0 && _batchProcessedCount > 0 && elapsedSec > 0.5 && (modeLabel == null || modeLabel.Contains("BATCH", StringComparison.OrdinalIgnoreCase)))
-                {
-                    double avgPerItem = elapsedSec / _batchProcessedCount;
-                    double etaSec = avgPerItem * remaining;
-                    TxtBatchElapsedTime.Text = $"   ⏱️ {elapsedSec:F1}s (ETA ~{etaSec:F0}s)";
-                }
-                else
-                {
-                    TxtBatchElapsedTime.Text = $"   ⏱️ {elapsedSec:F1}s";
-                }
-            }
-
-            if (TxtBatchCurrentContract != null)
-            {
-                TxtBatchCurrentContract.Text = string.IsNullOrWhiteSpace(currentContract)
-                    ? "Prêt"
-                    : currentContract;
-            }
-
-            if (TxtBatchProgressPercentage != null)
-            {
-                TxtBatchProgressPercentage.Text = $"{percentage:F0}%";
-            }
-
-            if (ProgressBatchActivation != null)
-            {
-                ProgressBatchActivation.Minimum = 0;
-                ProgressBatchActivation.Maximum = Math.Max(1, _batchPlannedCount);
-                ProgressBatchActivation.Value = Math.Min(
-                    _batchProcessedCount,
-                    _batchPlannedCount);
-                ProgressBatchActivation.Foreground = normalizedStatus switch
-                {
-                    "COMPLETED" or "ALREADY_ACTIVE" => Brushes.MediumSeaGreen,
-                    "CANCELLED" or "FAILED" => Brushes.Crimson,
-                    _ => Brushes.RoyalBlue
-                };
+                case "READY":
+                    _progressController.Reset(currentContract ?? "Prêt");
+                    break;
+                case "STARTING":
+                    _progressController.Start(
+                        currentContract ?? "Initialisation...",
+                        _batchPlannedCount,
+                        showEta: isBatch);
+                    break;
+                case "COMPLETED":
+                    _progressController.Complete(
+                        currentContract ?? "Opération terminée avec succès.",
+                        warning: false,
+                        finalProcessed: _batchProcessedCount,
+                        finalTotal: _batchPlannedCount);
+                    break;
+                case "ALREADY_ACTIVE":
+                    _progressController.Complete(
+                        currentContract ?? "Contrat déjà actif dans LISA.",
+                        warning: true,
+                        finalProcessed: _batchPlannedCount > 0 ? _batchPlannedCount : _batchProcessedCount,
+                        finalTotal: _batchPlannedCount > 0 ? _batchPlannedCount : 1);
+                    break;
+                case "CANCELLED":
+                    _progressController.Cancel(
+                        currentContract ?? "Opération annulée par l'utilisateur.",
+                        finalProcessed: _batchProcessedCount,
+                        finalTotal: _batchPlannedCount);
+                    break;
+                case "FAILED":
+                    _progressController.Fail(
+                        currentContract ?? "Échec de l'opération.",
+                        finalProcessed: _batchProcessedCount,
+                        finalTotal: _batchPlannedCount);
+                    break;
+                default:
+                    _progressController.Report(
+                        _batchProcessedCount,
+                        Math.Max(1, _batchPlannedCount),
+                        currentContract ?? "Traitement en cours...",
+                        showEta: isBatch);
+                    break;
             }
         }
 
@@ -548,11 +507,13 @@ namespace AutoActivator.Gui.Views
             string liveMessage,
             string status = "RUNNING")
         {
+            _ = stopwatch;
             int totalSteps = trace.Steps != null && trace.Steps.Count > 0
                 ? trace.Steps.Count + 2
                 : (trace.IsBranch23 ? 10 : 7);
 
             int completedJobs = 0;
+            bool hasRunningJob = false;
             if (trace.Steps != null && trace.Steps.Count > 0)
             {
                 foreach (var s in trace.Steps)
@@ -561,13 +522,12 @@ namespace AutoActivator.Gui.Views
                     {
                         completedJobs++;
                     }
+                    else if (string.Equals(s.Status, "RUNNING", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(s.Status, "SUBMITTED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasRunningJob = true;
+                    }
                 }
-            }
-
-            int currentStage = Math.Min(totalSteps - 1, 1 + completedJobs);
-            if (string.Equals(status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
-            {
-                currentStage = totalSteps;
             }
 
             string contractLabel = !IsMissingValue(trace.ResolvedContract)
@@ -577,13 +537,39 @@ namespace AutoActivator.Gui.Views
                     : "-";
 
             string detail = $"{contractLabel} ({trace.BranchDisplay}) — {liveMessage}";
-            UpdateBatchProgressDisplay(
-                currentStage,
+            string normalizedStatus = string.IsNullOrWhiteSpace(status)
+                ? "RUNNING"
+                : status.Trim().ToUpperInvariant();
+
+            if (normalizedStatus is "COMPLETED" or "ALREADY_ACTIVE" or "CANCELLED" or "FAILED")
+            {
+                int doneCount = normalizedStatus is "COMPLETED" or "ALREADY_ACTIVE"
+                    ? totalSteps
+                    : Math.Min(totalSteps, 1 + completedJobs);
+                UpdateBatchProgressDisplay(
+                    doneCount,
+                    totalSteps,
+                    detail,
+                    normalizedStatus,
+                    "ACTIVATION UNITAIRE (ÉTAPES JCL/SQL)");
+                return;
+            }
+
+            int stageInteger = Math.Min(totalSteps - 1, 1 + completedJobs);
+            double smoothUnits = Math.Min(
+                totalSteps - 0.15,
+                1.0 + completedJobs + (hasRunningJob ? 0.5 : 0.2));
+
+            _batchProcessedCount = stageInteger;
+            _batchPlannedCount = totalSteps;
+
+            _progressController.Report(
+                smoothUnits,
                 totalSteps,
                 detail,
-                status,
-                "ACTIVATION UNITAIRE (ÉTAPES JCL/SQL)",
-                stopwatch.Elapsed.TotalSeconds);
+                showEta: false,
+                processedDisplay: stageInteger.ToString(CultureInfo.InvariantCulture),
+                plannedDisplay: totalSteps.ToString(CultureInfo.InvariantCulture));
         }
 
         private void HandleBatchProgress(
@@ -597,6 +583,23 @@ namespace AutoActivator.Gui.Views
                 return;
             }
 
+            if (string.Equals(progress.Status, "STARTING", StringComparison.OrdinalIgnoreCase))
+            {
+                _batchPlannedCount = Math.Max(0, progress.TotalItems);
+                _batchProcessedCount = 0;
+                _progressController.Report(
+                    0,
+                    Math.Max(1, _batchPlannedCount),
+                    $"Lot prêt : {_batchPlannedCount} contrat(s) détecté(s) — démarrage des activations...",
+                    showEta: true,
+                    processedDisplay: "0",
+                    plannedDisplay: _batchPlannedCount.ToString(CultureInfo.InvariantCulture));
+                return;
+            }
+
+            _batchProcessedCount = Math.Max(0, progress.CurrentItem);
+            _batchPlannedCount = Math.Max(_batchPlannedCount, progress.TotalItems);
+
             string currentIdentifier = !IsMissingValue(progress.ContractId)
                 ? progress.ContractId
                 : !IsMissingValue(progress.DemandId)
@@ -605,7 +608,7 @@ namespace AutoActivator.Gui.Views
 
             int remaining = Math.Max(
                 0,
-                progress.TotalItems - progress.CurrentItem);
+                _batchPlannedCount - _batchProcessedCount);
 
             string product = string.IsNullOrWhiteSpace(progress.Product)
                 ? "-"
@@ -614,18 +617,20 @@ namespace AutoActivator.Gui.Views
                 ? "-"
                 : progress.ProcessCode;
 
-            string liveDetail = $"Row #{progress.RowNum} : {currentIdentifier} ({progress.BranchDisplay} | {product}/{process}) — {progress.Status}";
+            string liveDetail =
+                $"Row #{progress.RowNum} : {currentIdentifier} ({progress.BranchDisplay} | {product}/{process}) — {progress.Status}";
 
-            UpdateBatchProgressDisplay(
-                progress.CurrentItem,
-                progress.TotalItems,
+            _progressController.Report(
+                progress.EffectiveCompletedItems,
+                Math.Max(1, _batchPlannedCount),
                 liveDetail,
-                "RUNNING",
-                "ACTIVATION BATCH EXCEL");
+                showEta: true,
+                processedDisplay: _batchProcessedCount.ToString(CultureInfo.InvariantCulture),
+                plannedDisplay: _batchPlannedCount.ToString(CultureInfo.InvariantCulture));
 
             mainWindow.TxtStatus.Text =
-                $"Batch progress: {progress.CurrentItem}/" +
-                $"{progress.TotalItems} completed, {remaining} remaining. " +
+                $"Batch progress: {_batchProcessedCount}/" +
+                $"{_batchPlannedCount} completed, {remaining} remaining. " +
                 $"Excel Row={progress.RowNum}, Current={currentIdentifier}, Product={product}, " +
                 $"Process={process}, Branche={progress.BranchDisplay}.";
             mainWindow.TxtStatus.Foreground = Brushes.RoyalBlue;
@@ -789,12 +794,6 @@ namespace AutoActivator.Gui.Views
             return defaultValue;
         }
 
-        private void ResetCancellationToken()
-        {
-            _cts?.Dispose();
-            _cts = new CancellationTokenSource();
-        }
-
         private static void ValidateCredentials(
             string username,
             string password)
@@ -942,18 +941,17 @@ namespace AutoActivator.Gui.Views
             });
         }
 
-        private void SetSingleActivationButtons(bool running)
-        {
-            BtnCancelSingleAct.IsEnabled = running;
-            BtnRunSingleAct.IsEnabled = !running;
-            BtnSkipPrimeSingleAct.IsEnabled = !running;
-        }
+        private void SetSingleActivationButtons(bool running) => SetAllActivationButtons(running);
 
-        private void SetBatchActivationButtons(bool running)
+        private void SetBatchActivationButtons(bool running) => SetAllActivationButtons(running);
+
+        private void SetAllActivationButtons(bool running)
         {
-            BtnCancelSingleAct.IsEnabled = running;
-            BtnRunSingleAct.IsEnabled = !running;
-            BtnSkipPrimeSingleAct.IsEnabled = !running;
+            if (BtnCancelSingleAct != null) BtnCancelSingleAct.IsEnabled = running;
+            if (BtnRunSingleAct != null) BtnRunSingleAct.IsEnabled = !running;
+            if (BtnSkipPrimeSingleAct != null) BtnSkipPrimeSingleAct.IsEnabled = !running;
+            if (BtnRunBatchAct != null) BtnRunBatchAct.IsEnabled = !running;
+            if (BtnSkipPrimeBatchAct != null) BtnSkipPrimeBatchAct.IsEnabled = !running;
         }
 
         private sealed class SingleActivationInput

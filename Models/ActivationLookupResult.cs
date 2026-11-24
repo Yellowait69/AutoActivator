@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace AutoActivator.Models
@@ -67,7 +68,25 @@ namespace AutoActivator.Models
 
         public string PremiumGroupType { get; set; } = string.Empty;
 
+        public DateTime? ContractStartDate { get; set; }
+
+        public DateTime? FirstPaymentDate { get; set; }
+
+        public DateTime? PaymentDate { get; set; }
+
+        public DateTime? DemandCreationDate { get; set; }
+
         public int FundFeatureCount { get; set; }
+
+        public bool FundFeatureCountEvaluated { get; set; }
+
+        public bool IsActiveInLisa { get; set; }
+
+        public string LisaStateSummary { get; set; } = string.Empty;
+
+        public List<string> ResolvedFunds { get; set; } = new List<string>();
+
+        public string FundsSource { get; set; } = string.Empty;
 
         public ContractBranchClassification BranchClassification { get; set; } =
             ContractBranchClassification.Unknown;

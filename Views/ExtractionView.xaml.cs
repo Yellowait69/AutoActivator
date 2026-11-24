@@ -24,7 +24,9 @@ namespace AutoActivator.Gui.Views
     public partial class ExtractionView : UserControl
     {
         private readonly ExtractionService _extractionService;
+        private readonly OperationProgressController _progressController;
         private ICollectionView? _historyCollectionView;
+        private bool _isCustomBatchFileSelected;
 
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
@@ -41,6 +43,15 @@ namespace AutoActivator.Gui.Views
             InitializeComponent();
 
             _extractionService = new ExtractionService();
+            _progressController = new OperationProgressController(
+                Dispatcher,
+                ProgressBatchExtraction,
+                TxtExtBatchCurrentContract,
+                TxtExtBatchProcessedCount,
+                TxtExtBatchPlannedCount,
+                TxtExtElapsedTime,
+                TxtExtBatchProgressPercentage);
+
             _historyCollectionView = CollectionViewSource.GetDefaultView(ExtractionHistory);
             if (_historyCollectionView != null)
             {
@@ -49,7 +60,7 @@ namespace AutoActivator.Gui.Views
 
             ListHistory.ItemsSource = _historyCollectionView ?? (System.Collections.IEnumerable)ExtractionHistory;
             UpdateBatchExtCsvPath();
-            UpdateBatchProgressDisplay(0, 0, null, "READY");
+            _progressController.Reset("Prêt");
         }
 
         /// <summary>
@@ -347,8 +358,6 @@ namespace AutoActivator.Gui.Views
             if (TxtKoCount != null) TxtKoCount.Text = _koExtractionCount.ToString(CultureInfo.InvariantCulture);
         }
 
-        private readonly Stopwatch _extProgressStopwatch = new Stopwatch();
-
         private void UpdateBatchProgressDisplay(
             int processed,
             int total,
@@ -356,69 +365,34 @@ namespace AutoActivator.Gui.Views
             string? status = null,
             string? modeLabel = null)
         {
-            if (!Dispatcher.CheckAccess())
-            {
-                Dispatcher.InvokeAsync(() => UpdateBatchProgressDisplay(processed, total, currentContract, status, modeLabel));
-                return;
-            }
-
             _batchProcessedCount = Math.Max(0, processed);
             _batchPlannedCount = Math.Max(0, total);
-            if (_batchProcessedCount > _batchPlannedCount)
-            {
-                _batchProcessedCount = _batchPlannedCount;
-            }
-
-            int remaining = Math.Max(0, _batchPlannedCount - _batchProcessedCount);
-            double percentage = _batchPlannedCount > 0
-                ? (double)_batchProcessedCount / _batchPlannedCount * 100.0
-                : 0.0;
-
             string normalizedStatus = string.IsNullOrWhiteSpace(status) ? "RUNNING" : status.Trim().ToUpperInvariant();
-            if (normalizedStatus == "STARTING")
-            {
-                _extProgressStopwatch.Restart();
-            }
-            else if (normalizedStatus is "COMPLETED" or "CANCELLED" or "FAILED" or "READY" or "ELIA_ONLY")
-            {
-                _extProgressStopwatch.Stop();
-            }
+            bool isBatch = modeLabel == null || modeLabel.Contains("BATCH", StringComparison.OrdinalIgnoreCase);
 
-            if (TxtExtBatchProcessedCount != null) TxtExtBatchProcessedCount.Text = _batchProcessedCount.ToString(CultureInfo.InvariantCulture);
-            if (TxtExtBatchPlannedCount != null) TxtExtBatchPlannedCount.Text = _batchPlannedCount.ToString(CultureInfo.InvariantCulture);
-            if (TxtExtBatchCurrentContract != null) TxtExtBatchCurrentContract.Text = string.IsNullOrWhiteSpace(currentContract) ? "Prêt" : currentContract;
-            if (TxtExtBatchProgressPercentage != null) TxtExtBatchProgressPercentage.Text = $"{percentage:F0}%";
-
-            if (TxtExtElapsedTime != null)
+            switch (normalizedStatus)
             {
-                double elapsedSec = _extProgressStopwatch.Elapsed.TotalSeconds;
-                if (normalizedStatus == "READY" && elapsedSec <= 0.01)
-                {
-                    TxtExtElapsedTime.Text = "   ⏱️ 0.0s";
-                }
-                else if (remaining > 0 && _batchProcessedCount > 0 && elapsedSec > 0.3 && (modeLabel == null || modeLabel.Contains("BATCH", StringComparison.OrdinalIgnoreCase)))
-                {
-                    double avgPerItem = elapsedSec / _batchProcessedCount;
-                    double etaSec = avgPerItem * remaining;
-                    TxtExtElapsedTime.Text = $"   ⏱️ {elapsedSec:F1}s (ETA ~{etaSec:F0}s)";
-                }
-                else
-                {
-                    TxtExtElapsedTime.Text = $"   ⏱️ {elapsedSec:F1}s";
-                }
-            }
-
-            if (ProgressBatchExtraction != null)
-            {
-                ProgressBatchExtraction.Minimum = 0;
-                ProgressBatchExtraction.Maximum = Math.Max(1, _batchPlannedCount);
-                ProgressBatchExtraction.Value = Math.Min(_batchProcessedCount, _batchPlannedCount);
-                ProgressBatchExtraction.Foreground = normalizedStatus switch
-                {
-                    "COMPLETED" => Brushes.MediumSeaGreen,
-                    "ELIA_ONLY" or "CANCELLED" or "FAILED" => Brushes.Crimson,
-                    _ => Brushes.RoyalBlue
-                };
+                case "READY":
+                    _progressController.Reset(currentContract ?? "Prêt");
+                    break;
+                case "STARTING":
+                    _progressController.Start(currentContract ?? "Initialisation...", _batchPlannedCount, showEta: isBatch);
+                    break;
+                case "COMPLETED":
+                    _progressController.Complete(currentContract ?? "Extraction terminée avec succès.");
+                    break;
+                case "ELIA_ONLY":
+                    _progressController.Complete(currentContract ?? "Extraction terminée (ELIA ONLY).", warning: true);
+                    break;
+                case "CANCELLED":
+                    _progressController.Cancel(currentContract ?? "Extraction annulée par l'utilisateur.");
+                    break;
+                case "FAILED":
+                    _progressController.Fail(currentContract ?? "Échec de l'extraction.");
+                    break;
+                default:
+                    _progressController.Report(_batchProcessedCount, _batchPlannedCount, currentContract ?? "Extraction en cours...");
+                    break;
             }
         }
 
@@ -699,12 +673,7 @@ namespace AutoActivator.Gui.Views
 
         private void TxtExtContract_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (!string.IsNullOrWhiteSpace(TxtExtContract?.Text) &&
-                TxtBatchExtCsv != null &&
-                !string.IsNullOrEmpty(TxtBatchExtCsv.Text))
-            {
-                TxtBatchExtCsv.Text = string.Empty;
-            }
+            // Never clear TxtBatchExtCsv when typing a single contract/Demand ID: Single and Batch have dedicated buttons.
         }
 
         private void TxtExtContract_KeyDown(object sender, KeyEventArgs e)
@@ -712,16 +681,33 @@ namespace AutoActivator.Gui.Views
             if (e.Key == Key.Enter && BtnRunSingle?.IsEnabled == true)
             {
                 e.Handled = true;
-                BtnRunSingle_Click(sender, e);
+                RunSingleExtractionInternal();
             }
         }
 
         private void UpdateBatchExtCsvPath()
         {
-            // No automatic default QC file prefill; the user explicitly selects a batch file or enters a contract.
+            if (_isCustomBatchFileSelected || TxtBatchExtCsv == null)
+            {
+                return;
+            }
+
+            string envLetter = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
+            string channel = (CmbExtChannel?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "C01";
+            TxtBatchExtCsv.Text = Settings.GetDefaultTestingExcelPath(channel, envLetter);
         }
 
-        private void BtnUseDefaultQcExtFile_Click(object sender, RoutedEventArgs e) => UpdateBatchExtCsvPath();
+        private void BtnUseDefaultQcExtFile_Click(object sender, RoutedEventArgs e)
+        {
+            _isCustomBatchFileSelected = false;
+            UpdateBatchExtCsvPath();
+        }
+
+        private void BtnOpenBatchExtFile_Click(object sender, RoutedEventArgs e)
+        {
+            MainWindow.TryOpenFileDirect(TxtBatchExtCsv?.Text, "Fichier Batch Extraction (Excel / CSV)");
+        }
+
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
@@ -845,24 +831,18 @@ namespace AutoActivator.Gui.Views
         private void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
             string singleInput = TxtExtContract?.Text?.Trim() ?? string.Empty;
-            string batchPath = TxtBatchExtCsv?.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(singleInput))
+            {
+                MessageBox.Show(
+                    "Veuillez saisir un N° de Contrat ou un Demand ID dans le champ unitaire (ou utilisez « 📁 Extraire Batch » pour lancer le fichier Excel).",
+                    "Extraction Unitaire",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                TxtExtContract?.Focus();
+                return;
+            }
 
-            if (!string.IsNullOrWhiteSpace(singleInput))
-            {
-                RunSingleExtractionInternal();
-            }
-            else if (!string.IsNullOrWhiteSpace(batchPath))
-            {
-                BtnRunBatch_Click(sender, e);
-            }
-            else
-            {
-                UpdateBatchProgressDisplay(
-                    0,
-                    0,
-                    "Veuillez saisir un N° de Contrat / Demand ID ou sélectionner un fichier Batch Excel.",
-                    "READY");
-            }
+            RunSingleExtractionInternal();
         }
 
         private async void RunSingleExtractionInternal()
@@ -875,48 +855,52 @@ namespace AutoActivator.Gui.Views
 
             if (string.IsNullOrEmpty(rawInput))
             {
-                UpdateMainWindowStatus(mainWindow, "Please enter a value.", Brushes.Orange);
+                UpdateMainWindowStatus(mainWindow, "Veuillez saisir un N° de Contrat ou Demand ID.", Brushes.Orange);
                 return;
             }
 
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(AddExtractionItemToHistory);
 
             SetExtractionButtons(running: true);
-            UpdateBatchProgressDisplay(0, 5, $"{rawInput} — Initialisation de l'extraction SQL ({envValue}000)...", "STARTING", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+            UpdateBatchProgressDisplay(0, 58, $"{rawInput} — Initialisation de l'extraction SQL ({envValue}000)...", "STARTING", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
 
-            await mainWindow.RunProcessAsync(async () =>
+            await mainWindow.RunProcessAsync(async token =>
             {
                 try
                 {
-                    CancellationToken token = mainWindow.GetCancellationToken();
-
-                    UpdateMainWindowStatus(mainWindow, $"Extracting Environment {envValue}000...");
+                    UpdateMainWindowStatus(mainWindow, $"Extraction SQL en cours ({envValue}000) pour {rawInput}...");
                     bool succeeded = await PerformSingleExtractionAsync(rawInput, $"{envValue}000", progress, isDemandId, mainWindow, token);
 
                     if (token.IsCancellationRequested)
                     {
-                        UpdateBatchProgressDisplay(_batchProcessedCount, 5, $"{rawInput} — Annulé par l'utilisateur.", "CANCELLED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, "Single extraction cancelled by user.", Brushes.Orange);
+                        UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Annulé par l'utilisateur.", "CANCELLED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+                        UpdateMainWindowStatus(mainWindow, "Extraction unitaire arrêtée par l'utilisateur.", Brushes.DarkOrange);
                     }
                     else if (succeeded)
                     {
-                        UpdateBatchProgressDisplay(5, 5, $"{rawInput} — Extraction complète LISA + ELIA terminée (OK).", "COMPLETED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, "Single extraction completed successfully.", Brushes.Green);
+                        UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, $"{rawInput} — Extraction complète LISA + ELIA terminée (OK).", "COMPLETED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+                        UpdateMainWindowStatus(mainWindow, $"Extraction unitaire terminée avec succès pour {rawInput}.", Brushes.ForestGreen);
                     }
                     else
                     {
-                        UpdateBatchProgressDisplay(5, 5, $"{rawInput} — Extraction terminée (ELIA ONLY ou contrat absent de LISA).", "ELIA_ONLY", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, "Single extraction finished (ELIA ONLY or contract not active in LISA).", Brushes.DarkOrange);
+                        UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, $"{rawInput} — Extraction terminée (ELIA ONLY ou absent de LISA).", "ELIA_ONLY", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+                        UpdateMainWindowStatus(mainWindow, "Extraction terminée (ELIA ONLY ou contrat non actif dans LISA).", Brushes.DarkOrange);
                     }
                 }
                 catch (OperationCanceledException)
                 {
-                    UpdateBatchProgressDisplay(_batchProcessedCount, 5, $"{rawInput} — Annulé par l'utilisateur.", "CANCELLED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                    UpdateMainWindowStatus(mainWindow, "Single extraction cancelled by user.", Brushes.Orange);
+                    UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Annulé par l'utilisateur.", "CANCELLED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+                    UpdateMainWindowStatus(mainWindow, "Extraction unitaire arrêtée par l'utilisateur.", Brushes.DarkOrange);
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Échec : {ex.Message}", "FAILED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+                    throw;
                 }
                 finally
                 {
-                    Dispatcher.Invoke(() => SetExtractionButtons(running: false));
+                    await Dispatcher.InvokeAsync(() => SetExtractionButtons(running: false));
                 }
             });
         }
@@ -1021,17 +1005,14 @@ namespace AutoActivator.Gui.Views
             var openFileDialog = new OpenFileDialog
             {
                 Filter = "Data Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx",
-                Title = "Select a file containing contracts",
-                InitialDirectory = Path.GetFullPath(Settings.InputDir)
+                Title = "Sélectionner un fichier Excel ou CSV contenant les contrats / Demand IDs",
+                InitialDirectory = Directory.Exists(Settings.InputDir) ? Path.GetFullPath(Settings.InputDir) : Environment.CurrentDirectory
             };
 
             if (openFileDialog.ShowDialog() == true)
             {
+                _isCustomBatchFileSelected = true;
                 TxtBatchExtCsv.Text = openFileDialog.FileName;
-                if (TxtExtContract != null)
-                {
-                    TxtExtContract.Text = string.Empty;
-                }
             }
         }
 
@@ -1050,24 +1031,38 @@ namespace AutoActivator.Gui.Views
 
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
             {
-                UpdateMainWindowStatus(mainWindow, "Please select a valid file or verify the network path.", Brushes.Orange);
+                MessageBox.Show(
+                    $"Le fichier Batch Excel/CSV sélectionné est introuvable ou inaccessible :\n\n{filePath}\n\nVérifiez le chemin ou la connexion VPN, ou cliquez sur « 📂 Parcourir ».",
+                    "Fichier Batch introuvable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
                 return;
             }
 
             var batchService = new BatchExtractionService(_extractionService);
-            UpdateBatchProgressDisplay(0, 0, null, "STARTING");
+            var batchItemsCreated = new System.Collections.Generic.List<ExtractionItem>();
+
+            SetExtractionButtons(running: true);
+            UpdateBatchProgressDisplay(0, 0, $"Lecture directe du fichier {Path.GetFileName(filePath)}...", "STARTING", "BATCH");
 
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
-                UpdateBatchProgressDisplay(info.CurrentItem, info.TotalItems, info.ContractId, "RUNNING");
+                if (string.Equals(info.Status, "STARTING", StringComparison.OrdinalIgnoreCase))
+                {
+                    _batchPlannedCount = info.TotalItems;
+                    _progressController.Report(0, info.TotalItems, $"Extraction parallèle lancée ({info.TotalItems} contrat(s) dans {Path.GetFileName(filePath)})...");
+                    return;
+                }
+
+                UpdateBatchProgressDisplay(info.CurrentItem, info.TotalItems, $"Row #{info.RowNum} : {info.ContractId} ({info.BranchDisplay})", "RUNNING", "BATCH");
                 mainWindow.TxtStatus.Text =
-                    $"Batch extraction: {info.CurrentItem}/{info.TotalItems} | Excel Row {info.RowNum} | {info.ContractId} ({info.BranchDisplay})";
+                    $"Extraction Batch : {info.CurrentItem}/{info.TotalItems} | Excel Row #{info.RowNum} | {info.ContractId} ({info.BranchDisplay})";
 
                 bool hasLisa = info.InternalId != "Not found" && info.InternalId != "Error" && !string.IsNullOrWhiteSpace(info.InternalId);
                 bool hasElia = info.UconId != "N/A" && info.UconId != "Error" && !string.IsNullOrWhiteSpace(info.UconId);
                 string status = hasLisa ? "OK" : (hasElia ? "ELIA ONLY" : "KO");
 
-                AddExtractionItemToHistory(new ExtractionItem
+                var item = new ExtractionItem
                 {
                     RowNum = info.RowNum.ToString(CultureInfo.InvariantCulture),
                     Env = string.IsNullOrWhiteSpace(info.Environment) ? $"{envValue}000" : info.Environment,
@@ -1097,62 +1092,81 @@ namespace AutoActivator.Gui.Views
                     Test = string.IsNullOrWhiteSpace(info.TestId) ? $"Test{info.CurrentItem}" : info.TestId,
                     Status = status,
                     TablesExtractedCount = info.TablesExtractedCount,
-                    FilePath = string.Empty
-                });
+                    FilePath = info.FilePath
+                };
+
+                batchItemsCreated.Add(item);
+                AddExtractionItemToHistory(item);
             });
 
-            SetExtractionButtons(running: true);
-
-            await mainWindow.RunProcessAsync(async () =>
+            await mainWindow.RunProcessAsync(async token =>
             {
                 try
                 {
-                    CancellationToken token = mainWindow.GetCancellationToken();
+                    UpdateMainWindowStatus(mainWindow, $"Extraction Batch directe depuis {Path.GetFileName(filePath)} ({envValue}000)...");
 
-                    string actualFile = filePath;
-                    UpdateMainWindowStatus(mainWindow, $"Preparing Environment {envValue}000...");
+                    string mergedFilePath = await batchService
+                        .PerformBatchExtractionAsync(filePath, $"{envValue}000", progress.Report, isDemandId, token)
+                        .ConfigureAwait(false);
 
-                    if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    await Dispatcher.InvokeAsync(() =>
                     {
-                        UpdateMainWindowStatus(mainWindow, $"Converting Excel to CSV (preserving 1:1 Excel row numbering) for {envValue}000...");
-                        actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath), token).ConfigureAwait(false);
-                    }
-
-                    token.ThrowIfCancellationRequested();
-
-                    UpdateMainWindowStatus(mainWindow, $"Launching batch extraction ({envValue}000)...");
-
-                    string mergedFilePath = await batchService.PerformBatchExtractionAsync(actualFile, $"{envValue}000", progress.Report, isDemandId, token).ConfigureAwait(false);
-
-                    mainWindow.LastGeneratedPath = !string.IsNullOrWhiteSpace(mergedFilePath) && File.Exists(mergedFilePath)
-                        ? mergedFilePath
-                        : Settings.OutputDir;
+                        if (!string.IsNullOrWhiteSpace(mergedFilePath) && File.Exists(mergedFilePath))
+                        {
+                            foreach (ExtractionItem item in batchItemsCreated)
+                            {
+                                item.FilePath = mergedFilePath;
+                            }
+                            mainWindow.LastGeneratedPath = mergedFilePath;
+                        }
+                        else
+                        {
+                            mainWindow.LastGeneratedPath = Settings.OutputDir;
+                        }
+                    });
 
                     if (token.IsCancellationRequested)
                     {
-                        UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, null, "CANCELLED");
-                        UpdateMainWindowStatus(mainWindow, "Batch extraction cancelled. Partial files saved in Output folder.", Brushes.Orange);
+                        UpdateBatchProgressDisplay(
+                            _batchProcessedCount,
+                            _batchPlannedCount,
+                            $"Batch arrêté ({_batchProcessedCount}/{_batchPlannedCount}) — Snapshot partiel sauvegardé : {Path.GetFileName(mergedFilePath)}",
+                            "CANCELLED",
+                            "BATCH");
+                        UpdateMainWindowStatus(
+                            mainWindow,
+                            $"Extraction Batch arrêtée. Snapshot partiel généré : {Path.GetFileName(mergedFilePath)}",
+                            Brushes.DarkOrange);
                     }
                     else
                     {
-                        UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, null, "COMPLETED");
-                        UpdateMainWindowStatus(mainWindow, $"Batch extraction completed! Merged snapshot: {Path.GetFileName(mergedFilePath)}", Brushes.Green);
+                        UpdateBatchProgressDisplay(
+                            _batchPlannedCount,
+                            _batchPlannedCount,
+                            $"Batch terminé ({_batchPlannedCount}/{_batchPlannedCount}) — Fichier : {Path.GetFileName(mergedFilePath)}",
+                            "COMPLETED",
+                            "BATCH");
+                        UpdateMainWindowStatus(
+                            mainWindow,
+                            $"Extraction Batch terminée ! Snapshot généré : {Path.GetFileName(mergedFilePath)}",
+                            Brushes.ForestGreen);
                     }
                 }
                 catch (OperationCanceledException)
                 {
-                    mainWindow.LastGeneratedPath = Settings.OutputDir;
-                    UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, null, "CANCELLED");
-                    UpdateMainWindowStatus(mainWindow, "Batch extraction cancelled by user.", Brushes.Orange);
+                    UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, "Extraction Batch annulée par l'utilisateur.", "CANCELLED", "BATCH");
+                    UpdateMainWindowStatus(mainWindow, "Extraction Batch arrêtée par l'utilisateur.", Brushes.DarkOrange);
+                    throw;
                 }
                 catch (Exception ex)
                 {
-                    UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, null, "FAILED");
-                    UpdateMainWindowStatus(mainWindow, $"Batch Error: {ex.Message}", Brushes.Red);
+                    UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"Erreur Batch : {ex.Message}", "FAILED", "BATCH");
+                    UpdateMainWindowStatus(mainWindow, $"Erreur Batch : {ex.Message}", Brushes.Crimson);
+                    throw;
                 }
                 finally
                 {
-                    Dispatcher.Invoke(() => SetExtractionButtons(running: false));
+                    await Dispatcher.InvokeAsync(() => SetExtractionButtons(running: false));
                 }
             });
         }
@@ -1161,6 +1175,10 @@ namespace AutoActivator.Gui.Views
         {
             BtnCancelSingleExt.IsEnabled = running;
             BtnRunSingle.IsEnabled = !running;
+            if (BtnRunBatchExt != null)
+            {
+                BtnRunBatchExt.IsEnabled = !running;
+            }
         }
 
         private void BtnClearHistory_Click(object sender, RoutedEventArgs e)

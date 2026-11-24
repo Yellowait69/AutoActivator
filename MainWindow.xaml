@@ -167,42 +167,70 @@
             <views:ComparisonView x:Name="ViewComparison" Grid.Row="0" Visibility="Collapsed"/>
             <views:HelpView x:Name="ViewHelp" Grid.Row="0" Visibility="Collapsed"/>
 
-            <!-- ELEVATED STATUS BAR DOCK (HIDDEN TO AVOID DUPLICATE LOADING BAR) -->
-            <Border Grid.Row="1" Visibility="Collapsed" Background="White" CornerRadius="8" Padding="16,12" Margin="0,14,0,0" BorderBrush="#CBD5E1" BorderThickness="1">
+            <!-- BARRE D'ÉTAT GLOBALE & ACCÈS DIRECT AU DERNIER RAPPORT / FICHIER GÉNÉRÉ -->
+            <Border Grid.Row="1"
+                    Visibility="Visible"
+                    Background="White"
+                    CornerRadius="8"
+                    Padding="14,9"
+                    Margin="0,12,0,0"
+                    BorderBrush="#CBD5E1"
+                    BorderThickness="1">
                 <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                    <ProgressBar x:Name="PrgLoading" Grid.Row="0" IsIndeterminate="True" Height="4" Margin="0,0,0,10" Visibility="Collapsed" Foreground="#2563EB" BorderThickness="0" Background="#E2E8F0"/>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtStatusDot"
+                                   Text="●"
+                                   Foreground="#3B82F6"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <TextBlock x:Name="TxtStatus"
+                                   FontSize="13"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="#1E293B"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Text="Prêt."/>
+                    </StackPanel>
 
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="●" Foreground="#3B82F6" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock x:Name="TxtStatus" FontSize="13.5" TextWrapping="Wrap" Foreground="#1E293B" FontWeight="SemiBold" VerticalAlignment="Center" Text="Ready."/>
-                        </StackPanel>
-
-                        <TextBlock x:Name="LnkFile" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Center" Margin="15,0,0,0" FontSize="13.5">
-                            <Hyperlink Click="Hyperlink_Click" Foreground="#2563EB" FontWeight="Bold" TextDecorations="None">
-                                <Hyperlink.Style>
-                                    <Style TargetType="Hyperlink">
-                                        <Style.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="TextDecorations" Value="Underline"/>
-                                            </Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Hyperlink.Style>
-                                <Run Text="📁 Open Generated Report / Output Folder"/>
-                            </Hyperlink>
-                        </TextBlock>
-                    </Grid>
+                    <StackPanel x:Name="PanelOutputFileActions"
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                Visibility="Collapsed"
+                                VerticalAlignment="Center"
+                                Margin="14,0,0,0">
+                        <Button x:Name="BtnOpenGeneratedFile"
+                                Click="BtnOpenGeneratedFile_Click"
+                                Background="#EFF6FF"
+                                Foreground="#1D4ED8"
+                                BorderBrush="#BFDBFE"
+                                BorderThickness="1"
+                                Padding="10,4"
+                                Margin="0,0,6,0"
+                                FontSize="12"
+                                FontWeight="Bold"
+                                Cursor="Hand"
+                                ToolTip="Ouvrir directement le fichier rapport / CSV généré">
+                            <TextBlock x:Name="TxtOpenGeneratedFileLabel" Text="📄 Ouvrir le rapport"/>
+                        </Button>
+                        <Button x:Name="BtnRevealGeneratedFolder"
+                                Content="📂 Dossier"
+                                Click="Hyperlink_Click"
+                                Background="#F8FAFC"
+                                Foreground="#334155"
+                                BorderBrush="#CBD5E1"
+                                BorderThickness="1"
+                                Padding="10,4"
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Cursor="Hand"
+                                ToolTip="Afficher et sélectionner le fichier généré dans l'Explorateur Windows"/>
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

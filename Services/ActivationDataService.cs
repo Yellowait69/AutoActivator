@@ -2,6 +2,7 @@ using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Services.Branch23Activation;
 using AutoActivator.Sql;
+using AutoActivator.Utils;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -107,7 +108,13 @@ namespace AutoActivator.Services
             }
 
             PreActivationRoutingInfo? planRouting = existingRouting;
-            if (planRouting == null && !IsMissingValue(lookup.DemandId))
+            bool lookupAlreadyHasDates =
+                Branch23ActivationResolver.IsValidBusinessDate(lookup.PaymentDate) ||
+                Branch23ActivationResolver.IsValidBusinessDate(lookup.FirstPaymentDate) ||
+                Branch23ActivationResolver.IsValidBusinessDate(lookup.ContractStartDate) ||
+                Branch23ActivationResolver.IsValidBusinessDate(lookup.DemandCreationDate);
+
+            if (planRouting == null && !lookupAlreadyHasDates && !IsMissingValue(lookup.DemandId))
             {
                 try
                 {
@@ -186,8 +193,9 @@ namespace AutoActivator.Services
                 effectiveOverrides,
                 inputMode,
                 planRouting,
+                lookup,
                 out string runDateSource);
-            bool alreadyActive = !IsMissingValue(lookup.LisaInternalId);
+            bool alreadyActive = lookup.IsActiveInLisa;
 
             var sources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -229,6 +237,19 @@ namespace AutoActivator.Services
                     }
                 }
                 fundsSourceText = "ELIA TB5UGFF/TB5UPRF";
+            }
+            else if (lookup.ResolvedFunds != null && lookup.ResolvedFunds.Count > 0)
+            {
+                foreach (string f in lookup.ResolvedFunds)
+                {
+                    if (!string.IsNullOrWhiteSpace(f))
+                    {
+                        resolvedFundsList.Add(f.Trim().ToUpperInvariant());
+                    }
+                }
+                fundsSourceText = string.IsNullOrWhiteSpace(lookup.FundsSource)
+                    ? "ELIA TB5UGFF/TB5UPRF"
+                    : lookup.FundsSource;
             }
 
             if (effectiveIsBranch23 && resolvedFundsList.Count == 0 && !IsMissingValue(lookup.JclContract))
@@ -484,6 +505,7 @@ namespace AutoActivator.Services
             IReadOnlyDictionary<string, string> overrides,
             ActivationInputMode inputMode,
             PreActivationRoutingInfo? routing,
+            ActivationLookupResult? lookup,
             out string source)
         {
             string? drunOverride = null;
@@ -513,15 +535,20 @@ namespace AutoActivator.Services
                 throw new InvalidOperationException($"Invalid DRUN/RUNDATE override: '{drunOverride}'.");
             }
 
-            if (routing != null &&
-                (Branch23ActivationResolver.IsValidBusinessDate(routing.PaymentDate) ||
-                 Branch23ActivationResolver.IsValidBusinessDate(routing.FirstPaymentDate) ||
-                 Branch23ActivationResolver.IsValidBusinessDate(routing.ContractStartDate)))
+            DateTime? paymentDate = routing?.PaymentDate ?? lookup?.PaymentDate;
+            DateTime? firstPaymentDate = routing?.FirstPaymentDate ?? lookup?.FirstPaymentDate;
+            DateTime? contractStartDate = routing?.ContractStartDate ?? lookup?.ContractStartDate;
+            DateTime? demandCreationDate = routing?.DemandCreationDate ?? lookup?.DemandCreationDate;
+
+            if (Branch23ActivationResolver.IsValidBusinessDate(paymentDate) ||
+                Branch23ActivationResolver.IsValidBusinessDate(firstPaymentDate) ||
+                Branch23ActivationResolver.IsValidBusinessDate(contractStartDate))
             {
                 Branch23RunDate br23Date = Branch23ActivationResolver.ResolveRunDate(
-                    routing.PaymentDate,
-                    routing.FirstPaymentDate,
-                    routing.ContractStartDate);
+                    paymentDate,
+                    firstPaymentDate,
+                    contractStartDate,
+                    demandCreationDate);
                 source = br23Date.Source switch
                 {
                     "DateVersement" => "TB5UPRP.IT5UPRPDVRS (DateVersement)",
@@ -532,11 +559,11 @@ namespace AutoActivator.Services
                 return br23Date.RunDate.Date;
             }
 
-            if (routing?.DemandCreationDate is DateTime demandCreationDate &&
-                Branch23ActivationResolver.IsValidBusinessDate(demandCreationDate))
+            if (demandCreationDate is DateTime validDemandDate &&
+                Branch23ActivationResolver.IsValidBusinessDate(validDemandDate))
             {
                 source = "TB5HDMD.IT5HDMDDCRE";
-                return demandCreationDate.Date;
+                return validDemandDate.Date;
             }
 
             source = "Execution date fallback";
@@ -575,10 +602,25 @@ namespace AutoActivator.Services
             token.ThrowIfCancellationRequested();
 
             string normalizedEnvironment = Settings.NormalizeEnvironmentSuffix(envValue);
+            string normalizedEnvValue = NormalizeShortEnvironment(envValue);
+            string q2 = normalizedEnvValue == "D" ? "Q2T" : "Q2C";
+            string fastCtrl = normalizedEnvValue == "D"
+                ? "I0T.DB.CA.FIB.FASTCTRL"
+                : "I10.DB.CA.FIB.FASTCTRL";
+            string envImsValue = normalizedEnvValue == "D" ? "T" : "C";
 
-            PreActivationRoutingInfo? routing =
-                await TryResolveExecutionRoutingAsync(trace, normalizedEnvironment, token)
+            bool traceAlreadyResolved =
+                trace != null &&
+                !IsMissingValue(trace.ResolvedContract) &&
+                !IsMissingValue(trace.RunDate) &&
+                (!IsMissingValue(trace.EliaChannelCode) || manualPaymentOverride);
+
+            PreActivationRoutingInfo? routing = null;
+            if (!traceAlreadyResolved)
+            {
+                routing = await TryResolveExecutionRoutingAsync(trace, normalizedEnvironment, token)
                     .ConfigureAwait(false);
+            }
 
             if (routing != null)
             {
@@ -623,6 +665,15 @@ namespace AutoActivator.Services
                 }
             }
 
+            if (trace != null &&
+                (trace.IsBranch23 ||
+                 Settings.PreActivationRouting.IsKnownBranch23Product(trace.ProductCode) ||
+                 trace.FundFeatureCount > 0))
+            {
+                isBranch23 = true;
+                trace.IsBranch23 = true;
+            }
+
             string manualBucpCandidate = AutomaticActivationPlan.NormalizeBucp(bucp);
             string manualCmdCandidate = (cmdpmt ?? string.Empty).Trim().ToUpperInvariant();
             bool hasValidManualOverride =
@@ -648,21 +699,6 @@ namespace AutoActivator.Services
                 if (!automaticPaymentRouting.IsResolved)
                     throw new InvalidOperationException(automaticPaymentRouting.DiagnosticMessage);
 
-                string suppliedBucp = AutomaticActivationPlan.NormalizeBucp(bucp);
-                string suppliedCommand = (cmdpmt ?? string.Empty).Trim().ToUpperInvariant();
-                bool suppliedRoutingMatches =
-                    string.Equals(suppliedBucp, automaticPaymentRouting.Bucp, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(suppliedCommand, automaticPaymentRouting.PaymentCommand, StringComparison.OrdinalIgnoreCase);
-
-                if (!suppliedRoutingMatches)
-                {
-                    onProgress?.Invoke(
-                        "Replacing global/manual payment preset " +
-                        $"{suppliedBucp}/{suppliedCommand} with ELIA ChannelCode " +
-                        $"routing {automaticPaymentRouting.Bucp}/" +
-                        automaticPaymentRouting.PaymentCommand + ".");
-                }
-
                 bucp = automaticPaymentRouting.Bucp;
                 cmdpmt = automaticPaymentRouting.PaymentCommand;
 
@@ -681,38 +717,6 @@ namespace AutoActivator.Services
                     $"{routing.ChannelCode}: {automaticPaymentRouting.ResolvedChannel}, " +
                     $"BUCP={bucp}, CMDPMT={cmdpmt}.");
             }
-
-            bool useBranch23ActivationOnly = ShouldUseBranch23ActivationOnly(isBranch23, branch23ActivationOnly);
-
-            if (useBranch23ActivationOnly)
-            {
-                ActivationJobSelection effectiveBr23Selection = (jobSelection ??
-                    (branch23ActivationOnly
-                        ? ActivationJobSelection.PremeliaOnly()
-                        : ActivationJobSelection.FullChain())).Clone();
-                if (skipPrime)
-                {
-                    effectiveBr23Selection.RunAddPrct = false;
-                }
-
-                if (trace != null)
-                {
-                    trace.IsBranch23 = true;
-                    trace.Branch23FundsSource = effectiveBr23Selection.HasAnyBranch23Step
-                        ? "ELIA TB5UGFF/TB5UPRF + LISA LV000FD0.LV.FMVDT0"
-                        : "Not used (PREMELIA only)";
-                    trace.Branch23MovementState = $"Branch23 Workflow: {effectiveBr23Selection.FormatSummary()}";
-                }
-                onProgress?.Invoke(
-                    $"BR23 ROUTING CONFIRMED | Sequence={effectiveBr23Selection.FormatSummary()}");
-            }
-
-            string normalizedEnvValue = NormalizeShortEnvironment(envValue);
-            string q2 = normalizedEnvValue == "D" ? "Q2T" : "Q2C";
-            string fastCtrl = normalizedEnvValue == "D"
-                ? "I0T.DB.CA.FIB.FASTCTRL"
-                : "I10.DB.CA.FIB.FASTCTRL";
-            string envImsValue = normalizedEnvValue == "D" ? "T" : "C";
 
             string normalizedBucpInput = (bucp ?? string.Empty).Trim();
             if (normalizedBucpInput == "00000")
@@ -758,7 +762,12 @@ namespace AutoActivator.Services
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(normalizedBucpInput) || string.IsNullOrWhiteSpace(normalizedCmdpmtInput))
+            bool bypassBilling =
+                skipPrime ||
+                string.Equals(channel, "C05", StringComparison.OrdinalIgnoreCase);
+
+            if (!bypassBilling &&
+                (string.IsNullOrWhiteSpace(normalizedBucpInput) || string.IsNullOrWhiteSpace(normalizedCmdpmtInput)))
             {
                 ActivationLookupResult fallbackLookup = await ResolveContractForActivationAsync(
                         contract,
@@ -788,322 +797,41 @@ namespace AutoActivator.Services
                 : normalizedBucpInput.PadLeft(5, '0');
             cmdpmt = normalizedCmdpmtInput;
 
-            if (useBranch23ActivationOnly)
-            {
-                ContractActivationTrace branch23Trace =
-                    trace ?? new ContractActivationTrace
-                    {
-                        StartTime = DateTime.Now,
-                        FinalStatus = "RUNNING",
-                        IsBranch23 = true,
-                        Branch23Source = "ExecutionMode=Branch23Workflow"
-                    };
-
-                await ExecuteBranch23ActivationOnlyAsync(
-                        contract,
-                        normalizedEnvironment,
-                        normalizedEnvValue,
-                        q2,
-                        envImsValue,
-                        fastCtrl,
-                        cus ?? string.Empty,
-                        paddedBucp,
-                        cmdpmt,
-                        skipPrime,
-                        skipLogon,
-                        username ?? string.Empty,
-                        password ?? string.Empty,
-                        onProgress,
-                        branch23Trace,
-                        token,
-                        branch23FundSource,
-                        jobSelection,
-                        branch23ActivationOnly,
-                        manualPaymentOverride,
-                        amount)
-                    .ConfigureAwait(false);
-
-                return;
-            }
-
-            amount = ValidateAndFormatAmount(amount, skipPrime, channel, trace);
-            string paddedAmount = amount.PadLeft(10, '0');
-
-            if (trace != null)
-            {
-                trace.Environment = normalizedEnvValue;
-                trace.EnvIms = envImsValue;
-                trace.Q2Region = q2;
-                trace.FastCtrlDsn = fastCtrl;
-                trace.Channel = channel;
-                trace.Cus = cus;
-                trace.Bucp = paddedBucp;
-                trace.Cmdpmt = cmdpmt;
-                trace.SkipPrime = skipPrime;
-                trace.Username = username;
-                trace.JclContract = contract;
-                trace.FormattedAmount = paddedAmount;
-                trace.IsBranch23 = isBranch23;
-            }
-
-            DateTime runDate;
-            string resolvedRunDateSource;
-            string[] runDateFormats = { "yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy" };
-            if (!IsMissingValue(trace?.RunDate) &&
-                DateTime.TryParseExact(
-                    trace!.RunDate.Trim(),
-                    runDateFormats,
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.None,
-                    out DateTime existingRunDate))
-            {
-                runDate = existingRunDate.Date;
-                resolvedRunDateSource = !IsMissingValue(trace.RunDateSource)
-                    ? trace.RunDateSource
-                    : "Pre-resolved plan";
-            }
-            else
-            {
-                runDate = ResolvePlanRunDate(
-                    new Dictionary<string, string>(),
-                    ActivationInputMode.SqlAutocomplete,
-                    routing,
-                    out resolvedRunDateSource);
-            }
-
-            if (trace != null)
-            {
-                trace.RunDate = runDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-                trace.RunDateSource = resolvedRunDateSource;
-            }
-            onProgress?.Invoke($"RunDate resolved: {runDate:yyyy-MM-dd} (source={resolvedRunDateSource}).");
-
-            var generalVariables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["ENV"] = normalizedEnvValue,
-                ["ENVIMS"] = envImsValue,
-                ["CUS"] = cus ?? string.Empty,
-                ["BUCP"] = paddedBucp,
-                ["CMDPMT"] = (cmdpmt ?? string.Empty).Trim().ToUpperInvariant(),
-                ["YYMMDD"] = runDate.ToString("yyMMdd"),
-                ["YYYY"] = runDate.ToString("yyyy"),
-                ["MM"] = runDate.ToString("MM"),
-                ["DD"] = runDate.ToString("dd"),
-                ["CLASS"] = "A",
-                ["CNTBEG"] = contract,
-                ["CNTEND"] = contract,
-                ["MMDD"] = runDate.ToString("MMdd"),
-                ["CYMD"] = runDate.ToString("yyyyMMdd"),
-                ["STE"] = "A",
-                ["Q2"] = q2,
-                ["CM"] = string.Empty,
-                ["DRUN"] = runDate.ToString("yyyyMMdd"),
-                ["NREMB"] = "20",
-                ["CONTR-EX"] = "Y",
-                ["CONTR-RE"] = "Y",
-                ["CONTR-UN"] = "Y",
-                ["NJJART72"] = "5",
-                ["JOBNAMI"] = "LVPP06U$",
-                ["FASTCTRL"] = fastCtrl
-            };
-
-            var addprctVariables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["CMDPMT"] = cmdpmt ?? string.Empty,
-                ["AMOUNT"] = paddedAmount,
-                ["BUCP"] = paddedBucp,
-                ["USERNAME"] = username ?? string.Empty
-            };
-
-            Dictionary<string, Dictionary<string, string>>? branch23JobVariables = null;
-            Func<CancellationToken, Task>? prepareBranch23NavsAsync = null;
-            Func<CancellationToken, Task>? beforeBranch23FundEventsAsync = null;
-            Func<CancellationToken, Task>? afterBranch23FundEventsAsync = null;
-
-            if (isBranch23)
-            {
-                DateTime consolidationDate = Branch23ParameterBuilder.GetConsolidationDate(runDate);
-                branch23JobVariables = Branch23ParameterBuilder.BuildJobVariables(runDate, consolidationDate);
-                string navEnvironment = normalizedEnvValue + "000";
-                IReadOnlyList<string> funds = Array.Empty<string>();
-
-                if (trace != null)
+            ContractActivationTrace effectiveTrace =
+                trace ?? new ContractActivationTrace
                 {
-                    trace.IsBranch23 = true;
-                    trace.Branch23ConsolidationDate = consolidationDate;
-                    if (string.IsNullOrWhiteSpace(trace.Branch23Source))
-                    {
-                        trace.Branch23Source = "Manual selection or legacy detection";
-                    }
-                }
-
-                var fundResolution = await ResolveBranch23PreActivationFundsAsync(
-                    trace, contract, navEnvironment, branch23FundSource, token)
-                    .ConfigureAwait(false);
-                funds = fundResolution.Funds;
-                if (funds.Count == 0)
-                    throw new Branch23FundResolutionException(
-                        "BR23_PREACTIVATION_FUNDS_MISSING",
-                        "No fund was resolved from ELIA by Demand ID or contract, " +
-                        "and no fallback fund is configured. No mainframe job was submitted by this call.");
-                if (trace != null)
-                {
-                    trace.Branch23Funds = funds.ToList();
-                    trace.Branch23FundsSource = fundResolution.Source;
-                }
-                onProgress?.Invoke("BR23 funds resolved: " + string.Join(", ", funds) +
-                    "; source: " + fundResolution.Source);
-
-                beforeBranch23FundEventsAsync = async ct =>
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var fundService = new Branch23FundService(navEnvironment);
-                    DateTime firstNavDate = runDate.Date;
-                    DateTime lastNavDate = consolidationDate.Date;
-
-                    if (lastNavDate < firstNavDate)
-                    {
-                        throw new InvalidOperationException(
-                            "The BR23 consolidation date cannot be earlier than the activation date.");
-                    }
-
-                    var navResults = await fundService.EnsureNavWindowWithBufferAsync(
-                            funds,
-                            firstNavDate,
-                            lastNavDate,
-                            extraCalendarDaysAfterConsolidation: 2,
-                            ct)
-                        .ConfigureAwait(false);
-
-                    var navSummary = navResults.Select(result => result.ToString()).ToList();
-                    var notReadySummary = navResults
-                        .Where(result => !result.IsReady)
-                        .Select(result => result.ToString())
-                        .ToList();
-
-                    if (trace != null)
-                    {
-                        trace.Branch23Funds = funds.ToList();
-                        trace.Branch23FundsSource = fundResolution.Source;
-                        trace.Branch23NavSummary = navSummary.ToList();
-                        trace.Branch23LastMovementBefore = null;
-                        trace.Branch23MovementNumber = null;
-                        trace.Branch23MovementState =
-                            "LISA movement validation deferred until the complete BR23 JCL chain has finished.";
-                    }
-
-                    if (notReadySummary.Count > 0)
-                    {
-                        throw new InvalidOperationException(
-                            "BR23 NAV preparation failed between the activation date and consolidation date: " +
-                            string.Join(" | ", notReadySummary));
-                    }
-
-                    onProgress?.Invoke(
-                        "BR23 funds and all required NAV dates are ready before LVDQFG03. " +
-                        $"Funds={string.Join(", ", funds)}; " +
-                        $"Window={firstNavDate:yyyy-MM-dd}..{lastNavDate.AddDays(2):yyyy-MM-dd}.");
+                    StartTime = DateTime.Now,
+                    FinalStatus = "RUNNING",
+                    IsBranch23 = isBranch23,
+                    Branch23Source = isBranch23 ? "UnifiedWorkflow(Branch23)" : "UnifiedWorkflow(Branch21)"
                 };
 
-                prepareBranch23NavsAsync = null;
-                afterBranch23FundEventsAsync = null;
-            }
-
-            if (jobSelection != null &&
-                jobSelection.UseSqlPrctInsert &&
-                jobSelection.RunAddPrct &&
-                !skipPrime &&
-                decimal.TryParse(contract, NumberStyles.None, CultureInfo.InvariantCulture, out decimal numericContract9) &&
-                TryParsePositiveAmount(amount, out decimal sqlDecimalAmount))
-            {
-                var sqlVerifier = new Branch23ActivationVerifier(new Branch23SqlReader(normalizedEnvironment));
-                string sqlInsertSummary = await sqlVerifier.InsertPrctRowViaSqlAsync(
-                        numericContract9,
-                        cmdpmt ?? string.Empty,
-                        paddedBucp,
-                        runDate,
-                        sqlDecimalAmount,
-                        token)
-                    .ConfigureAwait(false);
-                onProgress?.Invoke($"[SQL LV.PRCTT0] {sqlInsertSummary}");
-            }
-
-            var orchestrator = new ActivationOrchestrator(Settings.JclNetworkFolder);
-
-            await orchestrator
-                .RunActivationSequenceAsync(
-                    generalVariables,
-                    addprctVariables,
-                    username ?? string.Empty,
-                    password ?? string.Empty,
+            await ExecuteUnifiedActivationWorkflowAsync(
+                    contract,
+                    normalizedEnvironment,
+                    normalizedEnvValue,
+                    q2,
+                    envImsValue,
+                    fastCtrl,
+                    cus ?? string.Empty,
+                    paddedBucp,
+                    cmdpmt,
                     channel,
                     skipPrime,
                     skipLogon,
+                    username ?? string.Empty,
+                    password ?? string.Empty,
+                    isBranch23,
                     onProgress,
+                    effectiveTrace,
                     token,
-                    trace,
-                    branch23JobVariables,
-                    prepareBranch23NavsAsync,
-                    beforeBranch23FundEventsAsync,
-                    afterBranch23FundEventsAsync,
-                    beforeInitialLiValidationAsync:
-                        ct => ValidatePreLiBusinessPrerequisitesAsync(
-                            normalizedEnvironment,
-                            contract,
-                            trace,
-                            onProgress,
-                            ct),
-                    resolveGeneratedJobNumberAsync:
-                        new MicroFocusApiService().ResolveGeneratedJobNumberAsync,
-                    jobSelection: jobSelection)
+                    branch23FundSource,
+                    jobSelection,
+                    branch23ActivationOnly,
+                    manualPaymentOverride,
+                    amount,
+                    routing)
                 .ConfigureAwait(false);
-
-            if (trace != null &&
-                string.Equals(trace.FinalStatus, "SUCCESS", StringComparison.OrdinalIgnoreCase) &&
-                IsMissingValue(trace.LisaInternalId))
-            {
-                string? resolvedLisaId = await ResolveBranch23LisaInternalIdAsync(
-                        trace,
-                        contract,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
-                if (!IsMissingValue(resolvedLisaId))
-                {
-                    trace.LisaInternalId = resolvedLisaId!;
-                }
-            }
-
-            if (isBranch23 &&
-                trace != null &&
-                string.Equals(trace.FinalStatus, "SUCCESS", StringComparison.OrdinalIgnoreCase))
-            {
-                string? finalLisaInternalId = await WaitForFinalLisaCreationAsync(
-                        trace,
-                        contract,
-                        normalizedEnvironment,
-                        onProgress,
-                        token)
-                    .ConfigureAwait(false);
-
-                if (IsMissingValue(finalLisaInternalId))
-                {
-                    trace.FinalStatus = "FAILED";
-                    trace.FailureStage = "LISA_FINALIZATION_TIMEOUT";
-                    trace.FailureReason =
-                        "All standard and Branch 23 JCL jobs completed with accepted return codes, " +
-                        $"but the contract '{trace.ResolvedContract}' did not appear in LV.SCNTT0 within 5 minutes.";
-                    trace.RootCauseAnalysis =
-                        "A technical JCL RC=0000 does not prove that a business object was processed. " +
-                        "Verify the BERPCTL counters for LVDQFG03 and LVDQFG01 and the final LVD1PE01 output.";
-                    trace.RecommendedAction =
-                        "Do not replay ADDPRCT. Inspect zero business counters and the final LISA creation step. " +
-                        "Use Skip Prime for any controlled retry.";
-                    trace.EndTime = DateTime.Now;
-
-                    throw new InvalidOperationException(trace.FailureReason);
-                }
-            }
         }
 
         private static async Task ValidatePreLiBusinessPrerequisitesAsync(

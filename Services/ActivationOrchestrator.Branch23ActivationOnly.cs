@@ -26,6 +26,42 @@ namespace AutoActivator.Services
             TimeSpan.FromSeconds(3);
 
         /// <summary>
+        /// Authenticates and preloads JCL templates for the unified B21/B23 activation session.
+        /// No job is submitted by this method.
+        /// </summary>
+        public Task PrepareUnifiedActivationSessionAsync(
+            string username,
+            string password,
+            string environment,
+            bool skipLogon,
+            bool isBranch23,
+            Action<string>? onProgress,
+            ContractActivationTrace trace,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(trace);
+
+            trace.Steps.Clear();
+            _branch23ActivationSteps.Clear();
+            trace.StartTime = DateTime.Now;
+            trace.FinalStatus = "RUNNING";
+            trace.IsBranch23 = isBranch23;
+
+            onProgress?.Invoke(
+                $"Preparing {(isBranch23 ? "Branche 23" : "Branche 21")} ESCWA session (CLASS={Config.Settings.ActivationAutomation.DefaultJclJobClass}).");
+
+            return AuthenticateAndPreloadAsync(
+                username,
+                password,
+                NormalizeEnvironment(environment),
+                skipLogon,
+                isBranch23: isBranch23,
+                onProgress,
+                trace,
+                cancellationToken);
+        }
+
+        /// <summary>
         /// Authenticates and preloads the standard Branch 23 templates.
         /// No job is submitted by this method.
         /// </summary>
@@ -38,27 +74,25 @@ namespace AutoActivator.Services
             ContractActivationTrace trace,
             CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(trace);
-
-            trace.Steps.Clear();
-            _branch23ActivationSteps.Clear();
-            trace.StartTime = DateTime.Now;
-            trace.FinalStatus = "RUNNING";
-            trace.IsBranch23 = true;
-
-            onProgress?.Invoke(
-                "Preparing Branch 23 session. Payment routing will use the " +
-                "SQL-resolved Bank or Broker New Gen variables.");
-
-            return AuthenticateAndPreloadAsync(
+            return PrepareUnifiedActivationSessionAsync(
                 username,
                 password,
-                NormalizeEnvironment(environment),
+                environment,
                 skipLogon,
                 isBranch23: true,
                 onProgress,
                 trace,
                 cancellationToken);
+        }
+
+        public IBranch23JobRunner CreateUnifiedJobRunner(
+            ContractActivationTrace trace,
+            Action<string>? onProgress)
+        {
+            return CreateBranch23JobRunner(
+                trace,
+                onProgress,
+                ResolveGeneratedJobWithRetryAsync);
         }
 
         /// <summary>
@@ -271,27 +305,40 @@ namespace AutoActivator.Services
                     variables,
                     StringComparer.OrdinalIgnoreCase);
 
-                ValidatePaymentRouting(normalizedVariables);
-                RecordPaymentRouting(normalizedVariables);
+                if (!normalizedVariables.TryGetValue("CLASS", out string? currentClass) ||
+                    string.IsNullOrWhiteSpace(currentClass))
+                {
+                    normalizedVariables["CLASS"] = Config.Settings.ActivationAutomation.DefaultJclJobClass;
+                }
+
+                if (IsSameJob(normalizedJobName, "ADDPRCT"))
+                {
+                    ValidatePaymentRouting(normalizedVariables);
+                }
+
+                if (normalizedVariables.TryGetValue("BUCP", out string? rawBucp) &&
+                    !string.IsNullOrWhiteSpace(rawBucp) &&
+                    normalizedVariables.TryGetValue("CMDPMT", out string? rawCmd) &&
+                    !string.IsNullOrWhiteSpace(rawCmd))
+                {
+                    RecordPaymentRouting(normalizedVariables);
+                }
 
                 string jclTemplateName = ResolveBranch23JclTemplateName(normalizedJobName);
+                bool isBranch23SpecificStep = IsBranch23SpecificJob(normalizedJobName);
+                string effectiveSubJobName = normalizedSubJobName != "-"
+                    ? normalizedSubJobName
+                    : ResolveAutomaticSubJobName(normalizedJobName);
 
                 var step = new JobStepExecutionInfo
                 {
                     StepOrder = _trace.Steps.Count + 1,
                     JobName = normalizedJobName,
                     JclName = jclTemplateName,
-                    SubJobName = normalizedSubJobName,
-                    PhaseDescription =
-                        "Branch23: " + normalizedJobName +
-                        (string.Equals(jclTemplateName, normalizedJobName, StringComparison.OrdinalIgnoreCase)
-                            ? string.Empty
-                            : $" ({jclTemplateName})") +
-                        (normalizedSubJobName == "-"
-                            ? string.Empty
-                            : " -> " + normalizedSubJobName),
+                    SubJobName = effectiveSubJobName,
+                    PhaseDescription = ResolvePhaseDescription(normalizedJobName, jclTemplateName, effectiveSubJobName),
                     Status = "Pending",
-                    IsBranch23Step = true
+                    IsBranch23Step = isBranch23SpecificStep
                 };
 
                 _trace.Steps.Add(step);
@@ -322,6 +369,41 @@ namespace AutoActivator.Services
                         ? "-"
                         : NormalizeReturnCode(step.SubJobReturnCode)
                             .ToString("0000", CultureInfo.InvariantCulture)
+                };
+            }
+
+            private static bool IsBranch23SpecificJob(string jobName)
+            {
+                return jobName.Trim().ToUpperInvariant() switch
+                {
+                    "LVDQFG03" or "LVFG03U" or "LVDQFG01" or "LVFG01U" or "LVD1PE01" or "LVPE01U" => true,
+                    _ => false
+                };
+            }
+
+            private static string ResolveAutomaticSubJobName(string jobName)
+            {
+                return jobName.Trim().ToUpperInvariant() switch
+                {
+                    "LI1J04D0" => "LI1J04D1",
+                    "LI1J04D2" => "LI1J04D3",
+                    _ => "-"
+                };
+            }
+
+            private static string ResolvePhaseDescription(string jobName, string templateName, string subJobName)
+            {
+                return jobName.Trim().ToUpperInvariant() switch
+                {
+                    "ADDPRCT" => "Phase 1: Billing & Premium Injection (ADDPRCT)",
+                    "LVPP06U" => "Phase 1: Premium Accounting Validation (LVPP06U)",
+                    "LVPG22U" => "Phase 1: Financial Posting & Clearing (LVPG22U)",
+                    "LI1J04D0" => "Phase 2: Core IMS Contract Activation (LI1J04D0 -> LI1J04D1)",
+                    "LI1J04D2" => "Phase 2: Final IMS Synchronization (LI1J04D2 -> LI1J04D3)",
+                    "LVDQFG03" => $"Phase 3 (BR23): Fund Movement Creation Date N ({jobName} / {templateName})",
+                    "LVDQFG01" => $"Phase 3 (BR23): Fund Consolidation Date N+2 ({jobName} / {templateName})",
+                    "LVD1PE01" => $"Phase 3 (BR23): Accounting FP01 Date N+2 ({jobName} / {templateName})",
+                    _ => subJobName == "-" ? jobName : $"{jobName} -> {subJobName}"
                 };
             }
 

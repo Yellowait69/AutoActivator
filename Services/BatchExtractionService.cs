@@ -12,7 +12,8 @@ using AutoActivator.Utils;
 namespace AutoActivator.Services
 {
     /// <summary>
-    /// Service responsible for processing bulk contract extractions from a CSV/Excel file.
+    /// Service responsible for processing bulk contract extractions directly from an Excel (.xls/.xlsx) or CSV file
+    /// without intermediate CSV conversion files on disk.
     /// Preserves the exact 1-based Excel row number and resolves Branche 21 / Branche 23.
     /// </summary>
     public class BatchExtractionService
@@ -32,91 +33,20 @@ namespace AutoActivator.Services
             CancellationToken token = default)
         {
             if (!File.Exists(filePath))
-                throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
+            {
+                throw new FileNotFoundException("The specified batch file could not be found.", filePath);
+            }
 
             env = Settings.NormalizeEnvironmentSuffix(env);
             string tempDirPath = Path.Combine(Path.GetTempPath(), $"AutoActivator_Batch_{Guid.NewGuid():N}");
             Directory.CreateDirectory(tempDirPath);
 
-            var contractsToProcess = new List<(int rowNum, string contractNumber, string rawTestId)>();
             string finalMergedPath = Settings.OutputDir;
 
             try
             {
-                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var reader = new StreamReader(fs, Encoding.UTF8))
-                {
-                    string? line;
-                    char delimiter = ';';
-                    int contractIndex = -1, testIdIndex = -1;
-                    bool headerFound = false;
-                    int lineNumber = 0;
-
-                    while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
-                    {
-                        token.ThrowIfCancellationRequested();
-                        lineNumber++;
-
-                        if (line.StartsWith("\uFEFF", StringComparison.Ordinal)) line = line.Substring(1);
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-
-                        if (line.Replace("\"", "").TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        delimiter = line.Count(c => c == ';') > line.Count(c => c == ',') ? ';' : ',';
-                        var cols = CsvFormatter.ParseCsvLine(line, delimiter);
-
-                        for (int i = 0; i < cols.Count; i++)
-                        {
-                            string h = cols[i].Trim().ToLowerInvariant();
-                            if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand"))
-                                contractIndex = i;
-                            if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest") || h == "key")
-                                testIdIndex = i;
-                        }
-
-                        if (contractIndex != -1)
-                        {
-                            headerFound = true;
-                            break;
-                        }
-                    }
-
-                    if (!headerFound)
-                        throw new Exception("Unable to find 'Value', 'Demand', or 'Contract' column in the CSV file.");
-
-                    while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
-                    {
-                        token.ThrowIfCancellationRequested();
-                        lineNumber++;
-
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-
-                        var columns = CsvFormatter.ParseCsvLine(line, delimiter);
-
-                        if (columns.Count > contractIndex)
-                        {
-                            string contractNumber = columns[contractIndex]
-                                .Replace("=", "")
-                                .Replace("\"", "")
-                                .Replace("\u00A0", "")
-                                .Replace("\uFEFF", "")
-                                .Trim();
-
-                            if (string.IsNullOrEmpty(contractNumber) ||
-                                contractNumber.Equals("End of File", StringComparison.OrdinalIgnoreCase))
-                            {
-                                continue;
-                            }
-
-                            string rawTestId = (testIdIndex != -1 && columns.Count > testIdIndex)
-                                ? columns[testIdIndex].Replace("=", "").Replace("\"", "").Trim()
-                                : contractNumber;
-
-                            contractsToProcess.Add((lineNumber, contractNumber, rawTestId));
-                        }
-                    }
-                }
+                IReadOnlyList<BatchFileRow> batchRows =
+                    await ExcelHelper.ReadBatchRowsAsync(filePath, token).ConfigureAwait(false);
 
                 string origFileName = Path.GetFileNameWithoutExtension(filePath);
                 if (origFileName.StartsWith("Converted_Ext_", StringComparison.OrdinalIgnoreCase))
@@ -131,13 +61,29 @@ namespace AutoActivator.Services
                 string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}_{timestamp}.csv");
                 finalMergedPath = combinedPath;
 
-                int totalItems = contractsToProcess.Count;
+                int totalItems = batchRows.Count;
                 int processedItems = 0;
+
+                onProgressUpdate?.Invoke(new BatchProgressInfo
+                {
+                    Environment = env,
+                    Status = "STARTING",
+                    CurrentItem = 0,
+                    TotalItems = totalItems,
+                    FilePath = combinedPath
+                });
+
+                if (totalItems == 0)
+                {
+                    await WriteMergedBatchOutputAsync(combinedPath, tempDirPath, 0, token.IsCancellationRequested)
+                        .ConfigureAwait(false);
+                    return finalMergedPath;
+                }
 
                 // Capped at 12 concurrent contracts (each running up to 10 table queries) to prevent SQL connection pool exhaustion
                 using (var semaphore = new SemaphoreSlim(12))
                 {
-                    async Task ProcessContractItemAsync((int rowNum, string contractNumber, string rawTestId) item, int index)
+                    async Task ProcessContractItemAsync(BatchFileRow item, int index)
                     {
                         try
                         {
@@ -148,10 +94,10 @@ namespace AutoActivator.Services
                             {
                                 token.ThrowIfCancellationRequested();
 
-                                bool itemIsDemandId = ExcelHelper.IsDemandIdInput(item.contractNumber);
+                                bool itemIsDemandId = ExcelHelper.IsDemandIdInput(item.RawInput);
 
                                 ExtractionResult result = await _extractionService
-                                    .PerformExtractionAsync(item.contractNumber, env, false, itemIsDemandId, token)
+                                    .PerformExtractionAsync(item.RawInput, env, false, itemIsDemandId, token)
                                     .ConfigureAwait(false);
 
                                 token.ThrowIfCancellationRequested();
@@ -159,13 +105,13 @@ namespace AutoActivator.Services
                                 string displayContract = !string.IsNullOrWhiteSpace(result.ContractReference) &&
                                                          !string.Equals(result.ContractReference, "Not found", StringComparison.OrdinalIgnoreCase)
                                     ? result.ContractReference
-                                    : item.contractNumber;
+                                    : item.RawInput;
 
                                 if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
                                 {
-                                    var localReport = new StringBuilder();
+                                    var localReport = new StringBuilder(65536);
                                     localReport.AppendLine(new string('=', 80));
-                                    localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | JCL: {result.JclContract} | EXCEL ROW: #{item.rowNum} | TEST ID: {item.rawTestId} | ENV: {env} | BRANCH: {result.BranchDisplay} | BUCP/CMD: {result.Bucp}/{result.Cmdpmt} | FONDS: {result.FundsSummary} ###");
+                                    localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | JCL: {result.JclContract} | EXCEL ROW: #{item.RowNumber} | TEST ID: {item.TestId} | ENV: {env} | BRANCH: {result.BranchDisplay} | BUCP/CMD: {result.Bucp}/{result.Cmdpmt} | FONDS: {result.FundsSummary} ###");
                                     localReport.AppendLine($"Contrat (3-7-2)      : {displayContract} | JCL (9 chiffres / NO_CNT) : {result.JclContract} | LISA ID : {result.InternalId}");
                                     localReport.AppendLine($"Demand ID / ELIA ID  : {result.DemandId} / UCON {result.UconId} (Statut Demand : {result.DemandStatus})");
                                     localReport.AppendLine($"Produit / Process    : {result.ProductCode} / {result.ProcessCode} (ChannelCode ELIA : {result.ChannelCode})");
@@ -201,9 +147,9 @@ namespace AutoActivator.Services
 
                                 onProgressUpdate?.Invoke(new BatchProgressInfo
                                 {
-                                    RowNum = item.rowNum,
+                                    RowNum = item.RowNumber,
                                     Environment = env,
-                                    TestId = item.rawTestId,
+                                    TestId = item.TestId,
                                     ContractId = displayContract,
                                     JclContract = string.IsNullOrWhiteSpace(result.JclContract) ? "-" : result.JclContract,
                                     InternalId = result.InternalId,
@@ -248,10 +194,10 @@ namespace AutoActivator.Services
                             int current = Interlocked.Increment(ref processedItems);
                             onProgressUpdate?.Invoke(new BatchProgressInfo
                             {
-                                RowNum = item.rowNum,
+                                RowNum = item.RowNumber,
                                 Environment = env,
-                                TestId = item.rawTestId,
-                                ContractId = $"{item.contractNumber} (FAILED)",
+                                TestId = item.TestId,
+                                ContractId = $"{item.RawInput} (FAILED)",
                                 InternalId = "Error",
                                 Product = "-",
                                 ProductCode = "-",
@@ -271,7 +217,7 @@ namespace AutoActivator.Services
                         }
                     }
 
-                    var tasks = contractsToProcess
+                    var tasks = batchRows
                         .Select((item, index) => ProcessContractItemAsync(item, index))
                         .ToList();
 
@@ -281,7 +227,7 @@ namespace AutoActivator.Services
                     }
                     catch (OperationCanceledException)
                     {
-                        // Allow partial report generation below when cancelled by the user
+                        // Allow partial snapshot generation below when cancelled by the user
                     }
                 }
 
@@ -311,7 +257,10 @@ namespace AutoActivator.Services
                     {
                         Directory.Delete(tempDirPath, true);
                     }
-                    catch { /* Ignore temporary directory lock by antivirus */ }
+                    catch
+                    {
+                        // Ignore temporary directory lock by antivirus
+                    }
                 }
             }
 
@@ -324,6 +273,8 @@ namespace AutoActivator.Services
 
             using (var finalWriter = new StreamWriter(outputPath, false, Encoding.UTF8))
             {
+                char[] buffer = new char[16384];
+
                 for (int i = 0; i < totalItems; i++)
                 {
                     string tempFile = Path.Combine(tempDirPath, $"{i}.tmp");
@@ -334,7 +285,6 @@ namespace AutoActivator.Services
 
                         using (var tempReader = new StreamReader(tempFile, Encoding.UTF8))
                         {
-                            char[] buffer = new char[8192];
                             int charsRead;
                             while ((charsRead = await tempReader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
                             {

@@ -785,7 +785,7 @@ WHERE NO_CNT = @CoInterneLisa;";
                     rows,
                     plan.StartEnd.Start,
                     plan.RunDate.RunDate,
-                    plan.Premium.Selected.GrossPremium!.Value,
+                    plan.Premium.Selected.GrossPremium ?? 0m,
                     plan.Payment.Bucp,
                     plan.Payment.Cmdpmt);
             }

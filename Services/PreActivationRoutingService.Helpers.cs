@@ -59,154 +59,120 @@ namespace AutoActivator.Services
 
             string normalizedEnvironment = Settings.DbConfig.NormalizeEnvironment(environment);
             var database = new DatabaseManager(normalizedEnvironment);
-            string query = SqlQueries.GetQuery("GET_ELIA_FUND_FEATURES_BY_DEMAND", normalizedEnvironment);
-
-            var parameters = new Dictionary<string, object>
-            {
-                ["@DemandId"] = demandId
-            };
-
             var features = new List<EliaFundFeature>();
 
-            try
+            // Fast path: 1 single UNION ALL query on TB5UGFF + TB5UPRF by UCON ID (100% SQL Server compatible, no STRING_AGG)
+            if (eliaContractId.HasValue &&
+                SqlQueries.ContainsQuery("GET_ELIA_ALL_FUNDS_BY_UCON", normalizedEnvironment))
             {
-                using DataTable table = await database
-                    .GetDataAsync(query, parameters, cancellationToken)
-                    .ConfigureAwait(false);
-
-                cancellationToken.ThrowIfCancellationRequested();
-
-                foreach (DataRow row in table.Rows)
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    using DataTable allByUcon = await database
+                        .GetDataAsync(
+                            SqlQueries.GetQuery("GET_ELIA_ALL_FUNDS_BY_UCON", normalizedEnvironment),
+                            new Dictionary<string, object> { ["@EliaId"] = eliaContractId.Value },
+                            cancellationToken)
+                        .ConfigureAwait(false);
 
-                    var feature = new EliaFundFeature
+                    foreach (DataRow row in allByUcon.Rows)
                     {
-                        AddendumSequence = GetInt32(row, "AddendumSequence"),
-                        GuaranteeCode = NormalizeCode(GetString(row, "GuaranteeCode")),
-                        FundSequence = GetInt32(row, "FundSequence"),
-                        FundCode = NormalizeNullableCode(GetString(row, "FundCode")),
-                        SecondaryFundCode = NormalizeNullableCode(GetString(row, "SecondaryFundCode")),
-                        FundActivationDate = GetDateTime(row, "FundActivationDate"),
-                        FundEndDate = GetDateTime(row, "FundEndDate"),
-                        FundPercentage = GetDecimal(row, "FundPercentage"),
-                        FundIndicator = NormalizeNullableCode(GetString(row, "FundIndicator"))
-                    };
-
-                    if (feature.HasFundCode)
-                    {
-                        features.Add(feature);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[PreActivationRouting] TB5UGFF by demand warning: {ex.Message}");
-            }
-
-            // Also check TB5UPRF (premium funds) by demand
-            try
-            {
-                string prfQuery = SqlQueries.GetQuery("GET_ELIA_PREMIUM_FUNDS_BY_DEMAND", normalizedEnvironment);
-                using DataTable prfTable = await database
-                    .GetDataAsync(prfQuery, parameters, cancellationToken)
-                    .ConfigureAwait(false);
-
-                foreach (DataRow row in prfTable.Rows)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    string? fundCode = NormalizeNullableCode(GetString(row, "FundCode"));
-                    if (string.IsNullOrWhiteSpace(fundCode))
-                        continue;
-
-                    features.Add(new EliaFundFeature
-                    {
-                        AddendumSequence = GetInt32(row, "AddendumSequence"),
-                        GuaranteeCode = NormalizeCode(GetString(row, "GuaranteeCode")),
-                        FundCode = fundCode,
-                        SecondaryFundCode = NormalizeNullableCode(GetString(row, "SecondaryFundCode")),
-                        FundPercentage = GetDecimal(row, "FundProportionRaw")
-                    });
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[PreActivationRouting] TB5UPRF fund lookup warning: {ex.Message}");
-            }
-
-            // Also check FJ1.TB5UGFF and FJ1.TB5UPRF directly by @EliaId (UCON), identical to ExtractionService
-            if (eliaContractId.HasValue)
-            {
-                var eliaParams = new Dictionary<string, object>
-                {
-                    ["@EliaId"] = eliaContractId.Value
-                };
-
-                if (SqlQueries.ContainsQuery("FJ1.TB5UGFF", normalizedEnvironment))
-                {
-                    try
-                    {
-                        using DataTable gffByUcon = await database
-                            .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UGFF", normalizedEnvironment), eliaParams, cancellationToken)
-                            .ConfigureAwait(false);
-                        foreach (DataRow row in gffByUcon.Rows)
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var feature = new EliaFundFeature
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            var feature = new EliaFundFeature
-                            {
-                                AddendumSequence = GetInt32(row, "IT5UAVENSEQ"),
-                                GuaranteeCode = NormalizeCode(GetString(row, "IT5UGARCGAR")),
-                                FundSequence = GetInt32(row, "IT5UGFFNSEQ"),
-                                FundCode = NormalizeNullableCode(GetString(row, "IT5UGFFCFND")),
-                                SecondaryFundCode = NormalizeNullableCode(GetString(row, "IT5UGFFCFNDDSI")),
-                                FundActivationDate = GetDateTime(row, "IT5UGFFDACF"),
-                                FundEndDate = GetDateTime(row, "IT5UGFFDIAC"),
-                                FundIndicator = NormalizeNullableCode(GetString(row, "IT5UGFFBRAC"))
-                            };
-                            if (feature.HasFundCode)
-                            {
-                                features.Add(feature);
-                            }
+                            AddendumSequence = GetInt32(row, "AddendumSequence"),
+                            GuaranteeCode = NormalizeCode(GetString(row, "GuaranteeCode")),
+                            FundSequence = GetInt32(row, "FundSequence"),
+                            FundCode = NormalizeNullableCode(GetString(row, "FundCode")),
+                            SecondaryFundCode = NormalizeNullableCode(GetString(row, "SecondaryFundCode")),
+                            FundActivationDate = GetDateTime(row, "FundActivationDate"),
+                            FundEndDate = GetDateTime(row, "FundEndDate"),
+                            FundPercentage = GetDecimal(row, "FundPercentage"),
+                            FundIndicator = NormalizeNullableCode(GetString(row, "FundIndicator"))
+                        };
+                        if (feature.HasFundCode)
+                        {
+                            features.Add(feature);
                         }
                     }
-                    catch (OperationCanceledException)
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[PreActivationRouting] GET_ELIA_ALL_FUNDS_BY_UCON warning: {ex.Message}");
+                }
+            }
+
+            // Fallback by DemandId only if UCON was absent or yielded no fund rows
+            if (features.Count == 0 && demandId > 0)
+            {
+                var parameters = new Dictionary<string, object>
+                {
+                    ["@DemandId"] = demandId
+                };
+
+                try
+                {
+                    string query = SqlQueries.GetQuery("GET_ELIA_FUND_FEATURES_BY_DEMAND", normalizedEnvironment);
+                    using DataTable table = await database
+                        .GetDataAsync(query, parameters, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    foreach (DataRow row in table.Rows)
                     {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[PreActivationRouting] FJ1.TB5UGFF by UCON warning: {ex.Message}");
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var feature = new EliaFundFeature
+                        {
+                            AddendumSequence = GetInt32(row, "AddendumSequence"),
+                            GuaranteeCode = NormalizeCode(GetString(row, "GuaranteeCode")),
+                            FundSequence = GetInt32(row, "FundSequence"),
+                            FundCode = NormalizeNullableCode(GetString(row, "FundCode")),
+                            SecondaryFundCode = NormalizeNullableCode(GetString(row, "SecondaryFundCode")),
+                            FundActivationDate = GetDateTime(row, "FundActivationDate"),
+                            FundEndDate = GetDateTime(row, "FundEndDate"),
+                            FundPercentage = GetDecimal(row, "FundPercentage"),
+                            FundIndicator = NormalizeNullableCode(GetString(row, "FundIndicator"))
+                        };
+                        if (feature.HasFundCode)
+                        {
+                            features.Add(feature);
+                        }
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[PreActivationRouting] TB5UGFF by demand warning: {ex.Message}");
+                }
 
-                if (SqlQueries.ContainsQuery("FJ1.TB5UPRF", normalizedEnvironment))
+                if (features.Count == 0)
                 {
                     try
                     {
-                        using DataTable prfByUcon = await database
-                            .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UPRF", normalizedEnvironment), eliaParams, cancellationToken)
+                        string prfQuery = SqlQueries.GetQuery("GET_ELIA_PREMIUM_FUNDS_BY_DEMAND", normalizedEnvironment);
+                        using DataTable prfTable = await database
+                            .GetDataAsync(prfQuery, parameters, cancellationToken)
                             .ConfigureAwait(false);
-                        foreach (DataRow row in prfByUcon.Rows)
+
+                        foreach (DataRow row in prfTable.Rows)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-                            string? fundCode = NormalizeNullableCode(GetString(row, "IT5UPRFCFND"));
+                            string? fundCode = NormalizeNullableCode(GetString(row, "FundCode"));
                             if (string.IsNullOrWhiteSpace(fundCode))
                                 continue;
 
                             features.Add(new EliaFundFeature
                             {
-                                AddendumSequence = GetInt32(row, "IT5UAVENSEQ"),
-                                GuaranteeCode = NormalizeCode(GetString(row, "IT5UGARCGAR")),
+                                AddendumSequence = GetInt32(row, "AddendumSequence"),
+                                GuaranteeCode = NormalizeCode(GetString(row, "GuaranteeCode")),
                                 FundCode = fundCode,
-                                FundPercentage = GetDecimal(row, "IT5UPRFPRPIFND")
+                                SecondaryFundCode = NormalizeNullableCode(GetString(row, "SecondaryFundCode")),
+                                FundPercentage = GetDecimal(row, "FundProportionRaw")
                             });
                         }
                     }
@@ -216,7 +182,7 @@ namespace AutoActivator.Services
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[PreActivationRouting] FJ1.TB5UPRF by UCON warning: {ex.Message}");
+                        Debug.WriteLine($"[PreActivationRouting] TB5UPRF fund lookup warning: {ex.Message}");
                     }
                 }
             }
@@ -698,6 +664,7 @@ namespace AutoActivator.Services
             public DateTime? ContractStartDate { get; set; }
             public string PaymentMethodCode { get; init; } = string.Empty;
             public string PremiumGroupType { get; init; } = string.Empty;
+            public int? FundFeatureCount { get; init; }
             public string RawRoutingStatus { get; init; } = string.Empty;
             public bool MainQuerySucceeded { get; init; }
             public bool DemandRoutingFallbackUsed { get; init; }

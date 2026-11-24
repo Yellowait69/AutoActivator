@@ -113,8 +113,11 @@ namespace AutoActivator.Services
                 ? NormalizeEnvironment(environmentValue)
                 : "Q";
 
-            PaymentRoutingContext paymentRouting =
-                ResolveAndValidatePaymentRouting(BuildAddprctVariables(generalVariables, addprctSpecificVariables), trace);
+            if (!generalVariables.TryGetValue("CLASS", out string? currentJobClass) ||
+                string.IsNullOrWhiteSpace(currentJobClass))
+            {
+                generalVariables["CLASS"] = Settings.ActivationAutomation.DefaultJclJobClass;
+            }
 
             bool bypassBilling =
                 skipPrime ||
@@ -122,17 +125,28 @@ namespace AutoActivator.Services
 
             InitializeExecutionTrace(trace, bypassBilling, skipPrime, jobSelection);
 
-            trace.Bucp = paymentRouting.Bucp;
-            trace.Cmdpmt = paymentRouting.PaymentCommand;
-            generalVariables["BUCP"] = paymentRouting.Bucp;
-            generalVariables["CMDPMT"] = paymentRouting.PaymentCommand;
-            addprctSpecificVariables["BUCP"] = paymentRouting.Bucp;
-            addprctSpecificVariables["CMDPMT"] = paymentRouting.PaymentCommand;
-            trace.RoutingDiagnostic = string.IsNullOrWhiteSpace(trace.RoutingDiagnostic)
-                ? paymentRouting.Diagnostic
-                : trace.RoutingDiagnostic + " | " + paymentRouting.Diagnostic;
+            var combinedAddprctVars = BuildAddprctVariables(generalVariables, addprctSpecificVariables);
+            bool hasSuppliedPaymentVars =
+                combinedAddprctVars.TryGetValue("BUCP", out string? rawBucp) && !string.IsNullOrWhiteSpace(rawBucp) &&
+                combinedAddprctVars.TryGetValue("CMDPMT", out string? rawCmd) && !string.IsNullOrWhiteSpace(rawCmd);
 
-            onProgress?.Invoke(paymentRouting.Diagnostic + ".");
+            if (!bypassBilling || hasSuppliedPaymentVars)
+            {
+                PaymentRoutingContext paymentRouting =
+                    ResolveAndValidatePaymentRouting(combinedAddprctVars, trace);
+
+                trace.Bucp = paymentRouting.Bucp;
+                trace.Cmdpmt = paymentRouting.PaymentCommand;
+                generalVariables["BUCP"] = paymentRouting.Bucp;
+                generalVariables["CMDPMT"] = paymentRouting.PaymentCommand;
+                addprctSpecificVariables["BUCP"] = paymentRouting.Bucp;
+                addprctSpecificVariables["CMDPMT"] = paymentRouting.PaymentCommand;
+                trace.RoutingDiagnostic = string.IsNullOrWhiteSpace(trace.RoutingDiagnostic)
+                    ? paymentRouting.Diagnostic
+                    : trace.RoutingDiagnostic + " | " + paymentRouting.Diagnostic;
+
+                onProgress?.Invoke(paymentRouting.Diagnostic + ".");
+            }
 
             try
             {

@@ -162,6 +162,7 @@ namespace AutoActivator.Config
         public static class ActivationAutomation
         {
             public const string DefaultInputMode = "SqlAutocomplete";
+            public const string DefaultJclJobClass = "I";
             public const int SqlCommandTimeoutSeconds = 120;
             public const int BatchSqlConcurrency = 4;
             public const int MaximumBatchSqlConcurrency = 16;

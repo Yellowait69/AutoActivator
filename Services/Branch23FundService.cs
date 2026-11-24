@@ -1,6 +1,7 @@
 using AutoActivator.Config;
 using System;
 using System.Collections.Generic;
+using System.Data.SqlClient;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -170,49 +171,18 @@ namespace AutoActivator.Services
         /// <summary>
         /// Contrôle et prépare les VNI de tous les fonds à la date donnée (D_COURS / D_CALC_EVOL_FONDS).
         /// </summary>
-        public async Task<List<Branch23NavResult>> EnsureNavsAsync(
+        public Task<List<Branch23NavResult>> EnsureNavsAsync(
             IEnumerable<string>? fundCodes,
             DateTime navDate,
             CancellationToken token)
         {
-            token.ThrowIfCancellationRequested();
-
-            IReadOnlyList<string> normalizedFunds = NormalizeFunds(fundCodes);
-            var results = new List<Branch23NavResult>(normalizedFunds.Count);
-            DateTime normalizedNavDate = navDate.Date;
-
-            foreach (string fund in normalizedFunds)
-            {
-                token.ThrowIfCancellationRequested();
-
-                var result = new Branch23NavResult
-                {
-                    FundCode = fund,
-                    NavDate = normalizedNavDate
-                };
-
-                results.Add(result);
-
-                try
-                {
-                    await ProcessFundAsync(result, token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    result.Error = BuildErrorMessage(exception);
-                }
-            }
-
-            return results;
+            return EnsureNavWindowAsync(fundCodes, navDate.Date, navDate.Date, token);
         }
 
         /// <summary>
         /// Prépare toutes les VNI comprises entre la date d'activation (Date N) et la
-        /// date de consolidation (Date N+2), bornes incluses.
+        /// date de consolidation (Date N+2), bornes incluses, en réutilisant une seule connexion SQL
+        /// de manière strictement séquentielle (thread-safe ADO.NET).
         /// </summary>
         public async Task<List<Branch23NavResult>> EnsureNavWindowAsync(
             IEnumerable<string>? fundCodes,
@@ -232,19 +202,33 @@ namespace AutoActivator.Services
                     nameof(consolidationDate));
             }
 
-            int requiredDayCount = (lastDate - firstDate).Days + 1;
-            var results = new List<Branch23NavResult>();
+            IReadOnlyList<string> normalizedFunds = NormalizeFunds(fundCodes);
+            if (normalizedFunds.Count == 0)
+            {
+                return new List<Branch23NavResult>();
+            }
 
-            for (int offset = 0; offset < requiredDayCount; offset++)
+            int requiredDayCount = (lastDate - firstDate).Days + 1;
+            var results = new List<Branch23NavResult>(normalizedFunds.Count * requiredDayCount);
+
+            using SqlConnection connection =
+                await OpenValuationConnectionAsync(token).ConfigureAwait(false);
+
+            // Exécution strictement séquentielle sur l'unique SqlConnection (jamais de Task.WhenAll sur la même connexion)
+            foreach (string fund in normalizedFunds)
             {
                 token.ThrowIfCancellationRequested();
 
-                DateTime requiredDate = firstDate.AddDays(offset);
-                List<Branch23NavResult> dateResults =
-                    await EnsureNavsAsync(fundCodes, requiredDate, token)
+                List<Branch23NavResult> fundResults =
+                    await ProcessFundWindowSequentiallyAsync(
+                            connection,
+                            fund,
+                            firstDate,
+                            lastDate,
+                            token)
                         .ConfigureAwait(false);
 
-                results.AddRange(dateResults);
+                results.AddRange(fundResults);
             }
 
             return results;

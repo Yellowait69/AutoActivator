@@ -1,5 +1,6 @@
 using AutoActivator.Config;
 using AutoActivator.Models;
+using AutoActivator.Utils;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -103,7 +104,7 @@ namespace AutoActivator.Services
             string consolidationDisplay = trace.Branch23ConsolidationDate.HasValue
                 ? trace.Branch23ConsolidationDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
                 : DateTime.TryParseExact(trace.RunDate, new[] { "yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedRunDate)
-                    ? parsedRunDate.AddDays(2).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+                    ? BankingCalendar.AddBankBusinessDays(parsedRunDate, Settings.Branch23.ConsolidationBankBusinessDays).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
                     : "-";
             string runDateFormatted = DateTime.TryParseExact(trace.RunDate, new[] { "yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedRun)
                 ? parsedRun.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
@@ -351,7 +352,9 @@ namespace AutoActivator.Services
             if (!string.IsNullOrWhiteSpace(trace.Branch23ActivationReport))
             {
                 builder.AppendLine();
-                builder.AppendLine("[5. RAPPORT DÉTAILLÉ WORKFLOW BRANCHE 23 (SQL AVANT/APRÈS, FONDS, VNI & MOUVEMENTS)]");
+                builder.AppendLine(trace.IsBranch23
+                    ? "[5. RAPPORT DÉTAILLÉ WORKFLOW BRANCHE 23 (SQL AVANT/APRÈS, FONDS, VNI & MOUVEMENTS)]"
+                    : "[5. RAPPORT DÉTAILLÉ DE CONTRÔLE SQL AVANT/APRÈS (BRANCHE 21)]");
                 foreach (string line in trace.Branch23ActivationReport.Replace("\r", string.Empty).Split('\n'))
                 {
                     builder.AppendLine($"  {line}");

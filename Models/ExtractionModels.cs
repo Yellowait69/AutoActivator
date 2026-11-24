@@ -147,12 +147,17 @@ namespace AutoActivator.Models
 
         public int TotalItems { get; set; }
 
+        public double IntraItemFraction { get; set; }
+
         public int TablesExtractedCount { get; set; }
+
+        public double EffectiveCompletedItems =>
+            Math.Min(TotalItems, CurrentItem + Math.Clamp(IntraItemFraction, 0.0, 0.99));
 
         public double ProgressPercentage =>
             TotalItems <= 0
                 ? 0.0
-                : Math.Round((double)CurrentItem / TotalItems * 100.0, 1);
+                : Math.Round(EffectiveCompletedItems / TotalItems * 100.0, 1);
     }
 
     /// <summary>

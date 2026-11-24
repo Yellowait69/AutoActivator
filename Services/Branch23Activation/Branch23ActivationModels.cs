@@ -402,6 +402,7 @@ namespace AutoActivator.Services.Branch23Activation
         public string ProcessCode { get; init; } = string.Empty;
         public string ChannelCode { get; init; } = string.Empty;
         public string ApplicationChannel { get; init; } = string.Empty;
+        public bool IsBranch23 { get; init; } = true;
         public bool ForceBranch23 { get; init; }
         public Branch23StartEnd StartEnd { get; init; } =
             new Branch23StartEnd();

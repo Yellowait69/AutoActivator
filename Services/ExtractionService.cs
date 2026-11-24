@@ -185,6 +185,11 @@ namespace AutoActivator.Services
                     {
                         contractStartDate = TryParseSqlDate(ctxRow["ContractStartDate"]);
                     }
+
+                    if (dtContext.Columns.Contains("DemandCreationDate") && ctxRow["DemandCreationDate"] != DBNull.Value)
+                    {
+                        demandCreationDate = TryParseSqlDate(ctxRow["DemandCreationDate"]);
+                    }
                 }
             }
 
@@ -273,7 +278,7 @@ namespace AutoActivator.Services
                 }
             }
 
-            // 2b. Check LISA Contract Database (LV000SD0) if SCNTT0 was not found in default application database
+            // 2b. Check LISA Contract Database (LV000SD0) by direct mathematical NO_CNT key seek if SCNTT0 was not found in default application database
             if (!internalIdValue.HasValue && !string.IsNullOrWhiteSpace(cleanedContract))
             {
                 try
@@ -282,16 +287,35 @@ namespace AutoActivator.Services
                     if (!string.Equals(lisaContractDbName, Settings.DbConfig.GetApplicationDatabase(envSuffix), StringComparison.OrdinalIgnoreCase))
                     {
                         var lisaContractDb = new DatabaseManager(envSuffix, lisaContractDbName);
-                        using var dtLisaContract = await lisaContractDb.GetDataAsync(
-                            envQueries["GET_INTERNAL_ID"],
-                            new Dictionary<string, object> { { "@ContractNumber", cleanedContract } },
-                            token).ConfigureAwait(false);
-                        if (dtLisaContract.Rows.Count > 0 && dtLisaContract.Rows[0]["NO_CNT"] != DBNull.Value)
+                        if (ContractNumberHelper.TryDeriveNoCnt(cleanedContract, allowTechnicalShortContract: !effectiveFirstIsDemand, out long derivedNoCnt, out _))
                         {
-                            internalIdValue = Convert.ToInt64(dtLisaContract.Rows[0]["NO_CNT"]);
-                            internalIdString = internalIdValue.Value.ToString();
+                            using var dtLisaContract = await lisaContractDb.GetDataAsync(
+                                "SELECT TOP (1) NO_CNT FROM [LV].[SCNTT0] WITH (NOLOCK) WHERE NO_CNT = @NoCnt;",
+                                new Dictionary<string, object> { { "@NoCnt", derivedNoCnt } },
+                                token).ConfigureAwait(false);
+                            if (dtLisaContract.Rows.Count > 0 && dtLisaContract.Rows[0]["NO_CNT"] != DBNull.Value)
+                            {
+                                internalIdValue = Convert.ToInt64(dtLisaContract.Rows[0]["NO_CNT"], CultureInfo.InvariantCulture);
+                                internalIdString = internalIdValue.Value.ToString(CultureInfo.InvariantCulture);
+                            }
+                        }
+                        else
+                        {
+                            using var dtLisaContract = await lisaContractDb.GetDataAsync(
+                                envQueries["GET_INTERNAL_ID"],
+                                new Dictionary<string, object> { { "@ContractNumber", cleanedContract } },
+                                token).ConfigureAwait(false);
+                            if (dtLisaContract.Rows.Count > 0 && dtLisaContract.Rows[0]["NO_CNT"] != DBNull.Value)
+                            {
+                                internalIdValue = Convert.ToInt64(dtLisaContract.Rows[0]["NO_CNT"], CultureInfo.InvariantCulture);
+                                internalIdString = internalIdValue.Value.ToString(CultureInfo.InvariantCulture);
+                            }
                         }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch
                 {
@@ -306,12 +330,17 @@ namespace AutoActivator.Services
 
             string jclContract = ResolveJclContract(cleanedContract, internalIdString);
 
-            var sbLisa = new StringBuilder();
-            var sbElia = new StringBuilder();
+            int totalProgressSteps = 2
+                + (internalIdValue.HasValue ? SqlQueries.LisaTables.Count : 0)
+                + (eliaUconId != "Not found" ? SqlQueries.EliaTables.Count + SqlQueries.EliaDemandTables.Count : 0);
+            int completedProgressSteps = 1;
+
+            var sbLisa = new StringBuilder(internalIdValue.HasValue ? 32768 : 256);
+            var sbElia = new StringBuilder(eliaUconId != "Not found" ? 32768 : 256);
 
             #region LISA SECTION
             token.ThrowIfCancellationRequested();
-            onStepProgress?.Invoke(2, 5, $"Extraction Tables LISA (LV.*) pour {cleanedContract} (NO_CNT={internalIdString})...");
+            onStepProgress?.Invoke(completedProgressSteps, totalProgressSteps, $"Extraction Tables LISA (LV.*) pour {cleanedContract} (NO_CNT={internalIdString})...");
 
             if (internalIdValue.HasValue)
             {
@@ -324,6 +353,9 @@ namespace AutoActivator.Services
                     sbLisa,
                     (tableName, dt) =>
                     {
+                        int stepDone = Interlocked.Increment(ref completedProgressSteps);
+                        onStepProgress?.Invoke(stepDone, totalProgressSteps, $"{cleanedContract} — Table LISA {tableName} ({stepDone}/{totalProgressSteps})");
+
                         if (dt.Rows.Count > 0)
                             Interlocked.Increment(ref tablesExtractedCount);
 
@@ -390,29 +422,23 @@ namespace AutoActivator.Services
 
             #region ELIA SECTION
             token.ThrowIfCancellationRequested();
-            onStepProgress?.Invoke(3, 5, $"Extraction Tables ELIA (FJ1.*) pour {cleanedContract} (UCON={eliaUconId})...");
+            onStepProgress?.Invoke(completedProgressSteps, totalProgressSteps, $"Extraction Tables ELIA (FJ1.*) pour {cleanedContract} (UCON={eliaUconId})...");
 
             if (eliaUconId != "Not found")
             {
-                var demandIds = new List<string>();
-                using (var dtDemand = await db.GetDataAsync(
-                    envQueries["GET_ELIA_DEMAND_IDS"],
-                    new Dictionary<string, object> { { "@EliaId", eliaUconId } },
-                    token).ConfigureAwait(false))
+                // Collect Demand IDs directly from FJ1.TB5HELT (already extracted in SqlQueries.EliaTables) + context, eliminating GET_ELIA_DEMAND_IDS roundtrip
+                var demandIdsBag = new ConcurrentBag<string>();
+                if (!string.IsNullOrWhiteSpace(eliaDemandId) && eliaDemandId != "Not found")
                 {
-                    if (dtDemand.Columns.Contains("IT5HDMDAIDN"))
+                    foreach (string part in eliaDemandId.Split(',', StringSplitOptions.RemoveEmptyEntries))
                     {
-                        foreach (DataRow row in dtDemand.Rows)
+                        string trimmed = part.Trim();
+                        if (trimmed.Length > 0)
                         {
-                            string? dId = row["IT5HDMDAIDN"]?.ToString()?.Trim();
-                            if (!string.IsNullOrWhiteSpace(dId))
-                                demandIds.Add(dId);
+                            demandIdsBag.Add(trimmed);
                         }
                     }
                 }
-
-                if (demandIds.Count > 0)
-                    eliaDemandId = string.Join(", ", demandIds);
 
                 await ExtractAndAppendTablesAsync(
                     envSuffix,
@@ -423,10 +449,29 @@ namespace AutoActivator.Services
                     sbElia,
                     (tableName, dt) =>
                     {
+                        int stepDone = Interlocked.Increment(ref completedProgressSteps);
+                        onStepProgress?.Invoke(stepDone, totalProgressSteps, $"{cleanedContract} — Table ELIA {tableName} ({stepDone}/{totalProgressSteps})");
+
                         if (dt.Rows.Count > 0)
                             Interlocked.Increment(ref tablesExtractedCount);
 
-                        if (tableName.Equals("FJ1.TB5UCON", StringComparison.OrdinalIgnoreCase) &&
+                        if (tableName.Equals("FJ1.TB5HELT", StringComparison.OrdinalIgnoreCase) &&
+                            dt.Rows.Count > 0 &&
+                            dt.Columns.Contains("IT5HDMDAIDN"))
+                        {
+                            foreach (DataRow hRow in dt.Rows)
+                            {
+                                if (hRow["IT5HDMDAIDN"] != DBNull.Value)
+                                {
+                                    string? dId = hRow["IT5HDMDAIDN"]?.ToString()?.Trim();
+                                    if (!string.IsNullOrWhiteSpace(dId))
+                                    {
+                                        demandIdsBag.Add(dId);
+                                    }
+                                }
+                            }
+                        }
+                        else if (tableName.Equals("FJ1.TB5UCON", StringComparison.OrdinalIgnoreCase) &&
                             dt.Rows.Count > 0)
                         {
                             if (!contractStartDate.HasValue && dt.Columns.Contains("IT5UCONDDEB"))
@@ -504,8 +549,15 @@ namespace AutoActivator.Services
                     },
                     token).ConfigureAwait(false);
 
+                List<string> demandIds = demandIdsBag
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(id => decimal.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out decimal d) ? d : decimal.MaxValue)
+                    .ToList();
+
                 if (demandIds.Count > 0)
                 {
+                    eliaDemandId = string.Join(", ", demandIds);
+
                     await ExtractAndAppendTablesAsync(
                         envSuffix,
                         envQueries,
@@ -515,6 +567,9 @@ namespace AutoActivator.Services
                         sbElia,
                         (tableName, dt) =>
                         {
+                            int stepDone = Interlocked.Increment(ref completedProgressSteps);
+                            onStepProgress?.Invoke(stepDone, totalProgressSteps, $"{cleanedContract} — Table Demand {tableName} ({stepDone}/{totalProgressSteps})");
+
                             if (dt.Rows.Count > 0)
                                 Interlocked.Increment(ref tablesExtractedCount);
 
@@ -590,7 +645,7 @@ namespace AutoActivator.Services
                     : $"ProductCode '{(string.IsNullOrWhiteSpace(productCode) ? "-" : productCode)}' sans fonds (Branche 21 Standard)";
 
             // Extract latest VNI (LV000GD0.LV.GFCRT0) for discovered Branch 23 funds
-            onStepProgress?.Invoke(4, 5, $"Vérification VNI Branche 23 & Routage ({branchDisplay}) pour {cleanedContract}...");
+            onStepProgress?.Invoke(Math.Max(1, totalProgressSteps - 1), totalProgressSteps, $"Vérification VNI Branche 23 & Routage ({branchDisplay}) pour {cleanedContract}...");
             string latestVniInfo = string.Empty;
             if (uniqueFunds.Count > 0)
             {
@@ -602,7 +657,7 @@ namespace AutoActivator.Services
                         token)
                     .ConfigureAwait(false);
             }
-            onStepProgress?.Invoke(5, 5, $"Synthèse & écriture du snapshot CSV pour {cleanedContract} ({tablesExtractedCount} tables)...");
+            onStepProgress?.Invoke(totalProgressSteps, totalProgressSteps, $"Synthèse & écriture du snapshot CSV pour {cleanedContract} ({tablesExtractedCount} tables)...");
 
             string businessChannel = "-";
             string bucp = "-";
@@ -659,7 +714,8 @@ namespace AutoActivator.Services
                 ? resolvedRunDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
                 : "-";
             string consolidationDateDisplay = resolvedRunDate.HasValue
-                ? resolvedRunDate.Value.AddDays(2).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+                ? BankingCalendar.AddBankBusinessDays(resolvedRunDate.Value, Settings.Branch23.ConsolidationBankBusinessDays)
+                    .ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
                 : "-";
             string amountJcl = decimal.TryParse(premiumAmount, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal parsedPrem) && parsedPrem > 0m
                 ? AutomaticActivationPlan.FormatAmountForJcl(parsedPrem)

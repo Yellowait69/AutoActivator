@@ -1,3 +1,4 @@
+using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Services.Branch23Activation;
 using System;
@@ -63,44 +64,27 @@ namespace AutoActivator.Services
 
             try
             {
-                if (_branch23ActivationSteps.Contains(stepInfo))
+                IReadOnlyList<string> templateVariables =
+                    await _jclProcessor
+                        .GetMissingVariablesAsync(templateName, new Dictionary<string, string>())
+                        .ConfigureAwait(false);
+
+                IReadOnlyList<string> invalid =
+                    Branch23ActivationWorkflow.FindInvalidVariables(
+                        templateVariables,
+                        variables,
+                        new[] { "CM", "CM." });
+
+                onProgress?.Invoke(
+                    $"[{count}] {templateName} variables: " +
+                    string.Join(", ", templateVariables.Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Select(name => $"{name}={(variables.TryGetValue(name, out string? value) ? value : "<absent>")}")));
+
+                if (invalid.Count > 0)
                 {
-                    IReadOnlyList<string> templateVariables =
-                        await _jclProcessor
-                            .GetMissingVariablesAsync(templateName, new Dictionary<string, string>())
-                            .ConfigureAwait(false);
-
-                    IReadOnlyList<string> invalid =
-                        Branch23ActivationWorkflow.FindInvalidVariables(
-                            templateVariables,
-                            variables,
-                            new[] { "CM", "CM." });
-
-                    onProgress?.Invoke(
-                        $"[{count}] {templateName} variables: " +
-                        string.Join(", ", templateVariables.Distinct(StringComparer.OrdinalIgnoreCase)
-                            .Select(name => $"{name}={(variables.TryGetValue(name, out string? value) ? value : "<absent>")}")));
-
-                    if (invalid.Count > 0)
-                    {
-                        throw new InvalidOperationException(
-                            $"Unresolved, empty or '?' JCL variable(s) for {templateName}: " +
-                            string.Join(", ", invalid.Select(name => "%%" + name)));
-                    }
-                }
-                else if (stepInfo.IsBranch23Step)
-                {
-                    IReadOnlyList<string> missingVariables =
-                        await _jclProcessor
-                            .GetMissingVariablesAsync(templateName, variables)
-                            .ConfigureAwait(false);
-
-                    if (missingVariables.Count > 0)
-                    {
-                        string missing = string.Join(", ", missingVariables.Select(variable => "%%" + variable));
-                        throw new InvalidOperationException(
-                            $"Missing JCL variable(s) for {templateName}: {missing}");
-                    }
+                    throw new InvalidOperationException(
+                        $"Unresolved, empty or '?' JCL variable(s) for {templateName}: " +
+                        string.Join(", ", invalid.Select(name => "%%" + name)));
                 }
 
                 readyContent = await _jclProcessor
@@ -128,15 +112,17 @@ namespace AutoActivator.Services
                 throw;
             }
 
+            string effectiveJobClass =
+                variables.TryGetValue("CLASS", out string? jobClass) &&
+                !string.IsNullOrWhiteSpace(jobClass)
+                    ? jobClass.Trim()
+                    : Settings.ActivationAutomation.DefaultJclJobClass;
+
             readyContent = ApplyJobSpecificTransformations(
                 jobName,
                 readyContent,
                 variables,
-                _branch23ActivationSteps.Contains(stepInfo) &&
-                variables.TryGetValue("CLASS", out string? jobClass) &&
-                !string.IsNullOrWhiteSpace(jobClass)
-                    ? jobClass.Trim()
-                    : "A");
+                effectiveJobClass);
 
             stepInfo.PreparedJclHeader = string.Join(
                 Environment.NewLine,
@@ -380,7 +366,7 @@ namespace AutoActivator.Services
             string jobName,
             string readyContent,
             Dictionary<string, string> variables,
-            string subJobClass = "A")
+            string subJobClass = Settings.ActivationAutomation.DefaultJclJobClass)
         {
             if (IsSameJob(jobName, "LVPG22U"))
             {
@@ -546,9 +532,12 @@ namespace AutoActivator.Services
                     }
 
                     PopulateFailureDiagnostics(trace, stepInfo, isSystemCrash: false);
+                    string spoolDetail = !string.IsNullOrWhiteSpace(stepInfo.ErrorMessage)
+                        ? $" | Spool: {stepInfo.ErrorMessage}"
+                        : string.Empty;
 
                     throw new InvalidOperationException(
-                        $"Business error on job {stepInfo.JobName} ({jobNumber}). Return code={stepInfo.ReturnCode}.");
+                        $"Business error on job {stepInfo.JobName} ({jobNumber}). Return code={stepInfo.ReturnCode}{spoolDetail}");
                 }
 
                 if (string.IsNullOrWhiteSpace(stepInfo.SpoolExcerpt))

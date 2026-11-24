@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using AutoActivator.Config;
+using AutoActivator.Utils;
 
 namespace AutoActivator.Models
 {
@@ -151,7 +153,9 @@ namespace AutoActivator.Models
 
         public bool IsBranch23 { get; init; }
         public string BranchDisplay => IsBranch23 ? "Branche 23" : "Branche 21";
-        public DateTime ConsolidationDate => RunDate == default ? default : RunDate.AddDays(2);
+        public DateTime ConsolidationDate => RunDate == default
+            ? default
+            : BankingCalendar.AddBankBusinessDays(RunDate, Settings.Branch23.ConsolidationBankBusinessDays);
         public bool ReceiptAlreadyExists { get; init; }
         public int ExistingReceiptCount { get; init; }
         public bool IsAlreadyActive { get; init; }
@@ -194,6 +198,7 @@ namespace AutoActivator.Models
             {
                 ["CNTBEG"] = NormalizeRequired(MainframeContractNumber),
                 ["CNTEND"] = NormalizeRequired(MainframeContractNumber),
+                ["CLASS"] = Settings.ActivationAutomation.DefaultJclJobClass,
                 ["STE"] = "A",
                 ["BUCP"] = NormalizeBucp(Bucp),
                 ["CMDPMT"] = NormalizeRequired(PaymentCommand).ToUpperInvariant(),

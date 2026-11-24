@@ -4,6 +4,8 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Utils;
@@ -51,15 +53,47 @@ namespace AutoActivator.Services
             }).ToList();
         }
 
+        public Task<ComparisonReport> RunFullComparisonAsync(
+            string baseFile,
+            string targetFile,
+            bool ignoreTechnicalColumns = false,
+            Action<ComparisonProgressInfo>? onProgress = null,
+            CancellationToken token = default)
+        {
+            return Task.Run(
+                () => RunFullComparisonCore(baseFile, targetFile, ignoreTechnicalColumns, onProgress, token),
+                token);
+        }
+
         public ComparisonReport RunFullComparison(
             string baseFile,
             string targetFile,
             bool ignoreTechnicalColumns = false)
         {
+            return RunFullComparisonCore(baseFile, targetFile, ignoreTechnicalColumns, onProgress: null, CancellationToken.None);
+        }
+
+        private ComparisonReport RunFullComparisonCore(
+            string baseFile,
+            string targetFile,
+            bool ignoreTechnicalColumns,
+            Action<ComparisonProgressInfo>? onProgress,
+            CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
             var report = new ComparisonReport();
 
+            onProgress?.Invoke(new ComparisonProgressInfo
+            {
+                CurrentStep = 0,
+                TotalSteps = 10,
+                Message = "Lecture et indexation des snapshots SOURCE (Baseline) et TARGET..."
+            });
+
             var baseBlocks = CsvFormatter.SplitAndFilterMostRecentByTestId(baseFile);
+            token.ThrowIfCancellationRequested();
             var targetBlocks = CsvFormatter.SplitAndFilterMostRecentByTestId(targetFile);
+            token.ThrowIfCancellationRequested();
 
             if (baseBlocks.Count == 0 && targetBlocks.Count == 0)
             {
@@ -84,9 +118,14 @@ namespace AutoActivator.Services
 
             string baseFileName = Path.GetFileName(baseFile);
             string targetFileName = Path.GetFileName(targetFile);
+            int totalSteps = commonTestIds.Count + 1;
+            var distinctGlobalDiffCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var testId in commonTestIds)
+            for (int testIdx = 0; testIdx < commonTestIds.Count; testIdx++)
             {
+                token.ThrowIfCancellationRequested();
+                string testId = commonTestIds[testIdx];
+
                 string baseContent = baseBlocks[testId];
                 string targetContent = targetBlocks[testId];
 
@@ -106,6 +145,13 @@ namespace AutoActivator.Services
                                       (!string.IsNullOrWhiteSpace(fundsSummary) && fundsSummary != "-");
                     string branchDisplay = isBranch23 ? "Branche 23" : "Branche 21";
 
+                    onProgress?.Invoke(new ComparisonProgressInfo
+                    {
+                        CurrentStep = testIdx + 1,
+                        TotalSteps = totalSteps,
+                        Message = $"Comparaison {testIdx + 1}/{commonTestIds.Count} : Contrat {contractNumber} [{testId}] ({branchDisplay})"
+                    });
+
                     string productMetricKey = $"{product} ({branchDisplay})";
 
                     if (!report.TestMetrics.ContainsKey(testId))
@@ -119,6 +165,8 @@ namespace AutoActivator.Services
 
                     foreach (var tableName in tablesToCompare)
                     {
+                        token.ThrowIfCancellationRequested();
+
                         string tableType = tableName.StartsWith("LV.", StringComparison.OrdinalIgnoreCase)
                             ? "LISA"
                             : (tableName.StartsWith("FJ1.", StringComparison.OrdinalIgnoreCase) ? "ELIA" : "COMBINED");
@@ -132,8 +180,10 @@ namespace AutoActivator.Services
                             df1 ?? new DataTable(tableName),
                             df2 ?? new DataTable(tableName),
                             displayTableName,
+                            tableName,
                             tableType,
                             report,
+                            distinctGlobalDiffCols,
                             baseFileName,
                             targetFileName,
                             testId,
@@ -158,7 +208,15 @@ namespace AutoActivator.Services
                 }
             }
 
+            report.TotalDifferingColumnsDistinct = distinctGlobalDiffCols.Count;
             CalculateGlobalScore(report);
+
+            onProgress?.Invoke(new ComparisonProgressInfo
+            {
+                CurrentStep = totalSteps,
+                TotalSteps = totalSteps,
+                Message = $"Comparaison terminée — Conformité : {report.GlobalSuccessPercentage:F2}% ({report.TotalTablesWithDifferences} table(s) en écart, {report.IgnoredDifferences.Count} diff. ignorée(s))"
+            });
 
             return report;
         }
@@ -369,12 +427,16 @@ namespace AutoActivator.Services
             return null;
         }
 
+        private const int MaxReportIgnoredDifferences = 30000;
+
         private void CompareAndAppendToReport(
             DataTable df1,
             DataTable df2,
             string displayTableName,
+            string cleanSqlTableName,
             string type,
             ComparisonReport report,
+            HashSet<string> distinctGlobalDiffCols,
             string baseFileName,
             string targetFileName,
             string testId,
@@ -391,13 +453,19 @@ namespace AutoActivator.Services
             string productMetricKey,
             bool ignoreTechnicalColumns)
         {
-            var (status, details, errorRows, diffColsCount, diffColsSummary) =
-                Comparator.CompareDataTablesExtended(df1, df2, displayTableName, ignoreTechnicalColumns);
+            TableComparisonDetail detail =
+                Comparator.CompareDataTablesFull(df1, df2, displayTableName, ignoreTechnicalColumns);
 
-            int rowsCount = Math.Max(df1?.Rows.Count ?? 0, df2?.Rows.Count ?? 0);
-            int currentErrors = (status == "OK" || status == "OK_EMPTY")
+            int rowsCount = Math.Max(detail.BaseRowCount, detail.TargetRowCount);
+            bool isOk = detail.Status == "OK" || detail.Status == "OK_EMPTY";
+            int currentErrors = isOk
                 ? 0
-                : Math.Max(1, Math.Min(errorRows, Math.Max(rowsCount, 1)));
+                : Math.Max(1, Math.Min(detail.ErrorRows, Math.Max(rowsCount, 1)));
+
+            foreach (string col in detail.DifferingColumns)
+            {
+                distinctGlobalDiffCols.Add($"{cleanSqlTableName}.{col}");
+            }
 
             var fileResult = new FileComparisonResult
             {
@@ -416,18 +484,31 @@ namespace AutoActivator.Services
                 BaseFileName = baseFileName,
                 TargetFileName = targetFileName,
                 TableName = displayTableName,
-                Status = status,
-                ErrorDetails = details,
-                DifferingColumnsCount = diffColsCount,
-                DifferingColumnsSummary = diffColsSummary,
+                Status = detail.Status,
+                ErrorDetails = detail.Details,
+                DifferingColumns = detail.DifferingColumns,
+                DifferingColumnsCount = detail.DifferingColumnsCount,
+                DifferingColumnsSummary = detail.DifferingColumnsSummary,
+                ActiveDifferences = detail.ActiveDifferences,
+                ActiveCellDifferencesCount = detail.ActiveCellDifferencesCount,
+                IgnoredDifferencesCount = detail.IgnoredDifferences.Count,
+                BaseRowCount = detail.BaseRowCount,
+                TargetRowCount = detail.TargetRowCount,
                 TotalRows = rowsCount,
                 ErrorRows = currentErrors
             };
 
             report.FileResults.Add(fileResult);
+            report.TotalTablesCompared++;
+            if (!isOk)
+            {
+                report.TotalTablesWithDifferences++;
+            }
 
+            // RÈGLE IMPÉRATIVE : seuls les écarts actifs comptent dans les scores et métriques !
             report.TotalRowsCompared += rowsCount;
             report.TotalDifferencesFound += currentErrors;
+            report.TotalActiveCellDifferences += detail.ActiveCellDifferencesCount;
 
             if (rowsCount > 0)
             {
@@ -436,6 +517,36 @@ namespace AutoActivator.Services
 
                 report.ProductMetrics[productMetricKey].TotalRows += rowsCount;
                 report.ProductMetrics[productMetricKey].ErrorRows += currentErrors;
+            }
+
+            if (detail.IgnoredDifferences.Count > 0 &&
+                report.IgnoredDifferences.Count < MaxReportIgnoredDifferences)
+            {
+                foreach (RawIgnoredCellDifference ignored in detail.IgnoredDifferences)
+                {
+                    if (report.IgnoredDifferences.Count >= MaxReportIgnoredDifferences)
+                    {
+                        break;
+                    }
+
+                    report.IgnoredDifferences.Add(new IgnoredDifferenceItem
+                    {
+                        TestId = testId,
+                        ExcelRowDisplay = excelRowDisplay,
+                        ContractNumber = contractNumber,
+                        SystemType = type,
+                        BranchDisplay = branchDisplay,
+                        ProductCode = product,
+                        TableName = displayTableName,
+                        CleanTableName = cleanSqlTableName,
+                        ColumnName = ignored.ColumnName,
+                        RowNumber = ignored.RowNumber,
+                        RowContextKey = ignored.RowContextKey,
+                        SourceValue = ignored.SourceValue,
+                        TargetValue = ignored.TargetValue,
+                        Category = ignored.Category
+                    });
+                }
             }
         }
 

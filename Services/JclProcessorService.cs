@@ -257,7 +257,9 @@ namespace AutoActivator.Services
             }
 
             string env = localVars.TryGetValue("ENV", out string? envVal) && !string.IsNullOrEmpty(envVal) ? envVal : "D";
-            string jobClass = localVars.TryGetValue("CLASS", out string? clsVal) && !string.IsNullOrEmpty(clsVal) ? clsVal : "A";
+            string jobClass = localVars.TryGetValue("CLASS", out string? clsVal) && !string.IsNullOrEmpty(clsVal)
+                ? clsVal
+                : Settings.ActivationAutomation.DefaultJclJobClass;
             string username = localVars.TryGetValue("USERNAME", out string? usrVal) && !string.IsNullOrEmpty(usrVal)
                 ? usrVal
                 : Environment.UserName;

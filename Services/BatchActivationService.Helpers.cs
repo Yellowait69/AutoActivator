@@ -17,163 +17,27 @@ namespace AutoActivator.Services
     public sealed partial class BatchActivationService
     {
         /// <summary>
-        /// Lit le fichier CSV (ou Excel converti) en conservant le numéro de ligne exact (1-based)
-        /// tel qu'il apparaît dans le fichier Excel d'origine.
+        /// Lit directement un fichier Excel (.xls, .xlsx) ou CSV en mémoire sans fichier intermédiaire,
+        /// en conservant le numéro de ligne exact (1-based) du fichier Excel/CSV d'origine.
         /// </summary>
         private static async Task<IReadOnlyList<BatchInputItem>> ReadInputFileAsync(
             string filePath,
             CancellationToken token)
         {
-            var items = new List<BatchInputItem>();
+            IReadOnlyList<BatchFileRow> batchRows =
+                await ExcelHelper.ReadBatchRowsAsync(filePath, token).ConfigureAwait(false);
 
-            using var stream = new FileStream(
-                filePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite,
-                bufferSize: 4096,
-                useAsync: true);
-
-            using var reader = new StreamReader(
-                stream,
-                Encoding.UTF8,
-                detectEncodingFromByteOrderMarks: true);
-
-            string? line;
-            char delimiter = ';';
-
-            int identifierIndex = -1;
-            int branch23Index = -1;
-            int fundsIndex = -1;
-            var overrideIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
-            bool headerFound = false;
-            int excelRowNumber = 0;
-
-            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
+            var items = new List<BatchInputItem>(batchRows.Count);
+            foreach (BatchFileRow row in batchRows)
             {
-                token.ThrowIfCancellationRequested();
-                excelRowNumber++;
-
-                line = RemoveBom(line);
-
-                if (string.IsNullOrWhiteSpace(line))
+                items.Add(new BatchInputItem
                 {
-                    continue;
-                }
-
-                if (line.Replace("\"", string.Empty).TrimStart()
-                    .StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                delimiter = line.Count(character => character == ';') >
-                            line.Count(character => character == ',')
-                    ? ';'
-                    : ',';
-
-                List<string> headers = CsvFormatter.ParseCsvLine(line, delimiter);
-
-                for (int index = 0; index < headers.Count; index++)
-                {
-                    string header = headers[index].Trim().ToLowerInvariant();
-
-                    if (IsBranch23Header(header))
-                    {
-                        branch23Index = index;
-                        continue;
-                    }
-
-                    if (IsFundsHeader(header))
-                    {
-                        fundsIndex = index;
-                        continue;
-                    }
-
-                    string? overrideKey = GetOverrideKey(header);
-                    if (overrideKey != null)
-                    {
-                        overrideIndexes[overrideKey] = index;
-                        continue;
-                    }
-                    if (IsIdentifierHeader(header))
-                    {
-                        identifierIndex = index;
-                    }
-                }
-
-                if (identifierIndex >= 0)
-                {
-                    headerFound = true;
-                    break;
-                }
-            }
-
-            if (!headerFound)
-            {
-                throw new InvalidOperationException(
-                    "No Contract or Demand column was found in the input file.");
-            }
-
-            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
-            {
-                token.ThrowIfCancellationRequested();
-                excelRowNumber++;
-
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-
-                List<string> columns = CsvFormatter.ParseCsvLine(line, delimiter);
-
-                if (columns.Count <= identifierIndex)
-                {
-                    continue;
-                }
-
-                string rawInput = CleanCsvValue(columns[identifierIndex]);
-
-                if (string.IsNullOrWhiteSpace(rawInput) ||
-                    string.Equals(rawInput, "End of File", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                bool? branch23Override =
-                    branch23Index >= 0 && columns.Count > branch23Index
-                        ? ParseNullableBoolean(columns[branch23Index])
-                        : null;
-
-                string? funds =
-                    fundsIndex >= 0 && columns.Count > fundsIndex
-                        ? NullIfWhiteSpace(CleanCsvValue(columns[fundsIndex]))
-                        : null;
-
-                var rowOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (KeyValuePair<string, int> mapping in overrideIndexes)
-                {
-                    if (columns.Count <= mapping.Value)
-                    {
-                        continue;
-                    }
-                    string overrideValue = CleanCsvValue(columns[mapping.Value]);
-                    if (!string.IsNullOrWhiteSpace(overrideValue))
-                    {
-                        rowOverrides[mapping.Key] = overrideValue;
-                    }
-                }
-
-                items.Add(
-                    new BatchInputItem
-                    {
-                        RawInput = rawInput,
-                        RowNumber = excelRowNumber,
-                        Branch23Override = branch23Override,
-                        Funds = funds,
-                        Overrides = rowOverrides
-                    });
+                    RawInput = row.RawInput,
+                    RowNumber = row.RowNumber,
+                    Branch23Override = row.Branch23Override,
+                    Funds = row.Funds,
+                    Overrides = row.Overrides
+                });
             }
 
             return items;
@@ -326,7 +190,8 @@ namespace AutoActivator.Services
             ContractActivationTrace trace,
             int currentItem,
             int totalItems,
-            string? statusOverride = null)
+            string? statusOverride = null,
+            double intraItemFraction = 0.0)
         {
             onBatchProgress?.Invoke(
                 new BatchProgressInfo
@@ -357,7 +222,8 @@ namespace AutoActivator.Services
                         ? trace.FinalStatus
                         : statusOverride,
                     CurrentItem = currentItem,
-                    TotalItems = totalItems
+                    TotalItems = totalItems,
+                    IntraItemFraction = intraItemFraction
                 });
         }
 

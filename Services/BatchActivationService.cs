@@ -30,6 +30,8 @@ namespace AutoActivator.Services
 
         private readonly ActivationDataService _dataService;
 
+        public string LastGeneratedReportPath { get; private set; } = string.Empty;
+
         public BatchActivationService(ActivationDataService dataService)
         {
             _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
@@ -60,7 +62,8 @@ namespace AutoActivator.Services
                 ActivationInputMode inputMode = ActivationInputMode.SqlAutocomplete,
                 ActivationJobSelection? jobSelection = null,
                 bool manualPaymentOverride = false,
-                IReadOnlyDictionary<string, string>? uiOverrides = null)
+                IReadOnlyDictionary<string, string>? uiOverrides = null,
+                Action<string>? onReportSaved = null)
         {
             ValidateArguments(filePath, envValue, username, outputDir);
 
@@ -234,6 +237,8 @@ namespace AutoActivator.Services
                 throw;
             }
 
+            LastGeneratedReportPath = reportPath;
+            onReportSaved?.Invoke(reportPath);
             onProgress?.Invoke($"Batch report generated: {reportPath}");
 
             if (batchCancelled || token.IsCancellationRequested)
@@ -314,8 +319,17 @@ namespace AutoActivator.Services
                             token)
                         .ConfigureAwait(false);
 
+                    bool lookupAlreadyComplete =
+                        lookup.FoundInElia &&
+                        !string.IsNullOrWhiteSpace(lookup.ContractNumber) &&
+                        !string.IsNullOrWhiteSpace(lookup.ProductCode) &&
+                        !string.IsNullOrWhiteSpace(lookup.ProcessCode) &&
+                        !string.IsNullOrWhiteSpace(lookup.ChannelCode) &&
+                        (lookup.PaymentDate.HasValue || lookup.FirstPaymentDate.HasValue || lookup.ContractStartDate.HasValue || lookup.DemandCreationDate.HasValue);
+
                     string demandCandidate = itemIsDemandId ? item.RawInput : lookup.DemandId;
-                    if (!string.IsNullOrWhiteSpace(demandCandidate) &&
+                    if (!lookupAlreadyComplete &&
+                        !string.IsNullOrWhiteSpace(demandCandidate) &&
                         long.TryParse(demandCandidate, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
                     {
                         routing = await TryResolveRoutingAsync(
@@ -545,7 +559,7 @@ namespace AutoActivator.Services
                         $"Excel Row #{trace.RowNum}: Activating {trace.ResolvedContract} ({trace.JclContract}), " +
                         $"process {effectiveProcess}, {trace.BranchDisplay}.");
 
-                    await _dataService
+                     await _dataService
                         .ExecuteActivationSequenceAsync(
                             trace.JclContract,
                             premium,
@@ -558,7 +572,20 @@ namespace AutoActivator.Services
                             skipLogon: true,
                             username,
                             password,
-                            message => onProgress?.Invoke($"{trace.ResolvedContract}: {message}"),
+                            message =>
+                            {
+                                onProgress?.Invoke($"{trace.ResolvedContract}: {message}");
+                                int totalSteps = effectiveBranch23 ? 8 : 5;
+                                int doneSteps = trace.Steps?.Count(s => s.IsSuccess || s.IsSkipped || s.Status == "CompleteRc8") ?? 0;
+                                double fraction = Math.Clamp((doneSteps + 0.35) / (totalSteps + 1.0), 0.05, 0.95);
+                                ReportBatchProgress(
+                                    onBatchProgress,
+                                    trace,
+                                    getProcessed(),
+                                    totalItems,
+                                    statusOverride: message,
+                                    intraItemFraction: fraction);
+                            },
                             token,
                             trace,
                             effectiveBranch23,

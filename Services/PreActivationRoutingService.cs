@@ -108,13 +108,22 @@ namespace AutoActivator.Services
             ArgumentNullException.ThrowIfNull(candidate);
             cancellationToken.ThrowIfCancellationRequested();
 
-            FundFeatureLoadResult fundFeatureLoadResult =
-                await TryGetFundFeaturesAsync(
+            bool shouldLoadFunds =
+                (candidate.FundFeatureCount.HasValue && candidate.FundFeatureCount.Value > 0) ||
+                !candidate.FundFeatureCount.HasValue ||
+                IsKnownBranch23Product(candidate.ProductCode);
+
+            FundFeatureLoadResult fundFeatureLoadResult = shouldLoadFunds
+                ? await TryGetFundFeaturesAsync(
                         candidate.DemandId,
                         candidate.EliaContractId,
                         candidate.Environment,
                         cancellationToken)
-                    .ConfigureAwait(false);
+                    .ConfigureAwait(false)
+                : new FundFeatureLoadResult
+                {
+                    Features = Array.Empty<EliaFundFeature>()
+                };
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -304,6 +313,7 @@ namespace AutoActivator.Services
                     ContractStartDate = GetDateTime(row, "ContractStartDate"),
                     PaymentMethodCode = GetString(row, "PaymentMethodCode"),
                     PremiumGroupType = GetString(row, "PremiumGroupType"),
+                    FundFeatureCount = GetInt32(row, "FundFeatureCount"),
                     ReferenceDemandId = GetDecimal(row, "ReferenceDemandId"),
                     LinkedDemandId = GetDecimal(row, "LinkedDemandId"),
                     AddendumSequence = GetInt32(row, "AddendumSequence"),
@@ -537,6 +547,7 @@ namespace AutoActivator.Services
                 ContractStartDate = candidate.ContractStartDate,
                 PaymentMethodCode = candidate.PaymentMethodCode,
                 PremiumGroupType = candidate.PremiumGroupType,
+                FundFeatureCount = candidate.FundFeatureCount,
                 RawRoutingStatus = candidate.RawRoutingStatus,
                 MainQuerySucceeded = candidate.MainQuerySucceeded,
                 DemandRoutingFallbackUsed = true
@@ -674,6 +685,18 @@ namespace AutoActivator.Services
                 return;
             }
 
+            bool needsPremiumOrDates =
+                !candidate.GrossPremium.HasValue ||
+                (!candidate.FirstPaymentDate.HasValue && !candidate.PaymentDate.HasValue);
+            bool needsUconStartOrContract =
+                !candidate.ContractStartDate.HasValue ||
+                string.IsNullOrWhiteSpace(candidate.ContractNumber);
+
+            if (!needsPremiumOrDates && !needsUconStartOrContract)
+            {
+                return;
+            }
+
             try
             {
                 var eliaParams = new Dictionary<string, object>
@@ -681,7 +704,7 @@ namespace AutoActivator.Services
                     ["@EliaId"] = candidate.EliaContractId.Value
                 };
 
-                if (SqlQueries.ContainsQuery("FJ1.TB5UPRP", normalizedEnvironment))
+                if (needsPremiumOrDates && SqlQueries.ContainsQuery("FJ1.TB5UPRP", normalizedEnvironment))
                 {
                     using DataTable prpTable = await database
                         .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UPRP", normalizedEnvironment), eliaParams, cancellationToken)
@@ -697,7 +720,7 @@ namespace AutoActivator.Services
                     }
                 }
 
-                if (SqlQueries.ContainsQuery("FJ1.TB5UCON", normalizedEnvironment))
+                if (needsUconStartOrContract && SqlQueries.ContainsQuery("FJ1.TB5UCON", normalizedEnvironment))
                 {
                     using DataTable uconTable = await database
                         .GetDataAsync(SqlQueries.GetQuery("FJ1.TB5UCON", normalizedEnvironment), eliaParams, cancellationToken)

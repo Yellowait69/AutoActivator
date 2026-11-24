@@ -281,11 +281,14 @@
                                   ToolTip="Numéro de Contrat (582-...) ou Demand ID ELIA" />
                      </Grid>
 
-                     <!-- LIGNE 3 : ACTIVATION BATCH (EXCEL / CSV) -->
+                     <!-- LIGNE 3 : ACTIVATION BATCH (EXCEL / CSV) AVEC ACCÈS DIRECT AU FICHIER -->
                      <Grid Margin="0,0,0,8">
                          <Grid.ColumnDefinitions>
                              <ColumnDefinition Width="155" />
                              <ColumnDefinition Width="*" />
+                             <ColumnDefinition Width="Auto" />
+                             <ColumnDefinition Width="Auto" />
+                             <ColumnDefinition Width="Auto" />
                              <ColumnDefinition Width="Auto" />
                          </Grid.ColumnDefinitions>
                          <TextBlock Grid.Column="0"
@@ -298,8 +301,48 @@
                                   Grid.Column="1"
                                   Style="{StaticResource InputTextBoxStyle}"
                                   Background="#F8FAFC"
-                                  Margin="0,0,8,0" />
-                         <Button Grid.Column="2"
+                                  Margin="0,0,6,0"
+                                  ToolTip="Chemin du fichier Excel (.xls/.xlsx) ou CSV d'entrée Batch (réseau QC par défaut ou fichier personnalisé)" />
+                         <Button x:Name="BtnOpenBatchActExcel"
+                                 Grid.Column="2"
+                                 Content="📊 Ouvrir Excel"
+                                 Padding="10,6"
+                                 Margin="0,0,5,0"
+                                 Background="#ECFDF5"
+                                 Foreground="#047857"
+                                 BorderBrush="#A7F3D0"
+                                 BorderThickness="1"
+                                 FontWeight="Bold"
+                                 Cursor="Hand"
+                                 ToolTip="Ouvrir directement le fichier Excel / CSV d'entrée sélectionné"
+                                 Click="BtnOpenBatchActFile_Click" />
+                         <Button x:Name="BtnPreviewBatchAct"
+                                 Grid.Column="3"
+                                 Content="🔎 Aperçu"
+                                 Padding="10,6"
+                                 Margin="0,0,5,0"
+                                 Background="#EFF6FF"
+                                 Foreground="#1D4ED8"
+                                 BorderBrush="#BFDBFE"
+                                 BorderThickness="1"
+                                 FontWeight="Bold"
+                                 Cursor="Hand"
+                                 ToolTip="Inspecter les lignes et identifiants détectés dans le fichier Batch"
+                                 Click="BtnPreviewBatchFile_Click" />
+                         <Button x:Name="BtnDefaultQcAct"
+                                 Grid.Column="4"
+                                 Content="📋 Défaut QC"
+                                 Padding="10,6"
+                                 Margin="0,0,5,0"
+                                 Background="#F8FAFC"
+                                 Foreground="#334155"
+                                 BorderBrush="#CBD5E1"
+                                 BorderThickness="1"
+                                 FontWeight="SemiBold"
+                                 Cursor="Hand"
+                                 ToolTip="Restaurer le chemin réseau Excel générique par défaut selon l'Environnement et le Process"
+                                 Click="BtnUseDefaultQcActFile_Click" />
+                         <Button Grid.Column="5"
                                  Content="📂 Parcourir"
                                  Padding="12,6"
                                  Background="#334155"
@@ -310,32 +353,46 @@
                                  Click="BtnBrowseActCsv_Click" />
                      </Grid>
 
-                     <!-- BOUTONS D'ACTION EN DESSOUS DES DEUX LIGNES -->
+                     <!-- BOUTONS D'ACTION SÉPARÉS : UNITAIRE vs BATCH + STOP -->
                      <StackPanel Orientation="Horizontal"
                                  HorizontalAlignment="Right"
                                  Margin="0,0,0,8">
                          <Button x:Name="BtnRunSingleAct"
-                                 Content="🚀 Activer"
+                                 Content="⚡ Activer Unitaire"
                                  Click="BtnRunSingleActivation_Click"
                                  Style="{DynamicResource ActionButtonStyle}"
-                                 Width="135"
+                                 Width="162"
                                  Margin="0,0,6,0" />
                          <Button x:Name="BtnSkipPrimeSingleAct"
                                  Content="⏭️ Skip Prime"
                                  Click="BtnSkipPrimeSingleAct_Click"
                                  Style="{DynamicResource ActionButtonStyle}"
                                  Background="#F59E0B"
-                                 Width="135"
+                                 Width="132"
+                                 Margin="0,0,10,0" />
+                         <Button x:Name="BtnRunBatchAct"
+                                 Content="📁 Lancer Batch"
+                                 Click="BtnRunBatchActivation_Click"
+                                 Style="{DynamicResource ActionButtonStyle}"
+                                 Background="#2563EB"
+                                 Width="150"
+                                 Margin="0,0,6,0" />
+                         <Button x:Name="BtnSkipPrimeBatchAct"
+                                 Content="⏭️ Skip Prime Batch"
+                                 Click="BtnSkipPrimeBatchAct_Click"
+                                 Style="{DynamicResource ActionButtonStyle}"
+                                 Background="#D97706"
+                                 Width="162"
                                  Margin="0,0,6,0" />
                          <Button x:Name="BtnCancelSingleAct"
                                  Content="🛑 Stop"
                                  Click="BtnCancelActivation_Click"
                                  Style="{DynamicResource CancelButtonStyle}"
-                                 Width="110"
+                                 Width="102"
                                  IsEnabled="False" />
                      </StackPanel>
 
-                     <!-- BARRE DE PROGRESSION COMPACTE -->
+                     <!-- BARRE DE PROGRESSION COMPACTE DYNAMIQUE + CHRONOMÈTRE TEMPS RÉEL -->
                      <Border Background="#F8FAFC"
                              BorderBrush="#E2E8F0"
                              BorderThickness="1"
@@ -361,7 +418,7 @@
                                      <TextBlock x:Name="TxtBatchProcessedCount" Text="0" FontWeight="Bold" Foreground="#15803D" FontSize="12" />
                                      <TextBlock Text="/" Foreground="#64748B" FontSize="12" Margin="2,0" />
                                      <TextBlock x:Name="TxtBatchPlannedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="12" />
-                                     <TextBlock x:Name="TxtBatchElapsedTime" Text="  ⏱️ 0.0s" FontWeight="SemiBold" Foreground="#475569" FontSize="11.5" Margin="6,0,8,0" />
+                                     <TextBlock x:Name="TxtBatchElapsedTime" Text="   ⏱️ 0.0s" FontWeight="SemiBold" Foreground="#475569" FontSize="11.5" Margin="6,0,8,0" />
                                      <TextBlock x:Name="TxtBatchProgressPercentage" Text="0%" FontWeight="Bold" FontSize="12.5" Foreground="#2563EB" />
                                  </StackPanel>
                              </Grid>
@@ -370,7 +427,7 @@
                                           Height="6"
                                           Margin="0,4,0,0"
                                           Minimum="0"
-                                          Maximum="1"
+                                          Maximum="1000"
                                           Value="0"
                                           Foreground="#2563EB"
                                           Background="#E2E8F0" />

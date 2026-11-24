@@ -15,7 +15,7 @@ namespace AutoActivator.Config
         /// </summary>
         public static class Branch23Activation
         {
-            public const string Class = "I";
+            public const string Class = ActivationAutomation.DefaultJclJobClass;
             public const string App = "LV";
             public const string Ste = "A";
 

@@ -120,23 +120,17 @@ namespace AutoActivator
 
             try
             {
-                if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine("[INFO] Converting Excel file to CSV...");
-                    filePath = ExcelHelper.ConvertExcelToCsv(filePath, Settings.OutputDir, "Converted_CLI");
-                }
-
                 var extractionService = new ExtractionService();
                 var batchService = new BatchExtractionService(extractionService);
 
-                await batchService.PerformBatchExtractionAsync(
+                string mergedPath = await batchService.PerformBatchExtractionAsync(
                     filePath,
                     envSuffix,
                     info => Console.WriteLine($"[{info.CurrentItem}/{info.TotalItems}] Row {info.RowNum} | {info.ContractId} | {info.Status}"),
                     isDemandId,
                     CancellationToken.None);
 
-                Console.WriteLine($"\nBatch extraction completed! Output directory: {Settings.OutputDir}");
+                Console.WriteLine($"\nBatch extraction completed! File generated:\n--> {mergedPath}");
             }
             catch (Exception ex)
             {

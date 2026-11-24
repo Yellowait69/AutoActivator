@@ -1,6 +1,8 @@
 using AutoActivator.Config;
 using AutoActivator.Models;
+using AutoActivator.Services.Branch23Activation;
 using AutoActivator.Sql;
+using AutoActivator.Utils;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -92,31 +94,59 @@ namespace AutoActivator.Services
                     }
                 }
 
-                await TryCompleteFromEliaUconSafeAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
+                bool needsUconCompletion =
+                    IsMissingValue(result.ContractNumber) ||
+                    !result.HasPremium ||
+                    IsMissingValue(result.ProductCode) ||
+                    IsMissingValue(result.ProcessCode) ||
+                    IsMissingValue(result.ChannelCode);
 
-                await TryEnrichLookupFromResolvedDemandSafeAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
+                if (needsUconCompletion)
+                {
+                    await TryCompleteFromEliaUconSafeAsync(
+                            result,
+                            normalizedEnvironment,
+                            token)
+                        .ConfigureAwait(false);
+                }
 
-                await TryCompleteDirectDemandRoutingAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
+                bool hasCompleteRoutingContext =
+                    !IsMissingValue(result.ContractNumber) &&
+                    !IsMissingValue(result.ProductCode) &&
+                    !IsMissingValue(result.ProcessCode) &&
+                    !IsMissingValue(result.ChannelCode) &&
+                    (result.PaymentDate.HasValue || result.FirstPaymentDate.HasValue || result.ContractStartDate.HasValue || result.DemandCreationDate.HasValue);
 
-                await TryCompleteFromEliaUconSafeAsync(
-                        result,
-                        normalizedEnvironment,
-                        token)
-                    .ConfigureAwait(false);
+                if (!hasCompleteRoutingContext)
+                {
+                    await TryEnrichLookupFromResolvedDemandSafeAsync(
+                            result,
+                            normalizedEnvironment,
+                            token)
+                        .ConfigureAwait(false);
 
-                await TryCompleteContractFundCountSafeAsync(
+                    if (IsMissingValue(result.ProductCode) ||
+                        IsMissingValue(result.ProcessCode) ||
+                        IsMissingValue(result.ChannelCode))
+                    {
+                        await TryCompleteDirectDemandRoutingAsync(
+                                result,
+                                normalizedEnvironment,
+                                token)
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                if (!result.FundFeatureCountEvaluated && result.FundFeatureCount == 0)
+                {
+                    await TryCompleteContractFundCountSafeAsync(
+                            result,
+                            normalizedEnvironment,
+                            token)
+                        .ConfigureAwait(false);
+                }
+
+                await TryCompleteBranch23FundsByUconSafeAsync(
                         result,
                         normalizedEnvironment,
                         token)
@@ -684,7 +714,22 @@ namespace AutoActivator.Services
 
             result.PaymentMethodCode = routing.PaymentMethodCode ?? string.Empty;
             result.PremiumGroupType = routing.PremiumGroupType ?? string.Empty;
+            result.ContractStartDate = routing.ContractStartDate;
+            result.FirstPaymentDate = routing.FirstPaymentDate;
+            result.PaymentDate = routing.PaymentDate;
+            result.DemandCreationDate = routing.DemandCreationDate;
             result.FundFeatureCount = routing.FundFeatureCount;
+            result.FundFeatureCountEvaluated = true;
+            if (routing.DistinctFundCodes != null && routing.DistinctFundCodes.Count > 0)
+            {
+                result.ResolvedFunds = routing.DistinctFundCodes
+                    .Where(f => !string.IsNullOrWhiteSpace(f))
+                    .Select(f => f.Trim().ToUpperInvariant())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                result.FundsSource = "ELIA TB5UGFF/TB5UPRF";
+            }
             result.BranchClassification = routing.BranchClassification;
             result.BranchDetectionSource = routing.BranchDetectionSource;
             result.BranchDetectionReason = routing.BranchDetectionReason;
@@ -858,7 +903,24 @@ namespace AutoActivator.Services
 
             result.PaymentMethodCode = routing.PaymentMethodCode ?? string.Empty;
             result.PremiumGroupType = routing.PremiumGroupType ?? string.Empty;
+            result.ContractStartDate ??= routing.ContractStartDate;
+            result.FirstPaymentDate ??= routing.FirstPaymentDate;
+            result.PaymentDate ??= routing.PaymentDate;
+            result.DemandCreationDate ??= routing.DemandCreationDate;
             result.FundFeatureCount = Math.Max(result.FundFeatureCount, routing.FundFeatureCount);
+            result.FundFeatureCountEvaluated = true;
+            if (result.ResolvedFunds.Count == 0 &&
+                routing.DistinctFundCodes != null &&
+                routing.DistinctFundCodes.Count > 0)
+            {
+                result.ResolvedFunds = routing.DistinctFundCodes
+                    .Where(f => !string.IsNullOrWhiteSpace(f))
+                    .Select(f => f.Trim().ToUpperInvariant())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                result.FundsSource = "ELIA TB5UGFF/TB5UPRF";
+            }
             if (routing.BranchClassification == ContractBranchClassification.Branch23 ||
                 result.BranchClassification != ContractBranchClassification.Branch23)
             {
@@ -893,40 +955,122 @@ namespace AutoActivator.Services
             };
         }
 
-        private static async Task TryCompleteLisaInformationAsync(
+        private static async Task TryCompleteBranch23FundsByUconSafeAsync(
             ActivationLookupResult result,
             string environment,
             CancellationToken token)
         {
-            if (string.IsNullOrWhiteSpace(result.ContractNumber))
+            bool likelyBranch23 =
+                result.FundFeatureCount > 0 ||
+                result.IsBranch23 == true ||
+                Settings.PreActivationRouting.IsKnownBranch23Product(result.ProductCode);
+
+            if (!likelyBranch23 ||
+                result.ResolvedFunds.Count > 0 ||
+                IsMissingValue(result.EliaUconId) ||
+                !decimal.TryParse(
+                    result.EliaUconId,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out decimal numericUconId) ||
+                !SqlQueries.ContainsQuery("GET_ELIA_ALL_FUNDS_BY_UCON", environment))
             {
                 return;
             }
 
             try
             {
-                string lisaContractDatabase = Settings.DbConfig.GetLisaContractDatabase(environment);
-                var database = new DatabaseManager(environment, lisaContractDatabase);
-                string query = SqlQueries.GetQuery("GET_INTERNAL_ID", environment);
-
-                using DataTable table = await database.GetDataAsync(
-                        query,
-                        new Dictionary<string, object> { ["@ContractNumber"] = result.ContractNumber },
+                var database = new DatabaseManager(environment);
+                using DataTable fundsTable = await database.GetDataAsync(
+                        SqlQueries.GetQuery("GET_ELIA_ALL_FUNDS_BY_UCON", environment),
+                        new Dictionary<string, object> { ["@EliaId"] = numericUconId },
                         token)
                     .ConfigureAwait(false);
 
-                if (table.Rows.Count == 0)
+                var funds = new List<string>();
+                foreach (DataRow row in fundsTable.Rows)
                 {
+                    string? primary = GetString(row, "FundCode");
+                    string? secondary = GetString(row, "SecondaryFundCode");
+                    if (!string.IsNullOrWhiteSpace(primary))
+                    {
+                        funds.Add(primary.Trim().ToUpperInvariant());
+                    }
+                    if (!string.IsNullOrWhiteSpace(secondary))
+                    {
+                        funds.Add(secondary.Trim().ToUpperInvariant());
+                    }
+                }
+
+                if (funds.Count > 0)
+                {
+                    result.ResolvedFunds = funds
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    result.FundsSource = "ELIA TB5UGFF/TB5UPRF";
+                    result.FundFeatureCount = Math.Max(result.FundFeatureCount, result.ResolvedFunds.Count);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ActivationLookup] Funds by UCON warning: {ex.Message}");
+            }
+        }
+
+        private static async Task TryCompleteLisaInformationAsync(
+            ActivationLookupResult result,
+            string environment,
+            CancellationToken token)
+        {
+            string candidate = !IsMissingValue(result.ContractNumber)
+                ? result.ContractNumber
+                : result.JclContract;
+
+            if (!ContractNumberHelper.TryDeriveNoCnt(candidate, out _, out string derivedNoCnt))
+            {
+                return;
+            }
+
+            try
+            {
+                var verifier = new Branch23ActivationVerifier(new Branch23SqlReader(environment));
+                IReadOnlyList<ScnttRow> rows = await verifier
+                    .GetScnttRowsAsync(derivedNoCnt, token)
+                    .ConfigureAwait(false);
+
+                result.IsActiveInLisa = false;
+                if (rows.Count == 0)
+                {
+                    result.LisaInternalId = "N/A";
+                    result.LisaStateSummary = "Absent from LV000SD0.LV.SCNTT0";
                     return;
                 }
 
-                DataRow row = table.Rows[0];
-                if (table.Columns.Contains("NO_CNT") && row["NO_CNT"] != DBNull.Value)
-                {
-                    result.LisaInternalId = row["NO_CNT"]?.ToString()?.Trim() ?? "N/A";
-                }
+                ScnttCheckResult evaluated = Branch23ActivationResolver.EvaluateScntt(rows, stateBefore: null);
+                result.LisaStateSummary = evaluated.Detail;
 
-                result.LisaContractNumber = result.ContractNumber;
+                if (evaluated.Status == ContractActivationStatus.ACTIVATED)
+                {
+                    result.IsActiveInLisa = true;
+                    result.LisaInternalId = derivedNoCnt;
+                    result.LisaContractNumber = !string.IsNullOrWhiteSpace(evaluated.Row?.ExtendedNumber)
+                        ? evaluated.Row!.ExtendedNumber
+                        : result.ContractNumber;
+                }
+                else
+                {
+                    result.IsActiveInLisa = false;
+                    result.LisaInternalId = "N/A";
+                    if (!string.IsNullOrWhiteSpace(evaluated.Row?.ExtendedNumber))
+                    {
+                        result.LisaContractNumber = evaluated.Row!.ExtendedNumber;
+                    }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -935,7 +1079,7 @@ namespace AutoActivator.Services
             catch (Exception exception)
             {
                 Debug.WriteLine(
-                    $"[DB Warning] LISA context could not be completed for {result.ContractNumber}: " +
+                    $"[DB Warning] LISA SCNTT0 status could not be checked for {candidate}: " +
                     exception.Message);
             }
         }
@@ -980,6 +1124,7 @@ namespace AutoActivator.Services
 
             DataRow row = table.Rows[0];
             result.FoundInElia = true;
+            result.ResolvedEnvironment = environment;
 
             string? contractNumber = GetString(row, "ContractNumber");
             if (!string.IsNullOrWhiteSpace(contractNumber))
@@ -1003,22 +1148,31 @@ namespace AutoActivator.Services
             AssignIfAvailable(row, "ChannelCode", value => result.ChannelCode = value.Trim().ToUpperInvariant());
             AssignIfAvailable(row, "ApplicationChannelCode", value => result.ApplicationChannelCode = value.Trim().ToUpperInvariant());
             AssignIfAvailable(row, "DemandStatus", value => result.DemandStatus = value.Trim().ToUpperInvariant());
-            AssignIfAvailable(row, "InternalId", value => result.LisaInternalId = value.Trim());
             AssignIfAvailable(row, "LisaContractNumber", value => result.LisaContractNumber = value.Trim());
             AssignIfAvailable(row, "PremiumSequence", value => result.PremiumSequence = value.Trim());
             AssignIfAvailable(row, "GrossPremium", value => result.RawPremium = value.Trim());
             AssignIfAvailable(row, "NetPremium", value => result.NetPremium = value.Trim());
+            AssignIfAvailable(row, "PaymentMethodCode", value => result.PaymentMethodCode = value.Trim().ToUpperInvariant());
+            AssignIfAvailable(row, "PremiumGroupType", value => result.PremiumGroupType = value.Trim().ToUpperInvariant());
             AssignIfAvailable(row, "DiagnosticStatus", value => result.DbDiagnosticStatus = value.Trim());
 
-            if (row.Table.Columns.Contains("FundFeatureCount") &&
-                row["FundFeatureCount"] != DBNull.Value &&
-                int.TryParse(
-                    row["FundFeatureCount"]?.ToString(),
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out int fundCount))
+            result.ContractStartDate ??= GetNullableDateTime(row, "ContractStartDate");
+            result.FirstPaymentDate ??= GetNullableDateTime(row, "FirstPaymentDate");
+            result.PaymentDate ??= GetNullableDateTime(row, "PaymentDate");
+            result.DemandCreationDate ??= GetNullableDateTime(row, "DemandCreationDate");
+
+            if (row.Table.Columns.Contains("FundFeatureCount"))
             {
-                result.FundFeatureCount = Math.Max(result.FundFeatureCount, fundCount);
+                result.FundFeatureCountEvaluated = true;
+                if (row["FundFeatureCount"] != DBNull.Value &&
+                    int.TryParse(
+                        row["FundFeatureCount"]?.ToString(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out int fundCount))
+                {
+                    result.FundFeatureCount = Math.Max(result.FundFeatureCount, fundCount);
+                }
             }
 
             if (string.IsNullOrWhiteSpace(result.DbDiagnosticStatus))
@@ -1470,19 +1624,27 @@ namespace AutoActivator.Services
             }
         }
 
+        private static DateTime? GetNullableDateTime(DataRow row, string columnName)
+        {
+            if (!row.Table.Columns.Contains(columnName) || row[columnName] == DBNull.Value)
+                return null;
+
+            object raw = row[columnName];
+            if (raw is DateTime dt)
+                return dt;
+
+            return DateTime.TryParse(
+                raw.ToString(),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out DateTime parsed)
+                ? parsed
+                : null;
+        }
+
         private static string FormatContractStatic(string? rawContract)
         {
-            if (string.IsNullOrWhiteSpace(rawContract))
-                return string.Empty;
-
-            string cleaned = rawContract
-                .Replace("\u00A0", string.Empty)
-                .Replace("\uFEFF", string.Empty)
-                .Replace("-", string.Empty)
-                .Replace(" ", string.Empty)
-                .Trim();
-
-            return cleaned.Length == 12 ? cleaned.Substring(1, 9) : cleaned;
+            return ContractNumberHelper.FormatForJcl(rawContract);
         }
 
         private static string NormalizeShortEnvironment(string? environment)
