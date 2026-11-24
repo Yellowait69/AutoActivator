@@ -189,15 +189,45 @@ namespace AutoActivator.Services
             if (!string.IsNullOrWhiteSpace(stepInfo.SubJobName) &&
                 stepInfo.SubJobName != "-")
             {
-                await WaitForGeneratedJobAsync(
-                        stepInfo,
-                        jobNumber,
-                        resolveGeneratedJobNumberAsync,
-                        onProgress,
-                        trace,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                if (IsAutomaticallyGeneratedLiJob(stepInfo))
+                {
+                    // LI1J04D0 and LI1J04D2 submit their child JCL through JES INTRDR.
+                    // AutoActivator controls the parent RC, but must not try to resolve or
+                    // monitor LI1J04D1 / LI1J04D3 as separately submitted workflow steps.
+                    stepInfo.SubJobNum = "AUTO-INTRDR";
+                    stepInfo.SubJobReturnCode = "NOT_MONITORED";
+                    stepInfo.Status = "Complete";
+                    stepInfo.DiagnosticHint =
+                        (stepInfo.DiagnosticHint ?? string.Empty) +
+                        $" Generated job {stepInfo.SubJobName} is submitted automatically " +
+                        "through JES INTRDR and is intentionally not monitored separately.";
+
+                    onProgress?.Invoke(
+                        $"Parent {stepInfo.JobName} ({jobNumber}) completed successfully. " +
+                        $"Generated job {stepInfo.SubJobName} is submitted automatically via INTRDR.");
+                }
+                else
+                {
+                    await WaitForGeneratedJobAsync(
+                            stepInfo,
+                            jobNumber,
+                            resolveGeneratedJobNumberAsync,
+                            onProgress,
+                            trace,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
+        }
+
+        private static bool IsAutomaticallyGeneratedLiJob(
+            JobStepExecutionInfo stepInfo)
+        {
+            return
+                (IsSameJob(stepInfo.JobName, "LI1J04D0") &&
+                 IsSameJob(stepInfo.SubJobName, "LI1J04D1")) ||
+                (IsSameJob(stepInfo.JobName, "LI1J04D2") &&
+                 IsSameJob(stepInfo.SubJobName, "LI1J04D3"));
         }
 
         private async Task WaitForGeneratedJobAsync(
