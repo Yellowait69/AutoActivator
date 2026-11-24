@@ -252,7 +252,10 @@ namespace AutoActivator.Services
                     : lookup.FundsSource;
             }
 
-            if (effectiveIsBranch23 && resolvedFundsList.Count == 0 && !IsMissingValue(lookup.JclContract))
+            if (effectiveIsBranch23 &&
+                resolvedFundsList.Count == 0 &&
+                !IsMissingValue(lookup.JclContract) &&
+                string.IsNullOrWhiteSpace(lookup.FundsSource))
             {
                 try
                 {
@@ -313,18 +316,32 @@ namespace AutoActivator.Services
                 {
                     notFoundDetail += $" | SQL Error: {lookup.DbError}";
                 }
-                else
+                else if (existingLookup == null)
                 {
+                    // Uniquement en mode Unitaire : vérification rapide (1 requête) sur l'autre environnement (D000 <-> Q000)
                     string otherEnv = string.Equals(environment, "Q000", StringComparison.OrdinalIgnoreCase)
                         ? "D000"
                         : "Q000";
                     try
                     {
-                        ActivationLookupResult otherLookup = await ResolveContractForActivationAsync(
-                            input, isDemandId, otherEnv, token).ConfigureAwait(false);
-                        if (otherLookup.FoundInElia && !IsMissingValue(otherLookup.ContractNumber))
+                        var otherDb = new DatabaseManager(otherEnv);
+                        string quickCheckKey = isDemandId ? "GET_CONTRACT_BY_DEMAND" : "GET_ELIA_ID";
+                        string quickParamName = isDemandId ? "@DemandId" : "@ContractNumber";
+                        object quickParamValue = isDemandId && decimal.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out decimal dVal)
+                            ? dVal
+                            : input;
+
+                        using DataTable otherTable = await otherDb.GetDataAsync(
+                            SqlQueries.GetQuery(quickCheckKey, otherEnv),
+                            new Dictionary<string, object> { [quickParamName] = quickParamValue },
+                            token).ConfigureAwait(false);
+
+                        if (otherTable.Rows.Count > 0)
                         {
-                            notFoundDetail += $" | ATTENTION : '{input}' existe dans {otherEnv} (Contrat {otherLookup.ContractNumber}) ! Basculez l'environnement cible sur {otherEnv[0]}.";
+                            string? otherContract = otherTable.Columns.Contains("ContractNumber")
+                                ? otherTable.Rows[0]["ContractNumber"]?.ToString()?.Trim()
+                                : otherTable.Rows[0][0]?.ToString()?.Trim();
+                            notFoundDetail += $" | ATTENTION : '{input}' existe dans {otherEnv} (Contrat {DisplayValue(otherContract)}) ! Basculez l'environnement cible sur {otherEnv[0]}.";
                         }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)

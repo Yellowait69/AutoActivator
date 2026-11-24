@@ -551,7 +551,9 @@ namespace AutoActivator.Utils
         /// Inspects a CSV or Excel batch file and returns the exact 1-based Excel/CSV row numbers
         /// and identifiers detected, without modifying any state.
         /// </summary>
-        public static List<(int RowNumber, string Identifier, string SecondaryInfo)> InspectBatchFileRows(string filePath)
+        public static async Task<List<(int RowNumber, string Identifier, string SecondaryInfo)>> InspectBatchFileRowsAsync(
+            string filePath,
+            CancellationToken token = default)
         {
             var detected = new List<(int RowNumber, string Identifier, string SecondaryInfo)>();
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -559,9 +561,7 @@ namespace AutoActivator.Utils
                 return detected;
             }
 
-            IReadOnlyList<BatchFileRow> rows = ReadBatchRowsAsync(filePath, CancellationToken.None)
-                .GetAwaiter()
-                .GetResult();
+            IReadOnlyList<BatchFileRow> rows = await ReadBatchRowsAsync(filePath, token).ConfigureAwait(false);
 
             foreach (BatchFileRow row in rows)
             {
@@ -572,6 +572,13 @@ namespace AutoActivator.Utils
             }
 
             return detected;
+        }
+
+        public static List<(int RowNumber, string Identifier, string SecondaryInfo)> InspectBatchFileRows(string filePath)
+        {
+            return Task.Run(() => InspectBatchFileRowsAsync(filePath, CancellationToken.None))
+                .GetAwaiter()
+                .GetResult();
         }
 
         private static string CleanIdentifier(string value)

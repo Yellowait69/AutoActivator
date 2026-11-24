@@ -825,9 +825,11 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
             }
             trace.Branch23ConsolidationDate = Branch23ParameterBuilder.GetConsolidationDate(plan.RunDate.RunDate);
 
-            // Pré-résolution des fonds uniquement pour Branche 23 et seulement si pas déjà chargés
-            if (isBranch23 && effectiveSelection.HasAnyBranch23Step && trace.Branch23Funds.Count == 0)
+            // Pré-résolution des fonds uniquement pour Branche 23 et au plus une seule fois avant LVDQFG03
+            bool preActivationFundsProbed = trace.Branch23Funds.Count > 0;
+            if (isBranch23 && effectiveSelection.HasAnyBranch23Step && !preActivationFundsProbed)
             {
+                preActivationFundsProbed = true;
                 try
                 {
                     var initialFunds = await ResolveBranch23PreActivationFundsAsync(
@@ -879,8 +881,9 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                         AddBranch23Fund(resolvedFunds, existingFund);
                     }
 
-                    if (resolvedFunds.Count == 0)
+                    if (resolvedFunds.Count == 0 && !preActivationFundsProbed)
                     {
+                        preActivationFundsProbed = true;
                         var preResolved = await ResolveBranch23PreActivationFundsAsync(
                             trace, plan.StartEnd.Start, normalizedEnvironment, branch23FundSource, ct)
                             .ConfigureAwait(false);
@@ -991,6 +994,16 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
 
             if (report.FinalDiagnostic == Branch23FinalDiagnostic.ACTIVATED)
             {
+                if (report.ScnttFinalStatus == ContractActivationStatus.PENDING_ASYNC_LISA_CREATION)
+                {
+                    if (IsMissingValue(trace.LisaInternalId))
+                    {
+                        trace.LisaInternalId = "PENDING_ASYNC_LISA_CREATION";
+                    }
+                    trace.FinalStatus = "PENDING_ASYNC_LISA_CREATION";
+                    return;
+                }
+
                 if (IsMissingValue(trace.LisaInternalId) && !string.IsNullOrWhiteSpace(lisaNoCnt))
                 {
                     trace.LisaInternalId = lisaNoCnt;

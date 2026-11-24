@@ -379,7 +379,11 @@ namespace AutoActivator.Gui
             }
             catch (OperationCanceledException)
             {
-                TxtStatus.Text = "Opération arrêtée proprement par l'utilisateur.";
+                if (string.IsNullOrWhiteSpace(TxtStatus.Text) ||
+                    TxtStatus.Text.StartsWith("Arrêt demandé", StringComparison.OrdinalIgnoreCase))
+                {
+                    TxtStatus.Text = "Opération arrêtée proprement par l'utilisateur.";
+                }
                 TxtStatus.Foreground = Brushes.DarkOrange;
                 if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.DarkOrange;
                 RefreshGeneratedPathBar();

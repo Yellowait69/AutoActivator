@@ -847,7 +847,7 @@ SELECT TOP (30)
     LTRIM(RTRIM(C_DEV)) AS C_DEV,
     LTRIM(RTRIM(NM_JOB_DMOD)) AS NM_JOB_DMOD
 FROM [LV].[GFCRT0] WITH (NOLOCK)
-WHERE LTRIM(RTRIM(C_FONDS)) IN ({inClause})
+WHERE C_FONDS IN ({inClause})
 ORDER BY C_FONDS ASC, D_COURS DESC;";
 
                 using DataTable dtVni = await valuationDb.GetDataAsync(sql, parameters, token).ConfigureAwait(false);
@@ -864,6 +864,10 @@ ORDER BY C_FONDS ASC, D_COURS DESC;";
                         : "-";
                     return $"VNI {latestDate} ({latestVal})";
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {

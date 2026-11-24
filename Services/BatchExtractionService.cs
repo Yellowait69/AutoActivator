@@ -63,6 +63,8 @@ namespace AutoActivator.Services
 
                 int totalItems = batchRows.Count;
                 int processedItems = 0;
+                long completedTableSubSteps = 0;
+                const double EstimatedStepsPerContract = 56.0;
 
                 onProgressUpdate?.Invoke(new BatchProgressInfo
                 {
@@ -97,7 +99,36 @@ namespace AutoActivator.Services
                                 bool itemIsDemandId = ExcelHelper.IsDemandIdInput(item.RawInput);
 
                                 ExtractionResult result = await _extractionService
-                                    .PerformExtractionAsync(item.RawInput, env, false, itemIsDemandId, token)
+                                    .PerformExtractionAsync(
+                                        item.RawInput,
+                                        env,
+                                        false,
+                                        itemIsDemandId,
+                                        token,
+                                        onStepProgress: (_, _, stepMsg) =>
+                                        {
+                                            long subStep = Interlocked.Increment(ref completedTableSubSteps);
+                                            if ((subStep & 3) != 1)
+                                            {
+                                                return;
+                                            }
+
+                                            int doneContracts = Volatile.Read(ref processedItems);
+                                            double smoothTotal = subStep / EstimatedStepsPerContract;
+                                            double fraction = Math.Clamp(smoothTotal - doneContracts, 0.02, 0.94);
+
+                                            onProgressUpdate?.Invoke(new BatchProgressInfo
+                                            {
+                                                RowNum = item.RowNumber,
+                                                Environment = env,
+                                                ContractId = item.RawInput,
+                                                Status = "SUBSTEP",
+                                                StatusMessage = stepMsg,
+                                                CurrentItem = doneContracts,
+                                                TotalItems = totalItems,
+                                                IntraItemFraction = fraction
+                                            });
+                                        })
                                     .ConfigureAwait(false);
 
                                 token.ThrowIfCancellationRequested();

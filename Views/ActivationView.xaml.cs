@@ -476,7 +476,7 @@ namespace AutoActivator.Gui.Views
             MainWindow.TryOpenFileDirect(TxtBatchActCsv?.Text, "Fichier Batch Activation (Excel / CSV)");
         }
 
-        private void BtnPreviewBatchFile_Click(object sender, RoutedEventArgs e)
+        private async void BtnPreviewBatchFile_Click(object sender, RoutedEventArgs e)
         {
             string filePath = TxtBatchActCsv?.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -491,7 +491,7 @@ namespace AutoActivator.Gui.Views
 
             try
             {
-                var rows = ExcelHelper.InspectBatchFileRows(filePath);
+                var rows = await ExcelHelper.InspectBatchFileRowsAsync(filePath);
                 var sb = new StringBuilder();
                 sb.AppendLine("====================================================================================");
                 sb.AppendLine("                      EXCEL / CSV BATCH FILE PREVIEW");

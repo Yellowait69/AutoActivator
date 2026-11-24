@@ -126,7 +126,14 @@ namespace AutoActivator
                 string mergedPath = await batchService.PerformBatchExtractionAsync(
                     filePath,
                     envSuffix,
-                    info => Console.WriteLine($"[{info.CurrentItem}/{info.TotalItems}] Row {info.RowNum} | {info.ContractId} | {info.Status}"),
+                    info =>
+                    {
+                        if (!string.Equals(info.Status, "SUBSTEP", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(info.Status, "STARTING", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Console.WriteLine($"[{info.CurrentItem}/{info.TotalItems}] Row {info.RowNum} | {info.ContractId} | {info.Status}");
+                        }
+                    },
                     isDemandId,
                     CancellationToken.None);
 

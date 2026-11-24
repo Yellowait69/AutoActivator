@@ -222,26 +222,53 @@ WHERE h.IT5HDMDAIDN = @DemandId
 ORDER BY AddendumSequence DESC, GuaranteeCode, FundSequence;";
 
             queries["GET_ELIA_FUND_FEATURES_BY_CONTRACT"] = $@"
-SELECT DISTINCT
-    u.IT5UCONAIDN AS EliaContractId,
-    LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS ContractNumber,
-    ff.IT5UAVENSEQ AS AddendumSequence,
-    NULLIF(LTRIM(RTRIM(ff.IT5UGARCGAR)), '') AS GuaranteeCode,
-    ff.IT5UGFFNSEQ AS FundSequence,
-    NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') AS FundCode,
-    NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') AS SecondaryFundCode,
-    ff.IT5UGFFDACF AS FundActivationDate,
-    ff.IT5UGFFDIAC AS FundEndDate,
-    CAST(NULL AS decimal(18, 6)) AS FundPercentage,
-    NULLIF(LTRIM(RTRIM(ff.IT5UGFFBRAC)), '') AS FundIndicator
-FROM {fj1}.[TB5UCON] AS u
-INNER JOIN {fj1}.[TB5UGFF] AS ff
-    ON ff.IT5UCONAIDN = u.IT5UCONAIDN
-WHERE REPLACE(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '-', '') =
-      REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', '')
-  AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
-    OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL)
-ORDER BY EliaContractId, AddendumSequence DESC, GuaranteeCode, FundSequence;";
+DECLARE @RawContract varchar(64) = LTRIM(RTRIM(@ContractNumber));
+DECLARE @Compact varchar(64) = REPLACE(REPLACE(REPLACE(@RawContract, '-', ''), ' ', ''), '.', '');
+DECLARE @Formatted372 varchar(64) = CASE
+    WHEN LEN(@Compact) = 12 THEN SUBSTRING(@Compact, 1, 3) + '-' + SUBSTRING(@Compact, 4, 7) + '-' + SUBSTRING(@Compact, 11, 2)
+    ELSE @RawContract
+END;
+
+IF EXISTS (SELECT 1 FROM {fj1}.[TB5UCON] WITH (NOLOCK) WHERE IT5UCONLREFEXN IN (@Formatted372, @Compact, @RawContract))
+    SELECT DISTINCT
+        u.IT5UCONAIDN AS EliaContractId,
+        LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS ContractNumber,
+        ff.IT5UAVENSEQ AS AddendumSequence,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGARCGAR)), '') AS GuaranteeCode,
+        ff.IT5UGFFNSEQ AS FundSequence,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') AS FundCode,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') AS SecondaryFundCode,
+        ff.IT5UGFFDACF AS FundActivationDate,
+        ff.IT5UGFFDIAC AS FundEndDate,
+        CAST(NULL AS decimal(18, 6)) AS FundPercentage,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGFFBRAC)), '') AS FundIndicator
+    FROM {fj1}.[TB5UCON] AS u WITH (NOLOCK)
+    INNER JOIN {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
+        ON ff.IT5UCONAIDN = u.IT5UCONAIDN
+    WHERE u.IT5UCONLREFEXN IN (@Formatted372, @Compact, @RawContract)
+      AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
+        OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL)
+    ORDER BY EliaContractId, AddendumSequence DESC, GuaranteeCode, FundSequence;
+ELSE
+    SELECT DISTINCT
+        u.IT5UCONAIDN AS EliaContractId,
+        LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS ContractNumber,
+        ff.IT5UAVENSEQ AS AddendumSequence,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGARCGAR)), '') AS GuaranteeCode,
+        ff.IT5UGFFNSEQ AS FundSequence,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') AS FundCode,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') AS SecondaryFundCode,
+        ff.IT5UGFFDACF AS FundActivationDate,
+        ff.IT5UGFFDIAC AS FundEndDate,
+        CAST(NULL AS decimal(18, 6)) AS FundPercentage,
+        NULLIF(LTRIM(RTRIM(ff.IT5UGFFBRAC)), '') AS FundIndicator
+    FROM {fj1}.[TB5UCON] AS u WITH (NOLOCK)
+    INNER JOIN {fj1}.[TB5UGFF] AS ff WITH (NOLOCK)
+        ON ff.IT5UCONAIDN = u.IT5UCONAIDN
+    WHERE REPLACE(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '-', '') = @Compact
+      AND (NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFND)), '') IS NOT NULL
+        OR NULLIF(LTRIM(RTRIM(ff.IT5UGFFCFNDDSI)), '') IS NOT NULL)
+    ORDER BY EliaContractId, AddendumSequence DESC, GuaranteeCode, FundSequence;";
 
             queries["GET_ELIA_PREMIUM_FUNDS_BY_CONTRACT_ID"] = $@"
 SELECT DISTINCT
@@ -285,26 +312,53 @@ WHERE h.IT5HDMDAIDN = @DemandId
 ORDER BY EliaContractId, AddendumSequence DESC, GuaranteeCode, PremiumGroupType, FundCode;";
 
             queries["GET_ELIA_PREMIUM_FUNDS_BY_CONTRACT"] = $@"
-SELECT DISTINCT
-    LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS ContractNumber,
-    p.IT5UCONAIDN AS EliaContractId,
-    p.IT5UAVENSEQ AS AddendumSequence,
-    NULLIF(LTRIM(RTRIM(p.IT5UGARCGAR)), '') AS GuaranteeCode,
-    NULLIF(LTRIM(RTRIM(p.IT5UPRPCTYPGRPPRI)), '') AS PremiumGroupType,
-    NULLIF(LTRIM(RTRIM(p.IT5UPRFCFND)), '') AS FundCode,
-    p.IT5UPRFPRPIFND AS FundProportionRaw,
-    p.IT5UPRFQETIFND AS FundQuantityRaw,
-    p.IT5UPRFDTISMAJDB2 AS LastEliaUpdate,
-    CAST(NULL AS varchar(6)) AS SecondaryFundCode,
-    CAST(NULL AS decimal(18, 6)) AS FundPercentage,
-    'TB5UPRF' AS FundSource
-FROM {fj1}.[TB5UCON] AS u
-INNER JOIN {fj1}.[TB5UPRF] AS p
-    ON p.IT5UCONAIDN = u.IT5UCONAIDN
-WHERE REPLACE(REPLACE(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '-', ''), ' ', '') =
-      REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
-  AND NULLIF(LTRIM(RTRIM(p.IT5UPRFCFND)), '') IS NOT NULL
-ORDER BY EliaContractId, AddendumSequence DESC, GuaranteeCode, PremiumGroupType, FundCode;";
+DECLARE @RawContract varchar(64) = LTRIM(RTRIM(@ContractNumber));
+DECLARE @Compact varchar(64) = REPLACE(REPLACE(REPLACE(@RawContract, '-', ''), ' ', ''), '.', '');
+DECLARE @Formatted372 varchar(64) = CASE
+    WHEN LEN(@Compact) = 12 THEN SUBSTRING(@Compact, 1, 3) + '-' + SUBSTRING(@Compact, 4, 7) + '-' + SUBSTRING(@Compact, 11, 2)
+    ELSE @RawContract
+END;
+
+IF EXISTS (SELECT 1 FROM {fj1}.[TB5UCON] WITH (NOLOCK) WHERE IT5UCONLREFEXN IN (@Formatted372, @Compact, @RawContract))
+    SELECT DISTINCT
+        LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS ContractNumber,
+        p.IT5UCONAIDN AS EliaContractId,
+        p.IT5UAVENSEQ AS AddendumSequence,
+        NULLIF(LTRIM(RTRIM(p.IT5UGARCGAR)), '') AS GuaranteeCode,
+        NULLIF(LTRIM(RTRIM(p.IT5UPRPCTYPGRPPRI)), '') AS PremiumGroupType,
+        NULLIF(LTRIM(RTRIM(p.IT5UPRFCFND)), '') AS FundCode,
+        p.IT5UPRFPRPIFND AS FundProportionRaw,
+        p.IT5UPRFQETIFND AS FundQuantityRaw,
+        p.IT5UPRFDTISMAJDB2 AS LastEliaUpdate,
+        CAST(NULL AS varchar(6)) AS SecondaryFundCode,
+        CAST(NULL AS decimal(18, 6)) AS FundPercentage,
+        'TB5UPRF' AS FundSource
+    FROM {fj1}.[TB5UCON] AS u WITH (NOLOCK)
+    INNER JOIN {fj1}.[TB5UPRF] AS p WITH (NOLOCK)
+        ON p.IT5UCONAIDN = u.IT5UCONAIDN
+    WHERE u.IT5UCONLREFEXN IN (@Formatted372, @Compact, @RawContract)
+      AND NULLIF(LTRIM(RTRIM(p.IT5UPRFCFND)), '') IS NOT NULL
+    ORDER BY EliaContractId, AddendumSequence DESC, GuaranteeCode, PremiumGroupType, FundCode;
+ELSE
+    SELECT DISTINCT
+        LTRIM(RTRIM(u.IT5UCONLREFEXN)) AS ContractNumber,
+        p.IT5UCONAIDN AS EliaContractId,
+        p.IT5UAVENSEQ AS AddendumSequence,
+        NULLIF(LTRIM(RTRIM(p.IT5UGARCGAR)), '') AS GuaranteeCode,
+        NULLIF(LTRIM(RTRIM(p.IT5UPRPCTYPGRPPRI)), '') AS PremiumGroupType,
+        NULLIF(LTRIM(RTRIM(p.IT5UPRFCFND)), '') AS FundCode,
+        p.IT5UPRFPRPIFND AS FundProportionRaw,
+        p.IT5UPRFQETIFND AS FundQuantityRaw,
+        p.IT5UPRFDTISMAJDB2 AS LastEliaUpdate,
+        CAST(NULL AS varchar(6)) AS SecondaryFundCode,
+        CAST(NULL AS decimal(18, 6)) AS FundPercentage,
+        'TB5UPRF' AS FundSource
+    FROM {fj1}.[TB5UCON] AS u WITH (NOLOCK)
+    INNER JOIN {fj1}.[TB5UPRF] AS p WITH (NOLOCK)
+        ON p.IT5UCONAIDN = u.IT5UCONAIDN
+    WHERE REPLACE(REPLACE(LTRIM(RTRIM(u.IT5UCONLREFEXN)), '-', ''), ' ', '') = @Compact
+      AND NULLIF(LTRIM(RTRIM(p.IT5UPRFCFND)), '') IS NOT NULL
+    ORDER BY EliaContractId, AddendumSequence DESC, GuaranteeCode, PremiumGroupType, FundCode;";
 
             queries["GET_ELIA_FUND_FEATURE_COUNT_BY_DEMAND"] = $@"
 SELECT

@@ -711,7 +711,7 @@ namespace AutoActivator.Gui.Views
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
-        private void BtnPreviewExtFile_Click(object sender, RoutedEventArgs e)
+        private async void BtnPreviewExtFile_Click(object sender, RoutedEventArgs e)
         {
             string filePath = TxtBatchExtCsv?.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -726,7 +726,7 @@ namespace AutoActivator.Gui.Views
 
             try
             {
-                var rows = ExcelHelper.InspectBatchFileRows(filePath);
+                var rows = await ExcelHelper.InspectBatchFileRowsAsync(filePath);
                 var sb = new StringBuilder();
                 sb.AppendLine("====================================================================================");
                 sb.AppendLine("                      EXCEL / CSV BATCH FILE PREVIEW");
@@ -869,22 +869,31 @@ namespace AutoActivator.Gui.Views
                 try
                 {
                     UpdateMainWindowStatus(mainWindow, $"Extraction SQL en cours ({envValue}000) pour {rawInput}...");
-                    bool succeeded = await PerformSingleExtractionAsync(rawInput, $"{envValue}000", progress, isDemandId, mainWindow, token);
+                    (string outcomeStatus, string? errorDetail) =
+                        await PerformSingleExtractionAsync(rawInput, $"{envValue}000", progress, isDemandId, mainWindow, token);
 
                     if (token.IsCancellationRequested)
                     {
                         UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Annulé par l'utilisateur.", "CANCELLED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
                         UpdateMainWindowStatus(mainWindow, "Extraction unitaire arrêtée par l'utilisateur.", Brushes.DarkOrange);
                     }
-                    else if (succeeded)
+                    else if (string.Equals(outcomeStatus, "OK", StringComparison.OrdinalIgnoreCase))
                     {
                         UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, $"{rawInput} — Extraction complète LISA + ELIA terminée (OK).", "COMPLETED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
                         UpdateMainWindowStatus(mainWindow, $"Extraction unitaire terminée avec succès pour {rawInput}.", Brushes.ForestGreen);
                     }
+                    else if (string.Equals(outcomeStatus, "ELIA ONLY", StringComparison.OrdinalIgnoreCase))
+                    {
+                        UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, $"{rawInput} — Extraction terminée (ELIA ONLY, contrat absent de LISA).", "ELIA_ONLY", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+                        UpdateMainWindowStatus(mainWindow, "Extraction terminée (ELIA ONLY — contrat non actif dans LISA).", Brushes.DarkOrange);
+                    }
                     else
                     {
-                        UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, $"{rawInput} — Extraction terminée (ELIA ONLY ou absent de LISA).", "ELIA_ONLY", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, "Extraction terminée (ELIA ONLY ou contrat non actif dans LISA).", Brushes.DarkOrange);
+                        string reason = string.IsNullOrWhiteSpace(errorDetail)
+                            ? "Contrat / Demand ID introuvable dans LISA et ELIA."
+                            : errorDetail;
+                        UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Échec : {reason}", "FAILED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
+                        UpdateMainWindowStatus(mainWindow, $"Extraction échouée : {reason}", Brushes.Crimson);
                     }
                 }
                 catch (OperationCanceledException)
@@ -905,7 +914,13 @@ namespace AutoActivator.Gui.Views
             });
         }
 
-        private async Task<bool> PerformSingleExtractionAsync(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId, MainWindow mainWindow, CancellationToken token)
+        private async Task<(string Status, string? ErrorMessage)> PerformSingleExtractionAsync(
+            string targetValue,
+            string env,
+            IProgress<ExtractionItem> progress,
+            bool isDemandId,
+            MainWindow mainWindow,
+            CancellationToken token)
         {
             try
             {
@@ -920,7 +935,9 @@ namespace AutoActivator.Gui.Views
                         UpdateBatchProgressDisplay(step, totalSteps, stepMsg, "RUNNING", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
                         UpdateMainWindowStatus(mainWindow, stepMsg, Brushes.RoyalBlue);
                     }).ConfigureAwait(false);
-                mainWindow.LastGeneratedPath = !string.IsNullOrEmpty(result.FilePath) ? result.FilePath : Settings.OutputDir;
+
+                string resolvedPath = !string.IsNullOrEmpty(result.FilePath) ? result.FilePath : Settings.OutputDir;
+                await Dispatcher.InvokeAsync(() => mainWindow.LastGeneratedPath = resolvedPath);
 
                 string resolvedRef = !string.IsNullOrWhiteSpace(result.ContractReference) && result.ContractReference != "Not found"
                     ? result.ContractReference
@@ -928,7 +945,7 @@ namespace AutoActivator.Gui.Views
                 string displayContract = FormatContractForDisplay(resolvedRef);
 
                 bool hasLisa = result.InternalId != "Not found" && result.InternalId != "Error" && !string.IsNullOrWhiteSpace(result.InternalId);
-                bool hasElia = result.UconId != "N/A" && result.UconId != "Error" && !string.IsNullOrWhiteSpace(result.UconId);
+                bool hasElia = result.UconId != "N/A" && result.UconId != "Not found" && result.UconId != "Error" && !string.IsNullOrWhiteSpace(result.UconId);
                 string finalStatus = hasLisa ? "OK" : (hasElia ? "ELIA ONLY" : "KO");
 
                 progress.Report(new ExtractionItem
@@ -964,13 +981,13 @@ namespace AutoActivator.Gui.Views
                     FilePath = result.FilePath
                 });
 
-                return hasLisa;
+                return (finalStatus, null);
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 progress.Report(new ExtractionItem
                 {
@@ -996,7 +1013,7 @@ namespace AutoActivator.Gui.Views
                     Status = "KO",
                     FilePath = string.Empty
                 });
-                return false;
+                return ("KO", ex.Message);
             }
         }
 
@@ -1050,11 +1067,42 @@ namespace AutoActivator.Gui.Views
                 if (string.Equals(info.Status, "STARTING", StringComparison.OrdinalIgnoreCase))
                 {
                     _batchPlannedCount = info.TotalItems;
-                    _progressController.Report(0, info.TotalItems, $"Extraction parallèle lancée ({info.TotalItems} contrat(s) dans {Path.GetFileName(filePath)})...");
+                    _batchProcessedCount = 0;
+                    _progressController.Report(
+                        0,
+                        Math.Max(1, info.TotalItems),
+                        $"Extraction parallèle lancée ({info.TotalItems} contrat(s) dans {Path.GetFileName(filePath)})...",
+                        showEta: true,
+                        processedDisplay: "0",
+                        plannedDisplay: info.TotalItems.ToString(CultureInfo.InvariantCulture));
                     return;
                 }
 
-                UpdateBatchProgressDisplay(info.CurrentItem, info.TotalItems, $"Row #{info.RowNum} : {info.ContractId} ({info.BranchDisplay})", "RUNNING", "BATCH");
+                if (string.Equals(info.Status, "SUBSTEP", StringComparison.OrdinalIgnoreCase))
+                {
+                    _batchPlannedCount = Math.Max(_batchPlannedCount, info.TotalItems);
+                    _batchProcessedCount = Math.Max(_batchProcessedCount, info.CurrentItem);
+                    _progressController.Report(
+                        info.EffectiveCompletedItems,
+                        Math.Max(1, _batchPlannedCount),
+                        string.IsNullOrWhiteSpace(info.StatusMessage)
+                            ? $"Row #{info.RowNum} : {info.ContractId}..."
+                            : $"Row #{info.RowNum} : {info.StatusMessage}",
+                        showEta: true,
+                        processedDisplay: _batchProcessedCount.ToString(CultureInfo.InvariantCulture),
+                        plannedDisplay: _batchPlannedCount.ToString(CultureInfo.InvariantCulture));
+                    return;
+                }
+
+                _batchProcessedCount = info.CurrentItem;
+                _batchPlannedCount = info.TotalItems;
+                _progressController.Report(
+                    info.CurrentItem,
+                    Math.Max(1, info.TotalItems),
+                    $"Row #{info.RowNum} : {info.ContractId} ({info.BranchDisplay})",
+                    showEta: true,
+                    processedDisplay: info.CurrentItem.ToString(CultureInfo.InvariantCulture),
+                    plannedDisplay: info.TotalItems.ToString(CultureInfo.InvariantCulture));
                 mainWindow.TxtStatus.Text =
                     $"Extraction Batch : {info.CurrentItem}/{info.TotalItems} | Excel Row #{info.RowNum} | {info.ContractId} ({info.BranchDisplay})";
 
@@ -1197,11 +1245,18 @@ namespace AutoActivator.Gui.Views
 
         private void UpdateMainWindowStatus(MainWindow mainWindow, string text, Brush? color = null)
         {
-            Dispatcher.Invoke(() =>
+            if (Dispatcher.CheckAccess())
             {
                 mainWindow.TxtStatus.Text = text;
                 mainWindow.TxtStatus.Foreground = color ?? Brushes.Black;
-            });
+                return;
+            }
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                mainWindow.TxtStatus.Text = text;
+                mainWindow.TxtStatus.Foreground = color ?? Brushes.Black;
+            }, System.Windows.Threading.DispatcherPriority.Background);
         }
     }
 }

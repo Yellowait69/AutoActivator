@@ -219,14 +219,25 @@ WHERE IT5UBENAIDN IN
             string validatedTableName = ValidateSqlIdentifier(tableName, nameof(tableName));
 
             return $@"
-SELECT *
-FROM {fj1}.[{validatedTableName}] WITH (NOLOCK)
-WHERE IT5HDMDAIDN IN
-(
-    SELECT TRY_CONVERT(decimal(18, 0), LTRIM(RTRIM(value)))
-    FROM STRING_SPLIT(@DemandIds, ',')
-    WHERE TRY_CONVERT(decimal(18, 0), LTRIM(RTRIM(value))) IS NOT NULL
-);";
+IF TRY_CONVERT(decimal(18, 0), LTRIM(RTRIM(@DemandIds))) IS NOT NULL
+    SELECT *
+    FROM {fj1}.[{validatedTableName}] WITH (NOLOCK)
+    WHERE IT5HDMDAIDN = TRY_CONVERT(decimal(18, 0), LTRIM(RTRIM(@DemandIds)));
+ELSE
+BEGIN
+    DECLARE @XmlIds xml = TRY_CONVERT(
+        xml,
+        '<r><v>' + REPLACE(REPLACE(ISNULL(@DemandIds, ''), ' ', ''), ',', '</v><v>') + '</v></r>');
+
+    SELECT *
+    FROM {fj1}.[{validatedTableName}] WITH (NOLOCK)
+    WHERE IT5HDMDAIDN IN
+    (
+        SELECT DISTINCT TRY_CONVERT(decimal(18, 0), n.v.value('.', 'varchar(32)'))
+        FROM @XmlIds.nodes('/r/v') AS n(v)
+        WHERE TRY_CONVERT(decimal(18, 0), n.v.value('.', 'varchar(32)')) IS NOT NULL
+    );
+END;";
         }
 
         private static string ValidateSqlIdentifier(string value, string parameterName)

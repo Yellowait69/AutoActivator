@@ -143,6 +143,8 @@ namespace AutoActivator.Models
 
         public string Status { get; set; } = string.Empty;
 
+        public string StatusMessage { get; set; } = string.Empty;
+
         public int CurrentItem { get; set; }
 
         public int TotalItems { get; set; }

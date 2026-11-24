@@ -603,7 +603,12 @@ namespace AutoActivator.Services
                 contractStopwatch.Stop();
                 trace.EndTime = DateTime.Now;
                 trace.TotalDurationMs = contractStopwatch.ElapsedMilliseconds;
-                trace.FinalStatus = "SUCCESS";
+                trace.FinalStatus = string.Equals(
+                        trace.LisaInternalId,
+                        "PENDING_ASYNC_LISA_CREATION",
+                        StringComparison.OrdinalIgnoreCase)
+                    ? "PENDING_ASYNC_LISA_CREATION"
+                    : "SUCCESS";
 
                 AddTraceOnce(traces, trace, ref traceAdded);
                 incrementSuccess();

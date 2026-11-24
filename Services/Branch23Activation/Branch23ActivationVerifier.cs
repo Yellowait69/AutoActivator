@@ -92,37 +92,55 @@ INNER JOIN [FJ1].[TB5UCON] AS u WITH (NOLOCK)
     ON u.IT5UCONAIDN = h.IT5UCONAIDN
 LEFT JOIN [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
     ON d.IT5HDMDAIDN = h.IT5HDMDAIDN
-WHERE TRY_CONVERT(decimal(15, 0), h.IT5HDMDAIDN) =
-      TRY_CONVERT(decimal(15, 0), @DemandId);";
+WHERE h.IT5HDMDAIDN = TRY_CONVERT(decimal(18, 0), @DemandId);";
 
         public const string EliaContractByNumber = @"
-SELECT DISTINCT
-    CONVERT(varchar(30), h.IT5HDMDAIDN) AS DemandId,
-    CONVERT(varchar(30), u.IT5UCONAIDN) AS EliaId,
-    LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))) AS NumeroContrat,
-    NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
-    d.IT5HDMDDCRE AS DemandCreationDate,
-    h.IT5HELTDTISMAJDB2 AS LinkUpdateDate,
-    TRY_CONVERT(int, h.IT5HPRONSEQ) AS ProcessSequence,
-    TRY_CONVERT(int, h.IT5HELTNSEQCON) AS ContractSequence,
-    TRY_CONVERT(int, h.IT5HELTNSEQAVENOU) AS AmendmentSequence
-FROM [FJ1].[TB5UCON] AS u WITH (NOLOCK)
-LEFT JOIN [FJ1].[TB5HELT] AS h WITH (NOLOCK)
-    ON h.IT5UCONAIDN = u.IT5UCONAIDN
-LEFT JOIN [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
-    ON d.IT5HDMDAIDN = h.IT5HDMDAIDN
-WHERE REPLACE(REPLACE(REPLACE(
-          LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))),
-          '-', ''), ' ', ''), '.', '') =
-      REPLACE(REPLACE(REPLACE(
-          LTRIM(RTRIM(@ContractNumber)),
-          '-', ''), ' ', ''), '.', '')
-   OR SUBSTRING(REPLACE(REPLACE(REPLACE(
-          LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))),
-          '-', ''), ' ', ''), '.', ''), 2, 9) =
-      REPLACE(REPLACE(REPLACE(
-          LTRIM(RTRIM(@ContractNumber)),
-          '-', ''), ' ', ''), '.', '');";
+DECLARE @RawContract varchar(64) = LTRIM(RTRIM(@ContractNumber));
+DECLARE @Compact varchar(64) = REPLACE(REPLACE(REPLACE(@RawContract, '-', ''), ' ', ''), '.', '');
+DECLARE @Formatted372 varchar(64) = CASE
+    WHEN LEN(@Compact) = 12 THEN SUBSTRING(@Compact, 1, 3) + '-' + SUBSTRING(@Compact, 4, 7) + '-' + SUBSTRING(@Compact, 11, 2)
+    ELSE @RawContract
+END;
+
+IF EXISTS (SELECT 1 FROM [FJ1].[TB5UCON] WITH (NOLOCK) WHERE IT5UCONLREFEXN IN (@Formatted372, @Compact, @RawContract))
+    SELECT DISTINCT
+        CONVERT(varchar(30), h.IT5HDMDAIDN) AS DemandId,
+        CONVERT(varchar(30), u.IT5UCONAIDN) AS EliaId,
+        LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))) AS NumeroContrat,
+        NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
+        d.IT5HDMDDCRE AS DemandCreationDate,
+        h.IT5HELTDTISMAJDB2 AS LinkUpdateDate,
+        TRY_CONVERT(int, h.IT5HPRONSEQ) AS ProcessSequence,
+        TRY_CONVERT(int, h.IT5HELTNSEQCON) AS ContractSequence,
+        TRY_CONVERT(int, h.IT5HELTNSEQAVENOU) AS AmendmentSequence
+    FROM [FJ1].[TB5UCON] AS u WITH (NOLOCK)
+    LEFT JOIN [FJ1].[TB5HELT] AS h WITH (NOLOCK)
+        ON h.IT5UCONAIDN = u.IT5UCONAIDN
+    LEFT JOIN [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
+        ON d.IT5HDMDAIDN = h.IT5HDMDAIDN
+    WHERE u.IT5UCONLREFEXN IN (@Formatted372, @Compact, @RawContract);
+ELSE
+    SELECT DISTINCT
+        CONVERT(varchar(30), h.IT5HDMDAIDN) AS DemandId,
+        CONVERT(varchar(30), u.IT5UCONAIDN) AS EliaId,
+        LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))) AS NumeroContrat,
+        NULLIF(LTRIM(RTRIM(CONVERT(varchar(20), d.IT5HDMDCSTA))), '') AS DemandStatus,
+        d.IT5HDMDDCRE AS DemandCreationDate,
+        h.IT5HELTDTISMAJDB2 AS LinkUpdateDate,
+        TRY_CONVERT(int, h.IT5HPRONSEQ) AS ProcessSequence,
+        TRY_CONVERT(int, h.IT5HELTNSEQCON) AS ContractSequence,
+        TRY_CONVERT(int, h.IT5HELTNSEQAVENOU) AS AmendmentSequence
+    FROM [FJ1].[TB5UCON] AS u WITH (NOLOCK)
+    LEFT JOIN [FJ1].[TB5HELT] AS h WITH (NOLOCK)
+        ON h.IT5UCONAIDN = u.IT5UCONAIDN
+    LEFT JOIN [FJ1].[TB5HDMD] AS d WITH (NOLOCK)
+        ON d.IT5HDMDAIDN = h.IT5HDMDAIDN
+    WHERE REPLACE(REPLACE(REPLACE(
+              LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))),
+              '-', ''), ' ', ''), '.', '') = @Compact
+       OR (LEN(@Compact) = 9 AND SUBSTRING(REPLACE(REPLACE(REPLACE(
+              LTRIM(RTRIM(CONVERT(varchar(30), u.IT5UCONLREFEXN))),
+              '-', ''), ' ', ''), '.', ''), 2, 9) = @Compact);";
 
         public const string EliaDemandDetails = @"
 SELECT TOP (1)
