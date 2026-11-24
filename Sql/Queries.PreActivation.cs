@@ -326,25 +326,29 @@ SELECT
             IDictionary<string, string> queries,
             string fj1)
         {
+            // NO_CNT est déductible mathématiquement du contrat externe :
+            // 12 chiffres -> positions 2..10, 9 chiffres -> valeur telle quelle.
+            // La recherche se fait donc par égalité stricte sur la clé (index seek) au lieu de
+            // l'ancien OR non-sargable sur NO_CNT_EXTENDED qui imposait un scan complet de SCNTT0.
+            // Le repli NO_CNT_EXTENDED n'est conservé que pour les références non déductibles.
             queries["GET_INTERNAL_ID"] = @"
-SELECT TOP (1)
-    NO_CNT
-FROM [LV].[SCNTT0] WITH (NOLOCK)
-WHERE NO_CNT = CASE
-          WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 12
-              THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', ''), 2, 9))
-          WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 9
-              THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', ''))
-          ELSE NULL
-      END
-   OR REPLACE(REPLACE(LTRIM(RTRIM(NO_CNT_EXTENDED)), '-', ''), ' ', '') =
-      REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
-   OR (
-          LEN(REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')) = 9
-      AND SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(NO_CNT_EXTENDED)), '-', ''), ' ', ''), 2, 9) =
-          REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '')
-      )
-ORDER BY NO_CNT;";
+DECLARE @CompactContract nvarchar(64) =
+    REPLACE(REPLACE(LTRIM(RTRIM(@ContractNumber)), '-', ''), ' ', '');
+DECLARE @DerivedNoCnt decimal(15, 0) = CASE
+    WHEN LEN(@CompactContract) = 12 THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(@CompactContract, 2, 9))
+    WHEN LEN(@CompactContract) = 9 THEN TRY_CONVERT(decimal(15, 0), @CompactContract)
+    ELSE NULL
+END;
+
+IF @DerivedNoCnt IS NOT NULL
+    SELECT TOP (1) NO_CNT
+    FROM [LV].[SCNTT0] WITH (NOLOCK)
+    WHERE NO_CNT = @DerivedNoCnt;
+ELSE
+    SELECT TOP (1) NO_CNT
+    FROM [LV].[SCNTT0] WITH (NOLOCK)
+    WHERE REPLACE(REPLACE(LTRIM(RTRIM(NO_CNT_EXTENDED)), '-', ''), ' ', '') = @CompactContract
+    ORDER BY NO_CNT;";
 
             queries["GET_ELIA_ID"] = $@"
 SELECT TOP (1)
@@ -490,20 +494,41 @@ SELECT TOP (1)
 FROM ContractData AS contractData
 OUTER APPLY
 (
+    SELECT CASE
+        WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 12
+            THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''), 2, 9))
+        WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 9
+            THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''))
+        ELSE NULL
+    END AS DerivedNoCnt
+) AS derivedLisa
+OUTER APPLY
+(
+    -- Index seek : NO_CNT déduit mathématiquement du contrat externe.
     SELECT TOP (1)
         s.NO_CNT AS InternalId,
         LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
     FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
-    WHERE s.NO_CNT = CASE
-              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 12
-                  THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''), 2, 9))
-              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 9
-                  THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''))
-              ELSE NULL
-          END
-       OR REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
+    WHERE s.NO_CNT = derivedLisa.DerivedNoCnt
+) AS lisaDirect
+OUTER APPLY
+(
+    -- Repli NO_CNT_EXTENDED uniquement si NO_CNT n'est pas déductible (startup filter).
+    SELECT TOP (1)
+        s.NO_CNT AS InternalId,
+        LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
+    FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
+    WHERE derivedLisa.DerivedNoCnt IS NULL
+      AND contractData.ContractNumber IS NOT NULL
+      AND REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
           REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', '')
     ORDER BY s.NO_CNT
+) AS lisaExtended
+OUTER APPLY
+(
+    SELECT
+        COALESCE(lisaDirect.InternalId, lisaExtended.InternalId) AS InternalId,
+        COALESCE(lisaDirect.LisaContractNumber, lisaExtended.LisaContractNumber) AS LisaContractNumber
 ) AS lisa
 OUTER APPLY
 (
@@ -608,20 +633,41 @@ SELECT TOP (1)
 FROM ContractData AS contractData
 OUTER APPLY
 (
+    SELECT CASE
+        WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 12
+            THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''), 2, 9))
+        WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 9
+            THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''))
+        ELSE NULL
+    END AS DerivedNoCnt
+) AS derivedLisa
+OUTER APPLY
+(
+    -- Index seek : NO_CNT déduit mathématiquement du contrat externe.
     SELECT TOP (1)
         s.NO_CNT AS InternalId,
         LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
     FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
-    WHERE s.NO_CNT = CASE
-              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 12
-                  THEN TRY_CONVERT(decimal(15, 0), SUBSTRING(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''), 2, 9))
-              WHEN LEN(REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', '')) = 9
-                  THEN TRY_CONVERT(decimal(15, 0), REPLACE(REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', ''), ' ', ''))
-              ELSE NULL
-          END
-       OR REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
+    WHERE s.NO_CNT = derivedLisa.DerivedNoCnt
+) AS lisaDirect
+OUTER APPLY
+(
+    -- Repli NO_CNT_EXTENDED uniquement si NO_CNT n'est pas déductible (startup filter).
+    SELECT TOP (1)
+        s.NO_CNT AS InternalId,
+        LTRIM(RTRIM(s.NO_CNT_EXTENDED)) AS LisaContractNumber
+    FROM [LV].[SCNTT0] AS s WITH (NOLOCK)
+    WHERE derivedLisa.DerivedNoCnt IS NULL
+      AND contractData.ContractNumber IS NOT NULL
+      AND REPLACE(LTRIM(RTRIM(s.NO_CNT_EXTENDED)), '-', '') =
           REPLACE(LTRIM(RTRIM(contractData.ContractNumber)), '-', '')
     ORDER BY s.NO_CNT
+) AS lisaExtended
+OUTER APPLY
+(
+    SELECT
+        COALESCE(lisaDirect.InternalId, lisaExtended.InternalId) AS InternalId,
+        COALESCE(lisaDirect.LisaContractNumber, lisaExtended.LisaContractNumber) AS LisaContractNumber
 ) AS lisa
 OUTER APPLY
 (

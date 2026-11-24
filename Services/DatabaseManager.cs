@@ -134,6 +134,7 @@ namespace AutoActivator.Services
 
         public async Task<DataTable> GetDataAsync(string query, Dictionary<string, object>? parameters = null, CancellationToken token = default)
         {
+            token.ThrowIfCancellationRequested();
             DataTable dataTable = new DataTable();
 
             try
@@ -145,6 +146,8 @@ namespace AutoActivator.Services
 
                     await connection.OpenAsync(token).ConfigureAwait(false);
 
+                    // Le token annule la commande côté serveur (TDS attention) dès le clic sur Stop.
+                    using (token.Register(static state => TryCancelCommand((SqlCommand)state!), command))
                     using (SqlDataReader reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false))
                     {
                         dataTable.Load(reader);
@@ -153,7 +156,16 @@ namespace AutoActivator.Services
             }
             catch (OperationCanceledException)
             {
+                dataTable.Dispose();
                 throw;
+            }
+            catch (Exception) when (token.IsCancellationRequested)
+            {
+                // System.Data.SqlClient remonte une SqlException / InvalidOperationException
+                // ("Operation cancelled by user") lors d'une annulation : on la normalise
+                // en OperationCanceledException pour que toutes les couches s'arrêtent proprement.
+                dataTable.Dispose();
+                throw new OperationCanceledException(token);
             }
             catch (SqlException ex)
             {
@@ -167,6 +179,18 @@ namespace AutoActivator.Services
             }
 
             return dataTable;
+        }
+
+        private static void TryCancelCommand(SqlCommand command)
+        {
+            try
+            {
+                command.Cancel();
+            }
+            catch
+            {
+                // Best effort : la commande peut déjà être terminée ou libérée.
+            }
         }
 
         public async Task<bool> InjectPaymentAsync(
@@ -202,6 +226,10 @@ namespace AutoActivator.Services
             catch (OperationCanceledException)
             {
                 throw;
+            }
+            catch (Exception) when (token.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(token);
             }
             catch (SqlException ex)
             {

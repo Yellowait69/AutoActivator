@@ -40,7 +40,8 @@ namespace AutoActivator.Services
             "MM.yyyy";
 
         private const int ExpectedGbtEventCount =
-            10;
+            11;
+        private const string RequiredGbt11Event = "PF03";
 
         public const string BankBucp = "00382";
         public const string BankPaymentCommand = "8";
@@ -241,9 +242,7 @@ namespace AutoActivator.Services
                     normalizedRunDate);
 
             string[] gbtEvents =
-                Settings.Branch23
-                    .FundEvents
-                    .GetGbtEvents();
+                GetFundEvents();
 
             ValidateGbtEvents(
                 gbtEvents);
@@ -572,9 +571,7 @@ namespace AutoActivator.Services
             }
 
             ValidateGbtEvents(
-                Settings.Branch23
-                    .FundEvents
-                    .GetGbtEvents());
+                GetFundEvents());
         }
 
         /// <summary>
@@ -605,7 +602,8 @@ namespace AutoActivator.Services
                     "GBT07",
                     "GBT08",
                     "GBT09",
-                    "GBT10"
+                    "GBT10",
+                    "GBT11"
                 });
 
             ValidateTemplateVariables(
@@ -673,6 +671,31 @@ namespace AutoActivator.Services
                     missingVariables.Select(
                         variable =>
                             "%%" + variable)));
+        }
+
+        private static string[] GetFundEvents()
+        {
+            string[] configuredEvents =
+                Settings.Branch23
+                    .FundEvents
+                    .GetGbtEvents()
+                    ?? Array.Empty<string>();
+
+            string[] normalizedEvents = configuredEvents
+                .Select(value => (value ?? string.Empty).Trim().ToUpperInvariant())
+                .ToArray();
+
+            // LVCHAIN/LVFG03U attend 11 cartes GBT. Les anciennes
+            // configurations de l'application n'en contenaient que 10.
+            // PF03 est la valeur officielle de GBT11.
+            if (normalizedEvents.Length == ExpectedGbtEventCount - 1)
+            {
+                return normalizedEvents
+                    .Concat(new[] { RequiredGbt11Event })
+                    .ToArray();
+            }
+
+            return normalizedEvents;
         }
 
         private static void ValidateGbtEvents(

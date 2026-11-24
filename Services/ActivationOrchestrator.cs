@@ -12,10 +12,16 @@ namespace AutoActivator.Services
     /// Orchestre la préparation, la soumission et le suivi des jobs JCL
     /// nécessaires à l'activation d'un contrat.
     /// Découpé en classes partielles :
-    /// - ActivationOrchestrator.cs : Planification et orchestration de la séquence ;
-    /// - ActivationOrchestrator.Submission.cs : Préparation JCL, soumission et suivi JES ;
+    /// - ActivationOrchestrator.cs : Séquence PREMELIA commune (ADDPRCT → LVPP06U → LVPG22U → LI1J04D0 → LI1J04D2) ;
+    /// - ActivationOrchestrator.Submission.cs : Préparation JCL, soumission et suivi JES (partagé B21/B23) ;
     /// - ActivationOrchestrator.Diagnostics.cs : Spool, diagnostics et validation de routage ;
-    /// - ActivationOrchestrator.Branch23ActivationOnly.cs : Runner JCL dédié au workflow Branche 23.
+    /// - ActivationOrchestrator.Branch23ActivationOnly.cs : Runner JCL utilisé par le workflow Branche 23.
+    ///
+    /// NORMALISATION B21 / B23 : la Branche 23 n'emprunte plus jamais la séquence standard avec des
+    /// « phases 3/4 BR23 » (code historiquement mort). Les deux branches partagent la même couche de
+    /// soumission/suivi (<see cref="ProcessSubmitAndWaitAsync"/>), les mêmes variables JCL communes et
+    /// la même authentification ; seuls les prérequis et étapes spécifiques BR23 vivent dans
+    /// <see cref="Branch23Activation.Branch23ActivationWorkflow"/>.
     /// </summary>
     public sealed partial class ActivationOrchestrator
     {
@@ -27,74 +33,26 @@ namespace AutoActivator.Services
         private static readonly (string JobName, string SubJobName, string Phase)[]
             SequenceDefinition =
             {
-                (
-                    "ADDPRCT",
-                    "-",
-                    "Phase 1: Billing & Premium Injection (ADDPRCT)"
-                ),
-                (
-                    "LVPP06U",
-                    "-",
-                    "Phase 1: Premium Accounting Validation (LVPP06U)"
-                ),
-                (
-                    "LVPG22U",
-                    "-",
-                    "Phase 1: Financial Posting & Clearing (LVPG22U)"
-                ),
-                (
-                    "LI1J04D0",
-                    "LI1J04D1",
-                    "Phase 2: Core IMS Contract Activation (LI1J04D0 -> LI1J04D1)"
-                ),
-                (
-                    "LI1J04D2",
-                    "LI1J04D3",
-                    "Phase 2: Final IMS Synchronization (LI1J04D2 -> LI1J04D3)"
-                )
+                ("ADDPRCT", "-", "Phase 1: Billing & Premium Injection (ADDPRCT)"),
+                ("LVPP06U", "-", "Phase 1: Premium Accounting Validation (LVPP06U)"),
+                ("LVPG22U", "-", "Phase 1: Financial Posting & Clearing (LVPG22U)"),
+                ("LI1J04D0", "LI1J04D1", "Phase 2: Core IMS Contract Activation (LI1J04D0 -> LI1J04D1)"),
+                ("LI1J04D2", "LI1J04D3", "Phase 2: Final IMS Synchronization (LI1J04D2 -> LI1J04D3)")
             };
 
-        private static readonly (string JobName, string JclName, string Phase)[]
-            Branch23SequenceDefinition =
+        /// <summary>
+        /// Templates JCL spécifiques Branche 23 (LVDQFG03 / LVDQFG01 / LVD1PE01) à précharger.
+        /// </summary>
+        public static string[] Branch23JclNames { get; } =
+            new[]
             {
-                (
-                    Settings.Branch23.FundEvents.JobName,
-                    Settings.Branch23.FundEvents.JclName,
-                    "Phase 3 BR23: Fund Events (LVDQFG03 -> LVFG03U)"
-                ),
-                (
-                    Settings.Branch23.Consolidation.JobName,
-                    Settings.Branch23.Consolidation.JclName,
-                    "Phase 3 BR23: Consolidation Seq 1, STEP=1 (LVDQFG01 -> LVFG01U)"
-                ),
-                (
-                    Settings.Branch23.Fp01.JobName,
-                    Settings.Branch23.Fp01.JclName,
-                    "Phase 3 BR23: FP01 Event Seq 3 (LVD1PE01 -> LVPE01U)"
-                )
-            };
-
-        private static readonly (string JobName, string SubJobName, string Phase)[]
-            Branch23FinalStandardPassDefinition =
-            {
-                (
-                    "LI1J04D0",
-                    "LI1J04D1",
-                    "Phase 4 BR23: Final IMS Activation (LI1J04D0 -> LI1J04D1, Skip Prime)"
-                ),
-                (
-                    "LI1J04D2",
-                    "LI1J04D3",
-                    "Phase 4 BR23: Final IMS Synchronization (LI1J04D2 -> LI1J04D3, Skip Prime)"
-                )
-            };
-
-        public static string[] Branch23JclNames =>
-            Branch23SequenceDefinition
-                .Select(definition => definition.JclName)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+                Settings.Branch23.FundEvents.JclName,
+                Settings.Branch23.Consolidation.JclName,
+                Settings.Branch23.Fp01.JclName
+            }
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         public ActivationOrchestrator(string jclDirectory)
         {
@@ -124,6 +82,9 @@ namespace AutoActivator.Services
             return _jclProcessor.PreloadTemplatesAsync(allTemplates);
         }
 
+        /// <summary>
+        /// Exécute la séquence PREMELIA standard (Branche 21).
+        /// </summary>
         public async Task RunActivationSequenceAsync(
             Dictionary<string, string> generalVariables,
             Dictionary<string, string> addprctSpecificVariables,
@@ -135,10 +96,6 @@ namespace AutoActivator.Services
             Action<string>? onProgress,
             CancellationToken cancellationToken = default,
             ContractActivationTrace? trace = null,
-            Dictionary<string, Dictionary<string, string>>? branch23JobVariables = null,
-            Func<CancellationToken, Task>? prepareBranch23NavsAsync = null,
-            Func<CancellationToken, Task>? beforeBranch23FundEventsAsync = null,
-            Func<CancellationToken, Task>? afterBranch23FundEventsAsync = null,
             Func<CancellationToken, Task>? beforeInitialLiValidationAsync = null,
             Func<CancellationToken, Task>? afterActivationValidationAsync = null,
             Func<string, string, CancellationToken, Task<string>>? resolveGeneratedJobNumberAsync = null,
@@ -152,8 +109,6 @@ namespace AutoActivator.Services
             trace ??= new ContractActivationTrace();
             cancellationToken.ThrowIfCancellationRequested();
 
-            bool isBranch23 = branch23JobVariables != null;
-
             string currentEnvironment = generalVariables.TryGetValue("ENV", out string? environmentValue)
                 ? NormalizeEnvironment(environmentValue)
                 : "Q";
@@ -165,12 +120,7 @@ namespace AutoActivator.Services
                 skipPrime ||
                 string.Equals(channel, "C05", StringComparison.OrdinalIgnoreCase);
 
-            InitializeExecutionTrace(
-                trace,
-                isBranch23,
-                bypassBilling,
-                skipPrime,
-                jobSelection);
+            InitializeExecutionTrace(trace, bypassBilling, skipPrime, jobSelection);
 
             trace.Bucp = paymentRouting.Bucp;
             trace.Cmdpmt = paymentRouting.PaymentCommand;
@@ -206,7 +156,7 @@ namespace AutoActivator.Services
                         password,
                         currentEnvironment,
                         skipLogon,
-                        isBranch23,
+                        isBranch23: false,
                         onProgress,
                         trace,
                         cancellationToken)
@@ -227,56 +177,9 @@ namespace AutoActivator.Services
                         continue;
                     }
 
-                    bool isFinalStandardPassStep =
-                        !step.IsBranch23Step &&
-                        step.PhaseDescription != null &&
-                        step.PhaseDescription.StartsWith("Phase 4 BR23:", StringComparison.OrdinalIgnoreCase);
-
-                    if (isFinalStandardPassStep && IsSameJob(step.JobName, "LI1J04D0"))
-                    {
-                        onProgress?.Invoke(
-                            "BR23 jobs completed. Starting the final standard IMS pass with premium jobs skipped.");
-                    }
-
-                    bool isFundEventsStep =
-                        step.IsBranch23Step &&
-                        IsSameJob(step.JobName, Settings.Branch23.FundEvents.JobName);
-
-                    bool isConsolidationStep =
-                        step.IsBranch23Step &&
-                        IsSameJob(step.JobName, Settings.Branch23.Consolidation.JobName);
-
-                    if (isFundEventsStep && beforeBranch23FundEventsAsync != null)
-                    {
-                        onProgress?.Invoke(
-                            "BR23: resolving funds and preparing all NAV dates up to consolidation before LVDQFG03.");
-
-                        await RunBranch23HookAsync(
-                                beforeBranch23FundEventsAsync,
-                                step,
-                                trace,
-                                "BR23_PREPARATION_BEFORE_FG03",
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
-                    if (isConsolidationStep && prepareBranch23NavsAsync != null)
-                    {
-                        onProgress?.Invoke("BR23: running the optional legacy NAV validation hook before LVDQFG01.");
-
-                        await RunBranch23NavPreparationAsync(
-                                prepareBranch23NavsAsync,
-                                step,
-                                trace,
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
-                    Dictionary<string, string> variablesForJob = BuildVariablesForStep(
-                        step,
-                        generalVariables,
-                        addprctVariables,
-                        branch23JobVariables);
+                    Dictionary<string, string> variablesForJob = IsSameJob(step.JobName, "ADDPRCT")
+                        ? new Dictionary<string, string>(addprctVariables, StringComparer.OrdinalIgnoreCase)
+                        : new Dictionary<string, string>(generalVariables, StringComparer.OrdinalIgnoreCase);
 
                     await ProcessSubmitAndWaitAsync(
                             step,
@@ -294,39 +197,17 @@ namespace AutoActivator.Services
                     {
                         JobStepExecutionInfo blockedLiStep =
                             trace.Steps.FirstOrDefault(candidate =>
-                                !candidate.IsBranch23Step &&
                                 IsSameJob(candidate.JobName, "LI1J04D0") &&
-                                string.Equals(candidate.Status, "Pending", StringComparison.OrdinalIgnoreCase) &&
-                                (candidate.PhaseDescription == null ||
-                                 !candidate.PhaseDescription.StartsWith("Phase 4 BR23:", StringComparison.OrdinalIgnoreCase)))
+                                string.Equals(candidate.Status, "Pending", StringComparison.OrdinalIgnoreCase))
                             ?? step;
 
                         onProgress?.Invoke(
-                            "LVPG22U completed. Validating persisted premium, assigned receipt and eligible PE01/PE03 before LI1J04D0.");
+                            "LVPG22U completed. Validating persisted premium and assigned receipt before LI1J04D0.");
 
                         await RunPreLiBusinessValidationAsync(
                                 beforeInitialLiValidationAsync,
                                 blockedLiStep,
                                 trace,
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
-                    if (isFundEventsStep && afterBranch23FundEventsAsync != null)
-                    {
-                        onProgress?.Invoke("BR23: running the optional post-LVDQFG03 validation hook.");
-
-                        JobStepExecutionInfo blockedStep =
-                            trace.Steps.FirstOrDefault(candidate =>
-                                candidate.IsBranch23Step &&
-                                IsSameJob(candidate.JobName, Settings.Branch23.Consolidation.JobName))
-                            ?? step;
-
-                        await RunBranch23HookAsync(
-                                afterBranch23FundEventsAsync,
-                                blockedStep,
-                                trace,
-                                "BR23_POST_FG03_VALIDATION",
                                 cancellationToken)
                             .ConfigureAwait(false);
                     }
@@ -336,7 +217,7 @@ namespace AutoActivator.Services
 
                 if (afterActivationValidationAsync != null)
                 {
-                    onProgress?.Invoke("Final standard pass completed. Validating contract creation in LISA.");
+                    onProgress?.Invoke("Standard sequence completed. Validating contract creation in LISA.");
 
                     try
                     {
@@ -348,35 +229,20 @@ namespace AutoActivator.Services
                     }
                     catch (Exception exception)
                     {
-                        if (isBranch23)
-                        {
-                            finalLisaValidationExecuted = false;
-                            trace.LisaInternalId = string.IsNullOrWhiteSpace(trace.LisaInternalId)
-                                ? "PENDING_ASYNC_LISA_CREATION"
-                                : trace.LisaInternalId;
-                            trace.RoutingDiagnostic = string.IsNullOrWhiteSpace(trace.RoutingDiagnostic)
-                                ? "LISA finalization pending asynchronously: " + exception.Message
-                                : trace.RoutingDiagnostic + " | LISA finalization pending asynchronously: " + exception.Message;
-                            onProgress?.Invoke(
-                                "All Branch 23 jobs completed. SCNTT0 is not yet visible; LISA creation is asynchronous and does not change the technical sequence to FAILED.");
-                        }
-                        else
-                        {
-                            trace.FinalStatus = "FAILED";
-                            trace.FailureStage = string.IsNullOrWhiteSpace(trace.FailureStage)
-                                ? "LISA_FINALIZATION_TIMEOUT"
-                                : trace.FailureStage;
-                            trace.FailureReason = string.IsNullOrWhiteSpace(trace.FailureReason)
-                                ? exception.Message
-                                : trace.FailureReason;
-                            trace.RootCauseAnalysis = string.IsNullOrWhiteSpace(trace.RootCauseAnalysis)
-                                ? "All JCL jobs returned accepted condition codes, but the contract was not confirmed in LV.SCNTT0."
-                                : trace.RootCauseAnalysis;
-                            trace.RecommendedAction = string.IsNullOrWhiteSpace(trace.RecommendedAction)
-                                ? "Inspect the completed jobs and confirm the business state before choosing any retry."
-                                : trace.RecommendedAction;
-                            throw;
-                        }
+                        trace.FinalStatus = "FAILED";
+                        trace.FailureStage = string.IsNullOrWhiteSpace(trace.FailureStage)
+                            ? "LISA_FINALIZATION_TIMEOUT"
+                            : trace.FailureStage;
+                        trace.FailureReason = string.IsNullOrWhiteSpace(trace.FailureReason)
+                            ? exception.Message
+                            : trace.FailureReason;
+                        trace.RootCauseAnalysis = string.IsNullOrWhiteSpace(trace.RootCauseAnalysis)
+                            ? "All JCL jobs returned accepted condition codes, but the contract was not confirmed in LV.SCNTT0."
+                            : trace.RootCauseAnalysis;
+                        trace.RecommendedAction = string.IsNullOrWhiteSpace(trace.RecommendedAction)
+                            ? "Inspect the completed jobs and confirm the business state before choosing any retry."
+                            : trace.RecommendedAction;
+                        throw;
                     }
                 }
 
@@ -385,7 +251,7 @@ namespace AutoActivator.Services
                 onProgress?.Invoke(
                     finalLisaValidationExecuted
                         ? "[SUCCESS] JCL sequence completed and final LISA validation succeeded."
-                        : "[SUCCESS] JCL sequence completed. Final LISA validation was not requested by the caller.");
+                        : "[SUCCESS] JCL sequence completed.");
             }
             catch (OperationCanceledException)
             {
@@ -424,7 +290,6 @@ namespace AutoActivator.Services
 
         private static void InitializeExecutionTrace(
             ContractActivationTrace trace,
-            bool isBranch23,
             bool bypassBilling,
             bool skipPrime,
             ActivationJobSelection? jobSelection = null)
@@ -450,44 +315,11 @@ namespace AutoActivator.Services
                     IsSameJob(definition.JobName, "LVPP06U") ||
                     IsSameJob(definition.JobName, "LVPG22U");
 
-                bool deselectedByUser = false;
-                string deselectedReason = string.Empty;
-
-                if (jobSelection != null)
-                {
-                    if (IsSameJob(definition.JobName, "ADDPRCT") &&
-                        (!jobSelection.RunAddPrct || jobSelection.UseSqlPrctInsert))
-                    {
-                        deselectedByUser = true;
-                        deselectedReason = jobSelection.UseSqlPrctInsert && jobSelection.RunAddPrct
-                            ? "Executed via direct SQL INSERT into LV.PRCTT0."
-                            : "Unchecked in custom job selection.";
-                    }
-                    else if (IsSameJob(definition.JobName, "LVPP06U") && !jobSelection.RunLvpp06u)
-                    {
-                        deselectedByUser = true;
-                        deselectedReason = "Unchecked in custom job selection.";
-                    }
-                    else if (IsSameJob(definition.JobName, "LVPG22U") && !jobSelection.RunLvpg22u)
-                    {
-                        deselectedByUser = true;
-                        deselectedReason = "Unchecked in custom job selection.";
-                    }
-                    else if (IsSameJob(definition.JobName, "LI1J04D0") && !jobSelection.RunLi1j04d0)
-                    {
-                        deselectedByUser = true;
-                        deselectedReason = "Unchecked in custom job selection.";
-                    }
-                    else if (IsSameJob(definition.JobName, "LI1J04D2") && !jobSelection.RunLi1j04d2)
-                    {
-                        deselectedByUser = true;
-                        deselectedReason = "Unchecked in custom job selection.";
-                    }
-                }
+                (bool deselectedByUser, string deselectedReason) = ResolveUserDeselection(definition.JobName, jobSelection);
 
                 bool skipped = (isPhaseOne && bypassBilling) || deselectedByUser;
 
-                var step = new JobStepExecutionInfo
+                trace.Steps.Add(new JobStepExecutionInfo
                 {
                     StepOrder = order++,
                     JobName = definition.JobName,
@@ -502,68 +334,35 @@ namespace AutoActivator.Services
                                 : "Bypassed automatically for C05.")
                         : string.Empty,
                     IsBranch23Step = false
-                };
-
-                trace.Steps.Add(step);
+                });
             }
+        }
 
-            if (!isBranch23)
+        private static (bool Deselected, string Reason) ResolveUserDeselection(
+            string jobName,
+            ActivationJobSelection? jobSelection)
+        {
+            if (jobSelection == null)
             {
-                return;
+                return (false, string.Empty);
             }
 
-            foreach (var definition in Branch23SequenceDefinition)
+            const string unchecked_ = "Unchecked in custom job selection.";
+
+            if (IsSameJob(jobName, "ADDPRCT") && (!jobSelection.RunAddPrct || jobSelection.UseSqlPrctInsert))
             {
-                bool deselected = false;
-                if (jobSelection != null)
-                {
-                    if (IsSameJob(definition.JobName, Settings.Branch23.FundEvents.JobName) && !jobSelection.RunLvdqFg03)
-                        deselected = true;
-                    else if (IsSameJob(definition.JobName, Settings.Branch23.Consolidation.JobName) && !jobSelection.RunLvdqFg01)
-                        deselected = true;
-                    else if (IsSameJob(definition.JobName, Settings.Branch23.Fp01.JobName) && !jobSelection.RunLvd1Pe01)
-                        deselected = true;
-                }
-
-                trace.Steps.Add(
-                    new JobStepExecutionInfo
-                    {
-                        StepOrder = order++,
-                        JobName = definition.JobName,
-                        JclName = definition.JclName,
-                        SubJobName = "-",
-                        PhaseDescription = definition.Phase,
-                        Status = deselected ? "Skipped" : "Pending",
-                        DiagnosticHint = deselected ? "Unchecked in custom job selection." : string.Empty,
-                        IsBranch23Step = true
-                    });
+                return (true, jobSelection.UseSqlPrctInsert && jobSelection.RunAddPrct
+                    ? "Executed via direct SQL INSERT into LV.PRCTT0."
+                    : unchecked_);
             }
 
-            foreach (var definition in Branch23FinalStandardPassDefinition)
-            {
-                bool deselected = false;
-                if (jobSelection != null)
-                {
-                    if (IsSameJob(definition.JobName, "LI1J04D0") && !jobSelection.RunLi1j04d0)
-                        deselected = true;
-                    else if (IsSameJob(definition.JobName, "LI1J04D2") && !jobSelection.RunLi1j04d2)
-                        deselected = true;
-                }
+            bool deselected =
+                (IsSameJob(jobName, "LVPP06U") && !jobSelection.RunLvpp06u) ||
+                (IsSameJob(jobName, "LVPG22U") && !jobSelection.RunLvpg22u) ||
+                (IsSameJob(jobName, "LI1J04D0") && !jobSelection.RunLi1j04d0) ||
+                (IsSameJob(jobName, "LI1J04D2") && !jobSelection.RunLi1j04d2);
 
-                trace.Steps.Add(
-                    new JobStepExecutionInfo
-                    {
-                        StepOrder = order++,
-                        JobName = definition.JobName,
-                        SubJobName = definition.SubJobName,
-                        PhaseDescription = definition.Phase,
-                        Status = deselected ? "Skipped" : "Pending",
-                        DiagnosticHint = deselected
-                            ? "Unchecked in custom job selection."
-                            : "Automatic final standard pass after BR23. Premium jobs are not replayed.",
-                        IsBranch23Step = false
-                    });
-            }
+            return deselected ? (true, unchecked_) : (false, string.Empty);
         }
 
         private async Task AuthenticateAndPreloadAsync(
@@ -576,20 +375,16 @@ namespace AutoActivator.Services
             ContractActivationTrace trace,
             CancellationToken cancellationToken)
         {
+            Task preloadTask = isBranch23
+                ? PreloadAllJclTemplatesAsync()
+                : PreloadJclTemplatesAsync();
+
             if (skipLogon && IsActiveServerCompatibleWithEnvironment(environment))
             {
                 onProgress?.Invoke(
                     $"Mainframe authentication skipped. Using the existing ESCWA session on {MicroFocusApiService.ActiveServer}.");
 
-                if (isBranch23)
-                {
-                    await PreloadAllJclTemplatesAsync().ConfigureAwait(false);
-                }
-                else
-                {
-                    await PreloadJclTemplatesAsync().ConfigureAwait(false);
-                }
-
+                await preloadTask.ConfigureAwait(false);
                 return;
             }
 
@@ -607,10 +402,6 @@ namespace AutoActivator.Services
                 environment,
                 message => onProgress?.Invoke(message),
                 cancellationToken);
-
-            Task preloadTask = isBranch23
-                ? PreloadAllJclTemplatesAsync()
-                : PreloadJclTemplatesAsync();
 
             await Task.WhenAll(logonTask, preloadTask).ConfigureAwait(false);
 
@@ -643,53 +434,6 @@ namespace AutoActivator.Services
             }
 
             return result;
-        }
-
-        private static Dictionary<string, string> BuildVariablesForStep(
-            JobStepExecutionInfo step,
-            Dictionary<string, string> generalVariables,
-            Dictionary<string, string> addprctVariables,
-            Dictionary<string, Dictionary<string, string>>? branch23JobVariables)
-        {
-            if (!step.IsBranch23Step)
-            {
-                return IsSameJob(step.JobName, "ADDPRCT")
-                    ? new Dictionary<string, string>(addprctVariables, StringComparer.OrdinalIgnoreCase)
-                    : new Dictionary<string, string>(generalVariables, StringComparer.OrdinalIgnoreCase);
-            }
-
-            var variables = new Dictionary<string, string>(
-                generalVariables,
-                StringComparer.OrdinalIgnoreCase);
-
-            if (branch23JobVariables == null)
-            {
-                return variables;
-            }
-
-            Dictionary<string, string>? specificVariables = null;
-
-            if (!string.IsNullOrWhiteSpace(step.JclName))
-            {
-                branch23JobVariables.TryGetValue(step.JclName, out specificVariables);
-            }
-
-            if (specificVariables == null && !string.IsNullOrWhiteSpace(step.JobName))
-            {
-                branch23JobVariables.TryGetValue(step.JobName, out specificVariables);
-            }
-
-            if (specificVariables == null)
-            {
-                return variables;
-            }
-
-            foreach (KeyValuePair<string, string> variable in specificVariables)
-            {
-                variables[variable.Key] = variable.Value;
-            }
-
-            return variables;
         }
 
         private static async Task RunPreLiBusinessValidationAsync(
@@ -727,73 +471,6 @@ namespace AutoActivator.Services
                 throw new InvalidOperationException(
                     "PRE_LI_BUSINESS_PREREQUISITE_MISSING: " + exception.Message,
                     exception);
-            }
-        }
-
-        private static async Task RunBranch23HookAsync(
-            Func<CancellationToken, Task> hook,
-            JobStepExecutionInfo blockedStep,
-            ContractActivationTrace trace,
-            string defaultFailureStage,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                await hook(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                blockedStep.Status = "FundsNotResolved";
-                blockedStep.ErrorMessage = exception.Message;
-
-                trace.FailureStage = exception is Branch23FundResolutionException fundResolutionException
-                    ? fundResolutionException.FailureStage
-                    : defaultFailureStage;
-                trace.FailedJobName = blockedStep.JobName;
-                trace.FailureReason = exception.Message;
-                trace.RootCauseAnalysis = trace.FailureStage == "BR23_PREACTIVATION_FUNDS_MISSING"
-                    ? "No business-confirmed BR23 fund was available before LVDQFG03. UI fallback funds have priority; ELIA TB5UGFF is only a secondary source."
-                    : trace.FailureStage == "BR23_PREPARATION_BEFORE_FG03"
-                        ? "BR23 fund or NAV preparation failed before LVDQFG03 could be submitted."
-                        : "A BR23 workflow hook failed before the next JCL step could be submitted.";
-                trace.RecommendedAction = trace.FailureStage == "BR23_PREACTIVATION_FUNDS_MISSING"
-                    ? "Enter the confirmed fund code in BR23 fallback funds and rerun with Skip Prime."
-                    : "Inspect the NAV preparation details for J, J+1 and J+2. Do not replay completed billing jobs.";
-                throw;
-            }
-        }
-
-        private static async Task RunBranch23NavPreparationAsync(
-            Func<CancellationToken, Task> prepareNavsAsync,
-            JobStepExecutionInfo consolidationStep,
-            ContractActivationTrace trace,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                await prepareNavsAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                consolidationStep.Status = "NavNotReady";
-                consolidationStep.ErrorMessage = exception.Message;
-                trace.FailureStage = "BR23_NAV_PREPARATION";
-                trace.FailedJobName = consolidationStep.JobName;
-                trace.FailureReason = exception.Message;
-                trace.RootCauseAnalysis =
-                    "The BR23 workflow requires every confirmed fund to have NAV values through the consolidation date. " +
-                    "Closed funds use GFEVT0 and open funds use GFCRT0.";
-                trace.RecommendedAction =
-                    "Create or correct the missing NAV values, then replay only the unfinished BR23 steps.";
-                throw;
             }
         }
 

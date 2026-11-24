@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using AutoActivator.Config;
 
@@ -35,9 +36,10 @@ namespace AutoActivator.Services
         private static readonly string WriteTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Write\";
         private static readonly string ReadTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Read\";
 
-        // In-memory cache of cleaned JCL templates (key: full normalized path or directory+jobName)
-        private static readonly ConcurrentDictionary<string, string> _cleanedJclCache =
-            new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // In-memory cache of cleaned JCL templates (key: directory+jobName). Lazy<Task> dédoublonne
+        // les lectures SMB concurrentes du même template.
+        private static readonly ConcurrentDictionary<string, Lazy<Task<string>>> _cleanedJclCache =
+            new ConcurrentDictionary<string, Lazy<Task<string>>>(StringComparer.OrdinalIgnoreCase);
 
         // Cache of compiled Regex patterns per variable name for fast JCL variable substitution
         private static readonly ConcurrentDictionary<string, Regex[]> _variableRegexCache =
@@ -63,40 +65,78 @@ namespace AutoActivator.Services
 
         /// <summary>
         /// Pre-loads and caches all standard activation JCL templates in parallel from the network share.
+        /// Best-effort : un template absent ne bloque plus l'activation à ce stade (l'erreur
+        /// détaillée est remontée au moment de la préparation du job concerné).
         /// </summary>
         public async Task PreloadTemplatesAsync(IEnumerable<string>? jobNames = null)
         {
-            var targets = jobNames ?? StandardActivationJobs;
-            var tasks = targets.Select(job => GetCleanedTemplateAsync(job));
+            var targets = (jobNames ?? StandardActivationJobs)
+                .Where(job => !string.IsNullOrWhiteSpace(job))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            var tasks = targets.Select(async job =>
+            {
+                try
+                {
+                    await GetCleanedTemplateAsync(job).ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[JCL PRELOAD] {job} not preloaded: {exception.Message}");
+                }
+            });
+
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
-        private async Task<string> GetCleanedTemplateAsync(string jobName)
+        private Task<string> GetCleanedTemplateAsync(string jobName)
         {
             string cleanJobName = jobName.Trim().ToUpperInvariant().Replace(".JCL", "");
             string cacheKey = $"{_jclDirectory}|{cleanJobName}";
 
-            if (_cleanedJclCache.TryGetValue(cacheKey, out string? cachedContent) && cachedContent != null)
+            // Lazy<Task> : un seul accès SMB par template même si plusieurs appels concurrents
+            // (préchargement + soumission) demandent le même fichier au même instant.
+            Lazy<Task<string>> lazy = _cleanedJclCache.GetOrAdd(
+                cacheKey,
+                _ => new Lazy<Task<string>>(
+                    () => LoadAndCleanTemplateAsync(jobName, cleanJobName),
+                    LazyThreadSafetyMode.ExecutionAndPublication));
+
+            Task<string> task = lazy.Value;
+            if (task.IsFaulted || task.IsCanceled)
             {
-                return cachedContent;
+                // Ne jamais mettre en cache un échec (VPN coupé, fichier verrouillé...).
+                _cleanedJclCache.TryRemove(new KeyValuePair<string, Lazy<Task<string>>>(cacheKey, lazy));
             }
 
+            return task;
+        }
+
+        private async Task<string> LoadAndCleanTemplateAsync(string jobName, string cleanJobName)
+        {
             string fileName = cleanJobName + ".JCL";
             string filePath = Path.Combine(_jclDirectory, fileName);
 
-            if (!File.Exists(filePath)) filePath = Path.Combine(_jclDirectory, jobName);
-            if (!File.Exists(filePath)) throw new FileNotFoundException($"JCL file not found on network share: {filePath}");
-
-            string rawContent;
-            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, true))
-            using (var reader = new StreamReader(fs, Encoding.UTF8))
+            try
             {
-                rawContent = await reader.ReadToEndAsync().ConfigureAwait(false);
-            }
+                if (!File.Exists(filePath)) filePath = Path.Combine(_jclDirectory, jobName);
+                if (!File.Exists(filePath)) throw new FileNotFoundException($"JCL file not found on network share: {filePath}");
 
-            string correctedContent = DoCorrections(rawContent);
-            _cleanedJclCache[cacheKey] = correctedContent;
-            return correctedContent;
+                string rawContent;
+                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, true))
+                using (var reader = new StreamReader(fs, Encoding.UTF8))
+                {
+                    rawContent = await reader.ReadToEndAsync().ConfigureAwait(false);
+                }
+
+                return DoCorrections(rawContent);
+            }
+            catch
+            {
+                _cleanedJclCache.TryRemove($"{_jclDirectory}|{cleanJobName}", out _);
+                throw;
+            }
         }
 
         /// <summary>

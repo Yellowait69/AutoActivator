@@ -344,7 +344,7 @@ namespace AutoActivator.Services
 
                     string responseBody =
                         await response.Content
-                            .ReadAsStringAsync()
+                            .ReadAsStringAsync(cancellationToken)
                             .ConfigureAwait(false);
 
                     if (response.StatusCode ==
@@ -472,7 +472,7 @@ namespace AutoActivator.Services
 
                 string responseBody =
                     await response.Content
-                        .ReadAsStringAsync()
+                        .ReadAsStringAsync(cancellationToken)
                         .ConfigureAwait(false);
 
                 LastSubmissionResponse =
@@ -654,7 +654,7 @@ namespace AutoActivator.Services
                         cancellationToken)
                     .ConfigureAwait(false);
 
-                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
                     return ("Unknown", $"HTTP Error: {(int)response.StatusCode}");
@@ -689,11 +689,20 @@ namespace AutoActivator.Services
                 if (IsTerminalEscwaStatus(status))
                 {
                     SubmittedJobNodes.TryRemove(normalizedJobNumber, out _);
+                    LastSpoolFallbackUtc.TryRemove(normalizedJobNumber, out _);
                     return (status, returnCode);
                 }
 
                 // Some ESCWA responses remain RUNNING although JESYSMSG already proves
                 // JCLCM0182I JOB ENDED. Read the existing spool as a status fallback.
+                // Optimisation : ce fallback télécharge plusieurs DD (coûteux). Il est ignoré
+                // pour un job pas encore démarré (Waiting/Held) et limité à une lecture
+                // toutes les SpoolFallbackInterval par job au lieu d'une lecture à chaque poll.
+                if (!ShouldRunSpoolStatusFallback(normalizedJobNumber, status))
+                {
+                    return (status, returnCode);
+                }
+
                 string spool = await GetJobDiagnosticDetailsAsync(
                         normalizedJobNumber,
                         250,
@@ -703,6 +712,7 @@ namespace AutoActivator.Services
                 if (ended.Success)
                 {
                     SubmittedJobNodes.TryRemove(normalizedJobNumber, out _);
+                    LastSpoolFallbackUtc.TryRemove(normalizedJobNumber, out _);
                     return ("Complete", ended.Groups["rc"].Value.PadLeft(4, '0'));
                 }
 
@@ -720,6 +730,30 @@ namespace AutoActivator.Services
                     $"Job={normalizedJobNumber} | Node={node} | Error={exception}");
                 return ("Unknown", $"Request error: {exception.Message}");
             }
+        }
+
+        private static readonly TimeSpan SpoolFallbackInterval = TimeSpan.FromSeconds(4);
+
+        private static readonly ConcurrentDictionary<string, DateTime> LastSpoolFallbackUtc =
+            new ConcurrentDictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+        private static bool ShouldRunSpoolStatusFallback(string jobNumber, string status)
+        {
+            if (status.Equals("Waiting", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("Held", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            DateTime last = LastSpoolFallbackUtc.GetOrAdd(jobNumber, DateTime.MinValue);
+            if (now - last < SpoolFallbackInterval)
+            {
+                return false;
+            }
+
+            LastSpoolFallbackUtc[jobNumber] = now;
+            return true;
         }
 
         private static bool IsTerminalEscwaStatus(string status)
@@ -889,7 +923,7 @@ namespace AutoActivator.Services
                 {
                     string responseBody =
                         await response.Content
-                            .ReadAsStringAsync()
+                            .ReadAsStringAsync(cancellationToken)
                             .ConfigureAwait(false);
 
                     Debug.WriteLine(
@@ -1370,7 +1404,7 @@ namespace AutoActivator.Services
 
                 string body =
                     await response.Content
-                        .ReadAsStringAsync()
+                        .ReadAsStringAsync(cancellationToken)
                         .ConfigureAwait(false);
 
                 EnsureMonitoringNode(node);
@@ -1417,7 +1451,7 @@ namespace AutoActivator.Services
             using var request = CreateHttpRequest(HttpMethod.Get, url, url);
             using HttpResponseMessage response = await HttpClient.SendAsync(
                     request, cancellationToken).ConfigureAwait(false);
-            string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 throw new HttpRequestException(
                     $"Cannot inspect job {jobNumber}: HTTP {(int)response.StatusCode}.");
@@ -1461,7 +1495,7 @@ namespace AutoActivator.Services
                 if (spoolResponse.IsSuccessStatusCode)
                 {
                     return await spoolResponse.Content
-                        .ReadAsStringAsync()
+                        .ReadAsStringAsync(cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
@@ -1498,7 +1532,7 @@ namespace AutoActivator.Services
                 if (ddViewResponse.IsSuccessStatusCode)
                 {
                     return await ddViewResponse.Content
-                        .ReadAsStringAsync()
+                        .ReadAsStringAsync(cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
