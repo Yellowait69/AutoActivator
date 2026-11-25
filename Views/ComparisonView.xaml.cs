@@ -20,6 +20,16 @@ using AutoActivator.Utils;
 
 namespace AutoActivator.Gui.Views
 {
+    public sealed class BatchContractSummaryItem
+    {
+        public string TestKey { get; init; } = "ALL";
+        public string DisplayName { get; init; } = string.Empty;
+        public string ShortStatus { get; init; } = string.Empty;
+        public string TooltipText { get; init; } = string.Empty;
+        public bool HasErrors { get; init; }
+        public int KoTablesCount { get; init; }
+    }
+
     public sealed class UIComparisonResult
     {
         public string TestId { get; set; } = string.Empty;
@@ -54,16 +64,15 @@ namespace AutoActivator.Gui.Views
 
         public string StatusBadgeText => Status switch
         {
-            "OK" => "OK",
-            "OK_EMPTY" => "Vide (0/0)",
-            "KO_ROW_COUNT" => "Écart volume",
-            "KO_MISSING_DATA" => BaseRowCount == 0 ? $"Ajouté dans Target (0 -> {TargetRowCount})" : $"Absent dans Target ({BaseRowCount} -> 0)",
-            _ => "Écart métier"
+            "OK" => "Identique (OK)",
+            "OK_EMPTY" => "Vide des deux côtés (0/0)",
+            "KO_ROW_COUNT" => $"Écart de nombre de lignes ({BaseRowCount} -> {TargetRowCount})",
+            "KO_MISSING_DATA" => BaseRowCount == 0
+                ? $"Table absente dans SOURCE (0 -> {TargetRowCount})"
+                : $"Table absente dans TARGET ({BaseRowCount} -> 0)",
+            _ => $"{DifferingColumnsCount} colonne(s) en écart"
         };
 
-        /// <summary>
-        /// Libellé ultra-concis (<= 14 car.) pour le panneau gauche de 235px afin de ne jamais être coupé.
-        /// </summary>
         public string ShortTableStatus
         {
             get
@@ -77,16 +86,12 @@ namespace AutoActivator.Gui.Views
 
                 if (string.Equals(Status, "KO_MISSING_DATA", StringComparison.OrdinalIgnoreCase))
                 {
-                    return BaseRowCount == 0
-                        ? $"+{TargetRowCount} Target"
-                        : $"-{BaseRowCount} Target";
+                    return BaseRowCount == 0 ? "Absent Src" : "Absent Tgt";
                 }
 
                 if (string.Equals(Status, "KO_ROW_COUNT", StringComparison.OrdinalIgnoreCase))
                 {
-                    return DifferingColumnsCount > 0
-                        ? $"Vol. +{DifferingColumnsCount} col."
-                        : $"Vol. {BaseRowCount}->{TargetRowCount}";
+                    return $"Lignes {BaseRowCount}->{TargetRowCount}";
                 }
 
                 return DifferingColumnsCount > 0
@@ -115,11 +120,14 @@ namespace AutoActivator.Gui.Views
         private ICollectionView? _resultsCollectionView;
         private ICollectionView? _ignoredCollectionView;
 
+        private string _selectedBatchTestKey = "ALL";
         private string _ignoredCategoryFilter = "ALL";
         private bool _suppressStatusComboSync;
         private bool _suppressIgnoredCategorySync;
         private bool _isLeftPaneCollapsed;
-        private GridLength _savedLeftPaneWidth = new GridLength(238);
+        private bool _isMultiContractReport;
+        private GridLength _savedLeftPaneWidth = new GridLength(225);
+        private GridLength _savedContractsPaneWidth = new GridLength(220);
 
         private static SolidColorBrush CreateFrozenBrush(string hex)
         {
@@ -291,15 +299,9 @@ namespace AutoActivator.Gui.Views
         // CONTRÔLES D'ENTRÉE (SQL DIRECT & FICHIERS CSV)
         // =============================================================
 
-        private void DirectInput_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            CheckEnableRunButton();
-        }
+        private void DirectInput_TextChanged(object sender, TextChangedEventArgs e) => CheckEnableRunButton();
 
-        private void DirectInput_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            CheckEnableRunButton();
-        }
+        private void DirectInput_SelectionChanged(object sender, SelectionChangedEventArgs e) => CheckEnableRunButton();
 
         private void DirectInput_KeyDown(object sender, KeyEventArgs e)
         {
@@ -444,7 +446,6 @@ namespace AutoActivator.Gui.Views
                 string srcEnv = (CmbDirectSourceEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q";
                 string tgtEnv = (CmbDirectTargetEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q";
 
-                // Valide si les deux champs sont renseignés, OU si un seul champ est renseigné sur deux environnements différents (ex. Q000 vs D000)
                 if (!string.IsNullOrWhiteSpace(srcId) && !string.IsNullOrWhiteSpace(tgtId))
                 {
                     return true;
@@ -497,23 +498,60 @@ namespace AutoActivator.Gui.Views
                 {
                     _savedLeftPaneWidth = new GridLength(ColLeftTablesPane.ActualWidth);
                 }
+                if (_isMultiContractReport && ColBatchContractsPane.ActualWidth > 120)
+                {
+                    _savedContractsPaneWidth = new GridLength(ColBatchContractsPane.ActualWidth);
+                }
+
                 _isLeftPaneCollapsed = true;
                 PanelLeftTablesList.Visibility = Visibility.Collapsed;
                 SplitterTablesPane.Visibility = Visibility.Collapsed;
                 ColLeftTablesPane.MinWidth = 0;
                 ColLeftTablesPane.Width = new GridLength(0);
                 ColSplitterTablesPane.Width = new GridLength(0);
-                BtnToggleTablesPane.Content = "Afficher tables";
+
+                if (_isMultiContractReport)
+                {
+                    PanelBatchContractsList.Visibility = Visibility.Collapsed;
+                    SplitterContractsPane.Visibility = Visibility.Collapsed;
+                    ColBatchContractsPane.MinWidth = 0;
+                    ColBatchContractsPane.Width = new GridLength(0);
+                    ColSplitterContractsPane.Width = new GridLength(0);
+                }
+
+                BtnToggleTablesPane.Content = "Afficher listes";
             }
             else
             {
                 _isLeftPaneCollapsed = false;
-                PanelLeftTablesList.Visibility = Visibility.Visible;
-                SplitterTablesPane.Visibility = Visibility.Visible;
-                ColLeftTablesPane.MinWidth = 185;
-                ColLeftTablesPane.Width = _savedLeftPaneWidth.Value >= 185 ? _savedLeftPaneWidth : new GridLength(238);
-                ColSplitterTablesPane.Width = new GridLength(8);
+                ApplyLeftPanesLayout(_isMultiContractReport);
                 BtnToggleTablesPane.Content = "Pleine largeur";
+            }
+        }
+
+        private void ApplyLeftPanesLayout(bool multiContracts)
+        {
+            PanelLeftTablesList.Visibility = Visibility.Visible;
+            SplitterTablesPane.Visibility = Visibility.Visible;
+            ColLeftTablesPane.MinWidth = 175;
+            ColLeftTablesPane.Width = _savedLeftPaneWidth.Value >= 175 ? _savedLeftPaneWidth : new GridLength(225);
+            ColSplitterTablesPane.Width = new GridLength(8);
+
+            if (multiContracts)
+            {
+                PanelBatchContractsList.Visibility = Visibility.Visible;
+                SplitterContractsPane.Visibility = Visibility.Visible;
+                ColBatchContractsPane.MinWidth = 175;
+                ColBatchContractsPane.Width = _savedContractsPaneWidth.Value >= 175 ? _savedContractsPaneWidth : new GridLength(220);
+                ColSplitterContractsPane.Width = new GridLength(8);
+            }
+            else
+            {
+                PanelBatchContractsList.Visibility = Visibility.Collapsed;
+                SplitterContractsPane.Visibility = Visibility.Collapsed;
+                ColBatchContractsPane.MinWidth = 0;
+                ColBatchContractsPane.Width = new GridLength(0);
+                ColSplitterContractsPane.Width = new GridLength(0);
             }
         }
 
@@ -523,7 +561,6 @@ namespace AutoActivator.Gui.Views
 
         private void ChkIgnoreTechColumns_Click(object sender, RoutedEventArgs e)
         {
-            // En cas de bascule de la case d'audit, relance instantanément sur les deux CSV déjà disponibles sans ré-extraire SQL
             if (_currentResults.Count > 0 &&
                 !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) &&
                 !string.IsNullOrWhiteSpace(TxtTargetFile?.Text) &&
@@ -783,9 +820,6 @@ namespace AutoActivator.Gui.Views
             TxtKoTablesCount.Text = koTables.ToString("N0", CultureInfo.InvariantCulture);
             TxtKoTablesCount.Foreground = koTables > 0 ? DiffRedBrush : SlateDarkBrush;
 
-            TxtRowsKoSummary.Text = $"{report.TotalDifferencesFound:N0} / {report.TotalRowsCompared:N0}";
-            TxtRowsKoSummary.Foreground = report.TotalDifferencesFound > 0 ? DiffRedBrush : SlateDarkBrush;
-
             TxtIgnoredSummary.Text = $"{report.IgnoredDifferences.Count:N0} (0% impact)";
 
             TxtTabActiveHeader.Text = koTables > 0
@@ -793,11 +827,13 @@ namespace AutoActivator.Gui.Views
                 : $"Écarts métier ({totalTables}/{totalTables} OK)";
             TxtTabIgnoredHeader.Text = $"Différences ignorées ({report.IgnoredDifferences.Count:N0})";
 
-            bool multiContracts = report.ComparedTestsCount > 1;
-            CmbFilterCompContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
-            ColCompContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
-            CmbFilterIgnoredContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
-            ColIgnoredContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
+            _isMultiContractReport = report.ComparedTestsCount > 1;
+            _isLeftPaneCollapsed = false;
+            BtnToggleTablesPane.Content = "Pleine largeur";
+            ApplyLeftPanesLayout(_isMultiContractReport);
+
+            CmbFilterIgnoredContract.Visibility = _isMultiContractReport ? Visibility.Visible : Visibility.Collapsed;
+            ColIgnoredContract.Visibility = _isMultiContractReport ? Visibility.Visible : Visibility.Collapsed;
 
             var uiResults = new List<UIComparisonResult>(report.FileResults.Count);
             foreach (FileComparisonResult r in report.FileResults)
@@ -837,14 +873,16 @@ namespace AutoActivator.Gui.Views
                 });
             }
 
+            // Tri logique pour le testeur : vraies erreurs de colonnes métier en premier, puis écarts de volume, puis tables absentes, puis OK
             _currentResults = uiResults
                 .OrderBy(x => x.IsMatch)
+                .ThenBy(x => string.Equals(x.Status, "KO_MISSING_DATA", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
                 .ThenByDescending(x => x.DifferingColumnsCount)
                 .ThenBy(x => x.CleanTableName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.TestId, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            PopulateContractFilterComboBoxes(report.ComparedTestsCount);
+            PopulateBatchContractsListAndCombo(report.ComparedTestsCount);
             UpdateIgnoredCategoryComboLabels(report);
 
             _resultsCollectionView = CollectionViewSource.GetDefaultView(_currentResults);
@@ -875,6 +913,89 @@ namespace AutoActivator.Gui.Views
             TabComparisonMain.SelectedIndex = 0;
         }
 
+        private void PopulateBatchContractsListAndCombo(int comparedTestsCount)
+        {
+            CmbFilterIgnoredContract.SelectionChanged -= FilterIgnored_Changed;
+            CmbFilterIgnoredContract.Items.Clear();
+            CmbFilterIgnoredContract.Items.Add(new ComboBoxItem { Content = $"Tous les contrats ({comparedTestsCount})", Tag = "ALL" });
+
+            var contractItems = new List<BatchContractSummaryItem>();
+            var grouped = _currentResults
+                .GroupBy(x => x.TestId, StringComparer.OrdinalIgnoreCase)
+                .Select(grp =>
+                {
+                    var first = grp.First();
+                    int koCnt = grp.Count(x => !x.IsMatch);
+                    string rowPrefix = first.ExcelRowDisplay != "-" ? $"{first.ExcelRowDisplay} " : string.Empty;
+                    string label = !string.IsNullOrWhiteSpace(first.ContractNumber) && first.ContractNumber != "-" &&
+                                   !string.Equals(first.ContractNumber, grp.Key, StringComparison.OrdinalIgnoreCase)
+                        ? $"{rowPrefix}{grp.Key} ({first.ContractNumber})"
+                        : $"{rowPrefix}{grp.Key}";
+
+                    return new BatchContractSummaryItem
+                    {
+                        TestKey = grp.Key,
+                        DisplayName = label,
+                        ShortStatus = koCnt > 0 ? $"{koCnt} KO" : "OK",
+                        HasErrors = koCnt > 0,
+                        KoTablesCount = koCnt,
+                        TooltipText = $"Test : {grp.Key}\nContrat : {first.ContractNumber}\nLigne Excel : {first.ExcelRowDisplay}\nBranche : {first.BranchDisplay} ({first.ProductCode}/{first.ProcessCode})\nTables KO : {koCnt} / {grp.Count()}"
+                    };
+                })
+                .OrderByDescending(c => c.HasErrors)
+                .ThenByDescending(c => c.KoTablesCount)
+                .ThenBy(c => c.TestKey, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (BatchContractSummaryItem item in grouped)
+            {
+                contractItems.Add(item);
+                CmbFilterIgnoredContract.Items.Add(new ComboBoxItem
+                {
+                    Content = $"{item.DisplayName} ({item.ShortStatus})",
+                    Tag = item.TestKey
+                });
+            }
+
+            CmbFilterIgnoredContract.SelectedIndex = 0;
+            CmbFilterIgnoredContract.SelectionChanged += FilterIgnored_Changed;
+
+            if (_isMultiContractReport)
+            {
+                int koContracts = grouped.Count(c => c.HasErrors);
+                TxtBatchContractsTitle.Text = koContracts > 0
+                    ? $"1. Contrats ({koContracts} KO / {grouped.Count})"
+                    : $"1. Contrats ({grouped.Count} OK)";
+
+                GridBatchContracts.SelectionChanged -= GridBatchContracts_SelectionChanged;
+                GridBatchContracts.ItemsSource = contractItems;
+                if (contractItems.Count > 0)
+                {
+                    _selectedBatchTestKey = contractItems[0].TestKey;
+                    GridBatchContracts.SelectedIndex = 0;
+                }
+                else
+                {
+                    _selectedBatchTestKey = "ALL";
+                }
+                GridBatchContracts.SelectionChanged += GridBatchContracts_SelectionChanged;
+            }
+            else
+            {
+                _selectedBatchTestKey = "ALL";
+                GridBatchContracts.ItemsSource = null;
+            }
+        }
+
+        private void GridBatchContracts_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (GridBatchContracts.SelectedItem is BatchContractSummaryItem selectedContract)
+            {
+                _selectedBatchTestKey = selectedContract.TestKey;
+                RefreshActiveGridAndCounters();
+            }
+        }
+
         private void UpdateIgnoredCategoryComboLabels(ComparisonReport report)
         {
             if (CmbFilterIgnoredCategory == null) return;
@@ -901,48 +1022,8 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-        private void PopulateContractFilterComboBoxes(int comparedTestsCount)
-        {
-            CmbFilterCompContract.SelectionChanged -= FilterComparison_Changed;
-            CmbFilterIgnoredContract.SelectionChanged -= FilterIgnored_Changed;
-
-            CmbFilterCompContract.Items.Clear();
-            CmbFilterIgnoredContract.Items.Clear();
-
-            CmbFilterCompContract.Items.Add(new ComboBoxItem { Content = $"Tous les contrats ({comparedTestsCount})", Tag = "ALL" });
-            CmbFilterIgnoredContract.Items.Add(new ComboBoxItem { Content = $"Tous les contrats ({comparedTestsCount})", Tag = "ALL" });
-
-            var byTest = _currentResults
-                .GroupBy(x => x.TestId, StringComparer.OrdinalIgnoreCase)
-                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var grp in byTest)
-            {
-                string contractNum = grp.First().ContractNumber;
-                int koTables = grp.Count(x => !x.IsMatch);
-                string badge = koTables == 0 ? "100% OK" : $"{koTables} KO";
-
-                CmbFilterCompContract.Items.Add(new ComboBoxItem
-                {
-                    Content = $"{contractNum} [{grp.Key}] ({badge})",
-                    Tag = grp.Key
-                });
-                CmbFilterIgnoredContract.Items.Add(new ComboBoxItem
-                {
-                    Content = $"{contractNum} [{grp.Key}]",
-                    Tag = grp.Key
-                });
-            }
-
-            CmbFilterCompContract.SelectedIndex = 0;
-            CmbFilterIgnoredContract.SelectedIndex = 0;
-
-            CmbFilterCompContract.SelectionChanged += FilterComparison_Changed;
-            CmbFilterIgnoredContract.SelectionChanged += FilterIgnored_Changed;
-        }
-
         // =============================================================
-        // FILTRAGE ONGLET 1 (LISTE TABLES GAUCHE & DÉTAIL DROITE)
+        // FILTRAGE ONGLET 1 & EXPLICATION CLAIRE POUR LE TESTEUR
         // =============================================================
 
         private void CardActiveDiffs_Click(object sender, MouseButtonEventArgs e)
@@ -998,20 +1079,27 @@ namespace AutoActivator.Gui.Views
             var visibleItems = _resultsCollectionView.Cast<UIComparisonResult>().ToList();
             int visibleCount = visibleItems.Count;
 
+            int scopeTotal = _isMultiContractReport && !string.Equals(_selectedBatchTestKey, "ALL", StringComparison.OrdinalIgnoreCase)
+                ? _currentResults.Count(x => string.Equals(x.TestId, _selectedBatchTestKey, StringComparison.OrdinalIgnoreCase))
+                : _currentResults.Count;
+
             if (TxtFilteredTablesCount != null)
             {
-                TxtFilteredTablesCount.Text = $"{visibleCount} / {_currentResults.Count} tables";
+                string stepPrefix = _isMultiContractReport ? "2. Tables : " : "Tables affichées : ";
+                TxtFilteredTablesCount.Text = $"{stepPrefix}{visibleCount} / {scopeTotal}";
             }
+
+            UpdateContractQuickDiagnosisBanner();
 
             if (visibleCount == 0)
             {
                 GridCellDiffs.ItemsSource = null;
                 GridCellDiffs.Visibility = Visibility.Collapsed;
                 PanelSelectedTableMatchBanner.Visibility = Visibility.Visible;
-                TxtInlineDiffHeader.Text = "Aucune table ne correspond au filtre";
+                TxtInlineDiffHeader.Text = "Aucune table en écart sur cette sélection";
                 TxtInlineDiffHeader.Foreground = SlateDarkBrush;
                 TxtInlineDiffSubHeader.Text = "-";
-                TxtSelectedTableMatchMessage.Text = "Modifiez le filtre de statut ou la recherche à gauche.";
+                TxtSelectedTableMatchMessage.Text = "Ce contrat est 100% conforme ou aucune table ne correspond au filtre choisi.";
                 BtnJumpToTableIgnored.Visibility = Visibility.Collapsed;
                 return;
             }
@@ -1027,19 +1115,54 @@ namespace AutoActivator.Gui.Views
             }
         }
 
+        private void UpdateContractQuickDiagnosisBanner()
+        {
+            if (PanelContractQuickDiagnosis == null || TxtContractQuickDiagnosis == null) return;
+
+            List<UIComparisonResult> contractTables = _isMultiContractReport && !string.Equals(_selectedBatchTestKey, "ALL", StringComparison.OrdinalIgnoreCase)
+                ? _currentResults.Where(r => string.Equals(r.TestId, _selectedBatchTestKey, StringComparison.OrdinalIgnoreCase)).ToList()
+                : _currentResults;
+
+            var lisaTables = contractTables
+                .Where(r => string.Equals(r.FileType, "LISA", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (lisaTables.Count >= 5)
+            {
+                int missingInTarget = lisaTables.Count(r => r.BaseRowCount > 0 && r.TargetRowCount == 0);
+                int missingInSource = lisaTables.Count(r => r.BaseRowCount == 0 && r.TargetRowCount > 0);
+                int anyNonEmptyTarget = lisaTables.Count(r => r.TargetRowCount > 0);
+                int anyNonEmptySource = lisaTables.Count(r => r.BaseRowCount > 0);
+
+                if (missingInTarget >= 5 && anyNonEmptyTarget == 0)
+                {
+                    TxtContractQuickDiagnosis.Text =
+                        $"Diagnostic rapide : le contrat est actif dans LISA côté SOURCE, mais absent de LISA côté TARGET ({missingInTarget} tables LISA à 0 ligne côté TARGET — contrat non activé sur TARGET).";
+                    PanelContractQuickDiagnosis.Visibility = Visibility.Visible;
+                    return;
+                }
+
+                if (missingInSource >= 5 && anyNonEmptySource == 0)
+                {
+                    TxtContractQuickDiagnosis.Text =
+                        $"Diagnostic rapide : le contrat n'est pas activé dans LISA côté SOURCE (0 ligne sur {missingInSource} tables LISA), alors qu'il est actif côté TARGET.";
+                    PanelContractQuickDiagnosis.Visibility = Visibility.Visible;
+                    return;
+                }
+            }
+
+            PanelContractQuickDiagnosis.Visibility = Visibility.Collapsed;
+        }
+
         private bool FilterComparisonPredicate(object obj)
         {
             if (obj is not UIComparisonResult item) return false;
 
-            if (CmbFilterCompContract?.SelectedItem is ComboBoxItem contractItem)
+            if (_isMultiContractReport &&
+                !string.Equals(_selectedBatchTestKey, "ALL", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(item.TestId, _selectedBatchTestKey, StringComparison.OrdinalIgnoreCase))
             {
-                string contractTag = contractItem.Tag?.ToString() ?? "ALL";
-                if (!string.Equals(contractTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.TestId, contractTag, StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.ContractNumber, contractTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
+                return false;
             }
 
             if (CmbFilterCompStatus?.SelectedItem is ComboBoxItem statusItem)
@@ -1054,17 +1177,12 @@ namespace AutoActivator.Gui.Views
             string query = TxtFilterComparison?.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(query)) return true;
 
-            return (item.ExcelRowDisplay?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.TestId?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.ContractNumber?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.CleanTableName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            return (item.CleanTableName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.TableName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.FileType?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.ProductCode?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.ProcessCode?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.BranchDisplay?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.DifferingColumnsSummary?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.ErrorDetails?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
+                   (item.ContractNumber?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (item.TestId?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (item.DifferingColumnsSummary?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
         }
 
         private void GridResults_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1084,14 +1202,14 @@ namespace AutoActivator.Gui.Views
 
             string contractLabel = string.Equals(selected.TestId, "SINGLE_CONTRACT", StringComparison.OrdinalIgnoreCase)
                 ? $"Contrat : {selected.ContractNumber}"
-                : $"Contrat : {selected.ContractNumber} [{selected.TestId}]";
+                : $"Test : {selected.TestId} ({selected.ContractNumber})";
 
             string subHeader =
                 $"{contractLabel}  |  {selected.BranchDisplay} ({selected.ProductCode}/{selected.ProcessCode})  |  " +
-                $"Lignes (Src -> Tgt) : {selected.VolumeDisplay}  |  OK/Total : {selected.RowsSummary}";
+                $"Lignes (Source -> Target) : {selected.VolumeDisplay}";
             if (selected.IgnoredDifferencesCount > 0)
             {
-                subHeader += $"  |  Ignorées : {selected.IgnoredDifferencesCount}";
+                subHeader += $"  |  Colonnes exclues différentes : {selected.IgnoredDifferencesCount}";
             }
             TxtInlineDiffSubHeader.Text = subHeader;
 
@@ -1105,20 +1223,56 @@ namespace AutoActivator.Gui.Views
                 BtnJumpToTableIgnored.Visibility = Visibility.Collapsed;
             }
 
+            // Cas 1 : Table absente d'un des deux côtés (0 -> N ou N -> 0) -> Explication claire en français sans mélanger de colonnes dans un tableau !
+            if (string.Equals(selected.Status, "KO_MISSING_DATA", StringComparison.OrdinalIgnoreCase))
+            {
+                GridCellDiffs.ItemsSource = null;
+                GridCellDiffs.Visibility = Visibility.Collapsed;
+                PanelSelectedTableMatchBanner.Visibility = Visibility.Visible;
+
+                TxtSelectedTableMatchMessage.Text = selected.BaseRowCount == 0
+                    ? $"Cette table ({selected.CleanTableName}) est vide côté SOURCE (0 ligne), mais contient {selected.TargetRowCount} ligne(s) côté TARGET.\n\n" +
+                      "Cause habituelle : le contrat de référence (SOURCE) n'était pas activé sur cette table, alors que le contrat TARGET l'a alimentée.\n" +
+                      "(Cliquez sur 'Rapport brut' en haut à droite si vous souhaitez consulter les valeurs détaillées de la ligne.)"
+                    : $"Cette table ({selected.CleanTableName}) contient {selected.BaseRowCount} ligne(s) côté SOURCE, mais est vide (0 ligne) côté TARGET.\n\n" +
+                      "Cause habituelle : l'activation ou l'alimentation de cette table n'a pas eu lieu sur le contrat TARGET.\n" +
+                      "(Cliquez sur 'Rapport brut' en haut à droite si vous souhaitez consulter les valeurs attendues de SOURCE.)";
+                return;
+            }
+
+            // Cas 2 : Table identique
             if (selected.IsMatch || selected.ActiveDifferences.Count == 0)
             {
                 GridCellDiffs.ItemsSource = null;
                 GridCellDiffs.Visibility = Visibility.Collapsed;
                 PanelSelectedTableMatchBanner.Visibility = Visibility.Visible;
                 TxtSelectedTableMatchMessage.Text = selected.IsMatch
-                    ? $"Toutes les colonnes métier actives de {selected.CleanTableName} sont strictement identiques entre SOURCE et TARGET ({selected.VolumeDisplay} lignes)."
+                    ? $"Toutes les colonnes métier de {selected.CleanTableName} sont strictement identiques entre SOURCE et TARGET ({selected.VolumeDisplay} lignes)."
                     : selected.ErrorDetails;
+                return;
+            }
+
+            // Cas 3 : Écarts colonne par colonne -> 1 ligne = 1 colonne SQL exacte (Attendu vs Obtenu)
+            List<CellDifferenceItem> columnOnlyDiffs = selected.ActiveDifferences
+                .Where(d => d.DiffKind == "VALUE_DIFF")
+                .ToList();
+
+            if (columnOnlyDiffs.Count == 0)
+            {
+                // Écart pur de nombre de lignes (ex: 2 lignes vs 3 lignes avec les 2 premières identiques)
+                GridCellDiffs.ItemsSource = null;
+                GridCellDiffs.Visibility = Visibility.Collapsed;
+                PanelSelectedTableMatchBanner.Visibility = Visibility.Visible;
+                TxtSelectedTableMatchMessage.Text =
+                    $"Les lignes communes de {selected.CleanTableName} sont identiques, mais le nombre de lignes diffère : " +
+                    $"{selected.BaseRowCount} ligne(s) dans SOURCE contre {selected.TargetRowCount} ligne(s) dans TARGET.\n\n" +
+                    "(Cliquez sur 'Rapport brut' pour voir le détail des lignes supplémentaires ou manquantes.)";
                 return;
             }
 
             PanelSelectedTableMatchBanner.Visibility = Visibility.Collapsed;
             GridCellDiffs.Visibility = Visibility.Visible;
-            GridCellDiffs.ItemsSource = selected.ActiveDifferences;
+            GridCellDiffs.ItemsSource = columnOnlyDiffs;
         }
 
         private void GridCellDiffs_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -1237,7 +1391,6 @@ namespace AutoActivator.Gui.Views
                    (item.ContractNumber?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.TestId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.SystemType?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.RowContextKey?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.SourceDisplay?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.TargetDisplay?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.CategoryBadge?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false);

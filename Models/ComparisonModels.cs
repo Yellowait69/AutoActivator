@@ -52,6 +52,11 @@ namespace AutoActivator.Models
         public string TargetDisplay =>
             string.IsNullOrEmpty(TargetValue) ? "(vide / NULL)" : TargetValue;
 
+        public string CleanColumnDisplay =>
+            RowNumber > 1 && !string.IsNullOrWhiteSpace(RowLabel)
+                ? $"{ColumnName} ({RowLabel})"
+                : ColumnName;
+
         public string RowAndKeyDisplay =>
             string.IsNullOrWhiteSpace(RowContextKey) || RowContextKey == "-"
                 ? RowLabel
@@ -145,6 +150,11 @@ namespace AutoActivator.Models
             !string.Equals(ContractNumber, TestId, StringComparison.OrdinalIgnoreCase)
                 ? $"{ContractNumber} [{TestId}]"
                 : TestId;
+
+        public string CleanColumnDisplay =>
+            RowNumber > 1
+                ? $"{ColumnName} (Ligne {RowNumber})"
+                : ColumnName;
 
         public string RowAndKeyDisplay =>
             string.IsNullOrWhiteSpace(RowContextKey) || RowContextKey == "-"
