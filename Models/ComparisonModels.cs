@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows;
 
 namespace AutoActivator.Models
 {
@@ -55,6 +56,36 @@ namespace AutoActivator.Models
             string.IsNullOrWhiteSpace(RowContextKey) || RowContextKey == "-"
                 ? RowLabel
                 : $"{RowLabel} · {RowContextKey}";
+
+        public string CompactKeyHint => FormatCompactKeyHint(RowContextKey);
+
+        public Visibility CompactKeyVisibility =>
+            string.IsNullOrEmpty(CompactKeyHint) ? Visibility.Collapsed : Visibility.Visible;
+
+        internal static string FormatCompactKeyHint(string? rawKey)
+        {
+            if (string.IsNullOrWhiteSpace(rawKey) || rawKey == "-")
+            {
+                return string.Empty;
+            }
+
+            string[] parts = rawKey.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            var filtered = new List<string>(parts.Length);
+            foreach (string part in parts)
+            {
+                string trimmed = part.Trim();
+                if (trimmed.StartsWith("NO_CNT=", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("NO_CNT_EXTENDED=", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("IT5UCONAIDN=", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("IT5HDMDAIDN=", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                filtered.Add(trimmed);
+            }
+
+            return filtered.Count > 0 ? string.Join(", ", filtered) : string.Empty;
+        }
 
         public string DiffKindBadge => DiffKind switch
         {
@@ -119,6 +150,13 @@ namespace AutoActivator.Models
             string.IsNullOrWhiteSpace(RowContextKey) || RowContextKey == "-"
                 ? $"#{RowNumber}"
                 : $"#{RowNumber} · {RowContextKey}";
+
+        public string ShortRowLabel => $"#{RowNumber}";
+
+        public string CompactKeyHint => CellDifferenceItem.FormatCompactKeyHint(RowContextKey);
+
+        public Visibility CompactKeyVisibility =>
+            string.IsNullOrEmpty(CompactKeyHint) ? Visibility.Collapsed : Visibility.Visible;
 
         public string CategoryBadge => Category switch
         {

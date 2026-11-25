@@ -13,7 +13,6 @@
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
-        <!-- En-tête de tableau léger et sobre (plus de bandeau noir massif) -->
         <Style x:Key="LightGridHeaderStyle" TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#F8FAFC"/>
             <Setter Property="Foreground" Value="#334155"/>
@@ -60,6 +59,46 @@
             </Setter>
         </Style>
 
+        <Style x:Key="ModeSegmentRadioStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="SegBd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SegBd" Property="Background" Value="#EFF6FF"/>
+                                <Setter TargetName="SegBd" Property="BorderBrush" Value="#2563EB"/>
+                                <Setter Property="Foreground" Value="#1D4ED8"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsChecked" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SegBd" Property="Background" Value="White"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="CompactInputBoxStyle" TargetType="TextBox">
             <Setter Property="Padding" Value="7,4"/>
             <Setter Property="FontSize" Value="12"/>
@@ -87,7 +126,7 @@
         </Grid.RowDefinitions>
 
         <!-- EN-TÊTE SOBRE -->
-        <Grid Grid.Row="0" Margin="0,0,0,8">
+        <Grid Grid.Row="0" Margin="0,0,0,6">
             <TextBlock Text="Comparaison Non-Régression"
                        FontSize="19"
                        FontWeight="Bold"
@@ -102,118 +141,36 @@
             </StackPanel>
         </Grid>
 
-        <!-- CARTE CONFIGURATION COMPACTE (SANS ENCADRÉ FLASHY) -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,8">
+        <!-- CARTE CONFIGURATION : DOUBLE MODE (CONTRAT / DEMAND ID DIRECT SQL  OU  FICHIERS CSV) -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,7">
             <StackPanel>
-                <!-- Ligne 1 : Sélecteur rapide Baseline + SOURCE + TARGET -->
-                <Grid Margin="0,0,0,7">
+                <!-- Barre de sélection du mode + Option colonnes d'audit -->
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="115"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="210"/>
-                        <ColumnDefinition Width="14"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Environnement :" FontSize="11.5" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,3"/>
-                        <ComboBox x:Name="CmbSmartEnv" Style="{StaticResource CompactComboStyle}" SelectionChanged="SmartMatcher_Changed" SelectedIndex="0">
-                            <ComboBoxItem Content="D000 (Env D)" Tag="D"/>
-                            <ComboBoxItem Content="Q000 (Env Q)" Tag="Q"/>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="Baseline rapide (auto-match) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,3"/>
-                        <ComboBox x:Name="CmbBaselineSelector" Style="{StaticResource CompactComboStyle}" SelectionChanged="SmartMatcher_Changed"/>
-                    </StackPanel>
-
-                    <!-- SOURCE -->
-                    <StackPanel Grid.Column="4">
-                        <TextBlock Text="Fichier SOURCE (Baseline CSV) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtBaseFile"
-                                     Grid.Column="0"
-                                     IsReadOnly="True"
-                                     Style="{StaticResource CompactInputBoxStyle}"
-                                     Background="#F8FAFC"
-                                     Margin="0,0,4,0"
-                                     ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-                            <Button Grid.Column="1"
-                                    Content="Ouvrir"
-                                    Click="BtnOpenBaseFile_Click"
-                                    Style="{StaticResource NeutralButtonStyle}"
-                                    Padding="8,4"
-                                    Margin="0,0,4,0"/>
-                            <Button Grid.Column="2"
-                                    Content="Parcourir"
-                                    Click="BtnBrowseBase_Click"
-                                    Style="{StaticResource NeutralButtonStyle}"
-                                    Padding="8,4"/>
-                        </Grid>
-                    </StackPanel>
-
-                    <Button Grid.Column="5"
-                            Content="&lt;-&gt;"
-                            ToolTip="Inverser Source et Target"
-                            Click="BtnSwapFiles_Click"
-                            Style="{StaticResource NeutralButtonStyle}"
-                            Padding="7,4"
-                            Margin="8,18,8,0"
-                            VerticalAlignment="Top"/>
-
-                    <!-- TARGET -->
-                    <StackPanel Grid.Column="6">
-                        <TextBlock Text="Fichier TARGET (Extrait CSV) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtTargetFile"
-                                     Grid.Column="0"
-                                     IsReadOnly="True"
-                                     Style="{StaticResource CompactInputBoxStyle}"
-                                     Background="#F8FAFC"
-                                     Margin="0,0,4,0"
-                                     ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-                            <Button Grid.Column="1"
-                                    Content="Ouvrir"
-                                    Click="BtnOpenTargetFile_Click"
-                                    Style="{StaticResource NeutralButtonStyle}"
-                                    Padding="8,4"
-                                    Margin="0,0,4,0"/>
-                            <Button Grid.Column="2"
-                                    Content="Parcourir"
-                                    Click="BtnBrowseTarget_Click"
-                                    Style="{StaticResource NeutralButtonStyle}"
-                                    Padding="8,4"/>
-                        </Grid>
-                    </StackPanel>
-                </Grid>
-
-                <!-- Ligne 2 : Option audit + Barre de progression fine + Comparer + Stop -->
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="14"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="8"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="6"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+
+                    <RadioButton x:Name="RbModeDirectSql"
+                                 Grid.Column="0"
+                                 GroupName="CompInputMode"
+                                 Content="Par Contrat / Demand ID (Extraction SQL directe)"
+                                 Style="{StaticResource ModeSegmentRadioStyle}"
+                                 IsChecked="True"
+                                 Checked="ComparisonMode_Changed"/>
+
+                    <RadioButton x:Name="RbModeCsvFiles"
+                                 Grid.Column="2"
+                                 GroupName="CompInputMode"
+                                 Content="Par Fichiers CSV / Baselines"
+                                 Style="{StaticResource ModeSegmentRadioStyle}"
+                                 Checked="ComparisonMode_Changed"/>
 
                     <CheckBox x:Name="ChkIgnoreTechColumns"
-                              Grid.Column="0"
+                              Grid.Column="4"
                               Content="Ignorer colonnes d'audit"
                               IsChecked="True"
                               VerticalAlignment="Center"
@@ -222,8 +179,200 @@
                               Cursor="Hand"
                               Click="ChkIgnoreTechColumns_Click"
                               ToolTip="Ignore les horodatages techniques supplémentaires ; ils restent visibles dans l'onglet Différences ignorées (0% impact score)"/>
+                </Grid>
 
-                    <Border Grid.Column="2"
+                <!-- MODE 1 : EXTRACTION SQL DIRECTE PAR CONTRAT OU DEMAND ID -->
+                <Grid x:Name="PanelDirectSqlMode" Margin="0,0,0,7">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- SOURCE SQL -->
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="SOURCE (Référence) — Contrat ou Demand ID :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96"/>
+                                <ColumnDefinition Width="5"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox x:Name="CmbDirectSourceEnv"
+                                      Grid.Column="0"
+                                      Style="{StaticResource CompactComboStyle}"
+                                      SelectedIndex="1"
+                                      SelectionChanged="DirectInput_SelectionChanged">
+                                <ComboBoxItem Content="D000" Tag="D"/>
+                                <ComboBoxItem Content="Q000" Tag="Q"/>
+                            </ComboBox>
+                            <TextBox x:Name="TxtDirectSourceInput"
+                                     Grid.Column="2"
+                                     Style="{StaticResource CompactInputBoxStyle}"
+                                     FontWeight="SemiBold"
+                                     TextChanged="DirectInput_TextChanged"
+                                     KeyDown="DirectInput_KeyDown"
+                                     ToolTip="Saisissez un N° de Contrat (ex. 582-...) ou un Demand ID ELIA de référence"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Content="&lt;-&gt;"
+                            ToolTip="Inverser Source et Target (Environnement et Contrat / Demand ID)"
+                            Click="BtnSwapDirectInputs_Click"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Padding="8,4"
+                            Margin="10,18,10,0"
+                            VerticalAlignment="Top"/>
+
+                    <!-- TARGET SQL -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="TARGET (Cible) — Contrat ou Demand ID (vide = même ID si autre env.) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96"/>
+                                <ColumnDefinition Width="5"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox x:Name="CmbDirectTargetEnv"
+                                      Grid.Column="0"
+                                      Style="{StaticResource CompactComboStyle}"
+                                      SelectedIndex="1"
+                                      SelectionChanged="DirectInput_SelectionChanged">
+                                <ComboBoxItem Content="D000" Tag="D"/>
+                                <ComboBoxItem Content="Q000" Tag="Q"/>
+                            </ComboBox>
+                            <TextBox x:Name="TxtDirectTargetInput"
+                                     Grid.Column="2"
+                                     Style="{StaticResource CompactInputBoxStyle}"
+                                     FontWeight="SemiBold"
+                                     TextChanged="DirectInput_TextChanged"
+                                     KeyDown="DirectInput_KeyDown"
+                                     ToolTip="Saisissez le Contrat ou Demand ID à comparer (ou laissez vide si vous comparez le même ID entre Q000 et D000)"/>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+
+                <!-- MODE 2 : FICHIERS CSV / BASELINES (ESPACÉ SUR 2 SOUS-LIGNES LARGES) -->
+                <StackPanel x:Name="PanelCsvFilesMode" Visibility="Collapsed" Margin="0,0,0,7">
+                    <!-- Sélection rapide Baseline -->
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="115"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="320"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Auto-match Baseline :"
+                                   FontSize="11.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#475569"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"/>
+                        <ComboBox x:Name="CmbSmartEnv"
+                                  Grid.Column="1"
+                                  Style="{StaticResource CompactComboStyle}"
+                                  SelectionChanged="SmartMatcher_Changed"
+                                  SelectedIndex="0">
+                            <ComboBoxItem Content="D000 (Env D)" Tag="D"/>
+                            <ComboBoxItem Content="Q000 (Env Q)" Tag="Q"/>
+                        </ComboBox>
+                        <ComboBox x:Name="CmbBaselineSelector"
+                                  Grid.Column="3"
+                                  Style="{StaticResource CompactComboStyle}"
+                                  SelectionChanged="SmartMatcher_Changed"/>
+                    </Grid>
+
+                    <!-- Chemins SOURCE et TARGET pleine largeur (50% / 50%) -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Fichier SOURCE (Baseline CSV) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtBaseFile"
+                                         Grid.Column="0"
+                                         IsReadOnly="True"
+                                         Style="{StaticResource CompactInputBoxStyle}"
+                                         Background="#F8FAFC"
+                                         Margin="0,0,4,0"
+                                         ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                <Button Grid.Column="1"
+                                        Content="Ouvrir"
+                                        Click="BtnOpenBaseFile_Click"
+                                        Style="{StaticResource NeutralButtonStyle}"
+                                        Padding="8,4"
+                                        Margin="0,0,4,0"/>
+                                <Button Grid.Column="2"
+                                        Content="Parcourir"
+                                        Click="BtnBrowseBase_Click"
+                                        Style="{StaticResource NeutralButtonStyle}"
+                                        Padding="8,4"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <Button Grid.Column="1"
+                                Content="&lt;-&gt;"
+                                ToolTip="Inverser les fichiers Source et Target"
+                                Click="BtnSwapFiles_Click"
+                                Style="{StaticResource NeutralButtonStyle}"
+                                Padding="8,4"
+                                Margin="10,18,10,0"
+                                VerticalAlignment="Top"/>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Fichier TARGET (Extrait CSV) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtTargetFile"
+                                         Grid.Column="0"
+                                         IsReadOnly="True"
+                                         Style="{StaticResource CompactInputBoxStyle}"
+                                         Background="#F8FAFC"
+                                         Margin="0,0,4,0"
+                                         ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                <Button Grid.Column="1"
+                                        Content="Ouvrir"
+                                        Click="BtnOpenTargetFile_Click"
+                                        Style="{StaticResource NeutralButtonStyle}"
+                                        Padding="8,4"
+                                        Margin="0,0,4,0"/>
+                                <Button Grid.Column="2"
+                                        Content="Parcourir"
+                                        Click="BtnBrowseTarget_Click"
+                                        Style="{StaticResource NeutralButtonStyle}"
+                                        Padding="8,4"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Barre de progression dynamique + Boutons d'action -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
                             Background="#F8FAFC"
                             BorderBrush="#E2E8F0"
                             BorderThickness="1"
@@ -240,7 +389,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" FontSize="11.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                                    <Run x:Name="TxtCompProgressDetail" Text="Prêt — sélectionnez SOURCE et TARGET" Foreground="#334155" FontWeight="SemiBold"/>
+                                    <Run x:Name="TxtCompProgressDetail" Text="Prêt — saisissez un Contrat / Demand ID ou sélectionnez deux CSV" Foreground="#334155" FontWeight="SemiBold"/>
                                 </TextBlock>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock x:Name="TxtCompProcessedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="11.5"/>
@@ -263,15 +412,16 @@
                     </Border>
 
                     <Button x:Name="BtnRunComparison"
-                            Grid.Column="4"
-                            Content="Comparer"
+                            Grid.Column="2"
+                            Content="Extraire &amp; Comparer"
                             Click="BtnRunComparisonAction_Click"
                             Style="{DynamicResource ActionButtonStyle}"
-                            Width="118"
+                            MinWidth="152"
+                            Padding="14,6"
                             IsEnabled="False"/>
 
                     <Button x:Name="BtnCancelComparison"
-                            Grid.Column="6"
+                            Grid.Column="4"
                             Content="Stop"
                             Click="BtnCancelComparison_Click"
                             Style="{DynamicResource CancelButtonStyle}"
@@ -281,12 +431,12 @@
             </StackPanel>
         </Border>
 
-        <!-- LIGNE DE SYNTHÈSE ÉPURÉE (REMPLACE LA JAUGE ET LES 6 CARTES FLASHY — SEULS LES ÉCARTS EN ROUGE) -->
+        <!-- LIGNE DE SYNTHÈSE ÉPURÉE -->
         <Border x:Name="PanelDashboard"
                 Grid.Row="2"
                 Style="{StaticResource CardBorderStyle}"
-                Padding="14,8"
-                Margin="0,0,0,8"
+                Padding="14,7"
+                Margin="0,0,0,7"
                 Visibility="Collapsed">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -315,6 +465,20 @@
                 </WrapPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnOpenSourceSnapshotQuick"
+                            Content="CSV Source"
+                            Click="BtnOpenBaseFile_Click"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Padding="8,3"
+                            Margin="0,0,5,0"
+                            ToolTip="Ouvrir le snapshot CSV SOURCE utilisé"/>
+                    <Button x:Name="BtnOpenTargetSnapshotQuick"
+                            Content="CSV Target"
+                            Click="BtnOpenTargetFile_Click"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Padding="8,3"
+                            Margin="0,0,5,0"
+                            ToolTip="Ouvrir le snapshot CSV TARGET utilisé"/>
                     <Button x:Name="BtnExportComparisonCsv"
                             Content="Exporter CSV"
                             Click="BtnExportComparisonCsv_Click"
@@ -324,11 +488,11 @@
             </Grid>
         </Border>
 
-        <!-- ZONE PRINCIPALE MAÎTRE-DÉTAIL (HEIGHT=*, ZÉRO SCROLL DE PAGE) -->
+        <!-- ZONE PRINCIPALE MAÎTRE-DÉTAIL AÉRÉE (ZÉRO COLONNE ÉCRASÉE) -->
         <Grid Grid.Row="3">
             <Border x:Name="PanelWaitingCard" Style="{StaticResource CardBorderStyle}" Padding="32">
                 <TextBlock x:Name="TxtComparisonWaiting"
-                           Text="Sélectionnez les fichiers CSV SOURCE (Baseline) et TARGET ci-dessus, puis cliquez sur Comparer."
+                           Text="Saisissez un Contrat ou Demand ID SOURCE et TARGET ci-dessus (ou choisissez deux fichiers CSV), puis lancez la comparaison."
                            Foreground="#64748B"
                            FontSize="13.5"
                            HorizontalAlignment="Center"
@@ -342,10 +506,10 @@
                         Background="White"
                         BorderBrush="#E2E8F0"
                         BorderThickness="1"
-                        Padding="10,8">
+                        Padding="8,6">
                 <TabControl.Resources>
                     <Style TargetType="TabItem">
-                        <Setter Property="Padding" Value="14,7"/>
+                        <Setter Property="Padding" Value="14,6"/>
                         <Setter Property="FontSize" Value="12.5"/>
                         <Setter Property="FontWeight" Value="SemiBold"/>
                         <Setter Property="Foreground" Value="#64748B"/>
@@ -363,7 +527,7 @@
                 </TabControl.Resources>
 
                 <!-- ========================================================================= -->
-                <!-- ONGLET 1 : ÉCARTS MÉTIER — VUE SCINDÉE GAUCHE (TABLES) / DROITE (DÉTAIL)  -->
+                <!-- ONGLET 1 : ÉCARTS MÉTIER — LISTE TABLES COMPACTE (235px) + LARGE TABLEAU   -->
                 <!-- ========================================================================= -->
                 <TabItem x:Name="TabActiveDiffs">
                     <TabItem.Header>
@@ -372,44 +536,44 @@
 
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="420" MinWidth="280"/>
-                            <ColumnDefinition Width="8"/>
-                            <ColumnDefinition Width="*" MinWidth="360"/>
+                            <ColumnDefinition x:Name="ColLeftTablesPane" Width="238" MinWidth="185"/>
+                            <ColumnDefinition x:Name="ColSplitterTablesPane" Width="8"/>
+                            <ColumnDefinition Width="*" MinWidth="420"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- PANNEAU GAUCHE : LISTE DES TABLES SQL -->
-                        <Grid Grid.Column="0">
+                        <!-- PANNEAU GAUCHE COMPACT : NAVIGATION PAR TABLE SQL (SANS TRONCATURE) -->
+                        <Grid x:Name="PanelLeftTablesList" Grid.Column="0">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Barre de filtre simple -->
-                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                            <!-- Recherche + Statut -->
+                            <Grid Grid.Row="0" Margin="0,0,0,5">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="6"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="5"/>
+                                    <ColumnDefinition Width="108"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBox x:Name="TxtFilterComparison"
                                          Grid.Column="0"
                                          Style="{StaticResource CompactInputBoxStyle}"
-                                         ToolTip="Filtrer par nom de table SQL, colonne en écart ou contrat..."
+                                         ToolTip="Filtrer par table SQL ou colonne..."
                                          TextChanged="FilterComparison_Changed"/>
                                 <ComboBox x:Name="CmbFilterCompStatus"
                                           Grid.Column="2"
                                           Style="{StaticResource CompactComboStyle}"
                                           SelectedIndex="1"
                                           SelectionChanged="CmbFilterCompStatus_SelectionChanged">
-                                    <ComboBoxItem Content="Toutes les tables" Tag="ALL"/>
-                                    <ComboBoxItem Content="Écarts uniquement" Tag="KO"/>
-                                    <ComboBoxItem Content="Identiques (OK)" Tag="OK"/>
+                                    <ComboBoxItem Content="Toutes" Tag="ALL"/>
+                                    <ComboBoxItem Content="Écarts (KO)" Tag="KO"/>
+                                    <ComboBoxItem Content="Identiques" Tag="OK"/>
                                 </ComboBox>
                             </Grid>
 
-                            <!-- Sélecteur de contrat (affiché uniquement si batch > 1 contrat) + compteur -->
-                            <Grid Grid.Row="1" Margin="0,0,0,6">
+                            <!-- Sélecteur contrat (visible uniquement en batch > 1 contrat) + Compteur -->
+                            <Grid Grid.Row="1" Margin="0,0,0,5">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
@@ -418,7 +582,7 @@
                                           Grid.Column="0"
                                           Style="{StaticResource CompactComboStyle}"
                                           SelectedIndex="0"
-                                          Margin="0,0,8,0"
+                                          Margin="0,0,6,0"
                                           Visibility="Collapsed"
                                           SelectionChanged="FilterComparison_Changed">
                                     <ComboBoxItem Content="Tous les contrats" Tag="ALL"/>
@@ -426,11 +590,11 @@
                                 <TextBlock x:Name="TxtFilteredTablesCount"
                                            Grid.Column="1"
                                            VerticalAlignment="Center"
-                                           FontSize="11.5"
+                                           FontSize="11"
                                            Foreground="#64748B"/>
                             </Grid>
 
-                            <!-- Liste épurée des tables SQL -->
+                            <!-- Liste épurée des tables SQL (2 colonnes nettes, zéro texte coupé) -->
                             <DataGrid x:Name="GridResults"
                                       Grid.Row="2"
                                       AutoGenerateColumns="False"
@@ -455,7 +619,8 @@
                                 <DataGrid.RowStyle>
                                     <Style TargetType="DataGridRow">
                                         <Setter Property="Background" Value="White"/>
-                                        <Setter Property="Padding" Value="0,2"/>
+                                        <Setter Property="Padding" Value="0,1"/>
+                                        <Setter Property="ToolTip" Value="{Binding LeftRowTooltip}"/>
                                         <Style.Triggers>
                                             <Trigger Property="IsSelected" Value="True">
                                                 <Setter Property="Background" Value="#EFF6FF"/>
@@ -488,8 +653,7 @@
                                     </ContextMenu>
                                 </DataGrid.ContextMenu>
                                 <DataGrid.Columns>
-                                    <!-- Table SQL -->
-                                    <DataGridTemplateColumn Header="Table SQL" Width="138">
+                                    <DataGridTemplateColumn Header="Table SQL" Width="122">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock x:Name="TblText"
@@ -509,35 +673,24 @@
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <!-- Contrat (affiché uniquement si batch multi-contrats) -->
                                     <DataGridTextColumn x:Name="ColCompContract"
                                                         Header="Contrat"
                                                         Binding="{Binding ContractNumber}"
-                                                        Width="112"
+                                                        Width="95"
                                                         FontFamily="Consolas"
-                                                        FontSize="11.5"
+                                                        FontSize="11"
                                                         Visibility="Collapsed"/>
 
-                                    <!-- Lignes Src -> Tgt -->
-                                    <DataGridTextColumn Header="Lignes"
-                                                        Binding="{Binding VolumeDisplay}"
-                                                        Width="74"
-                                                        FontFamily="Consolas"
-                                                        FontSize="11.5"
-                                                        Foreground="#475569"/>
-
-                                    <!-- Résumé écarts (Rouge uniquement si KO) -->
-                                    <DataGridTemplateColumn Header="Statut / Écarts" Width="*">
+                                    <DataGridTemplateColumn Header="Écarts" Width="*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock x:Name="DiffSummaryTxt"
-                                                           Text="{Binding CompactStatusSummary}"
+                                                           Text="{Binding ShortTableStatus}"
                                                            FontSize="11.5"
                                                            FontWeight="SemiBold"
                                                            Foreground="#DC2626"
                                                            VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           ToolTip="{Binding DifferingColumnsSummary}"/>
+                                                           TextTrimming="CharacterEllipsis"/>
                                                 <DataTemplate.Triggers>
                                                     <DataTrigger Binding="{Binding IsMatch}" Value="True">
                                                         <Setter TargetName="DiffSummaryTxt" Property="Foreground" Value="#64748B"/>
@@ -552,33 +705,34 @@
                         </Grid>
 
                         <!-- SÉPARATEUR REDIMENSIONNABLE -->
-                        <GridSplitter Grid.Column="1"
+                        <GridSplitter x:Name="SplitterTablesPane"
+                                      Grid.Column="1"
                                       Width="6"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Stretch"
                                       Background="Transparent"
                                       Cursor="SizeWE"/>
 
-                        <!-- PANNEAU DROIT : DÉTAIL CÔTE À CÔTE SOURCE vs TARGET DE LA TABLE SÉLECTIONNÉE -->
+                        <!-- PANNEAU DROIT LARGE : COMPARAISON CÔTE À CÔTE SOURCE vs TARGET -->
                         <Border Grid.Column="2"
                                 Background="White"
                                 BorderBrush="#E2E8F0"
                                 BorderThickness="1"
                                 CornerRadius="6"
-                                Padding="12,10">
+                                Padding="12,9">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <!-- En-tête de la table sélectionnée -->
+                                <!-- En-tête de la table sélectionnée + Bouton Pleine largeur -->
                                 <Grid Grid.Row="0" Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
+                                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
                                         <TextBlock x:Name="TxtInlineDiffHeader"
                                                    Text="Sélectionnez une table à gauche"
                                                    FontSize="13.5"
@@ -592,6 +746,13 @@
                                                    TextWrapping="Wrap"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                        <Button x:Name="BtnToggleTablesPane"
+                                                Content="Pleine largeur"
+                                                Click="BtnToggleTablesPane_Click"
+                                                Style="{StaticResource NeutralButtonStyle}"
+                                                Padding="8,3"
+                                                Margin="0,0,5,0"
+                                                ToolTip="Masquer ou réafficher la liste des tables à gauche pour élargir au maximum SOURCE et TARGET"/>
                                         <Button x:Name="BtnJumpToTableIgnored"
                                                 Content="Ignorées (0)"
                                                 Click="BtnJumpToTableIgnored_Click"
@@ -628,7 +789,7 @@
                                                TextWrapping="Wrap"/>
                                 </Border>
 
-                                <!-- Grille Côte à Côte SOURCE vs TARGET (Fond blanc pur, SEUL TARGET en rouge) -->
+                                <!-- Grille Côte à Côte SOURCE vs TARGET (Colonnes larges et lisibles, SEUL TARGET en rouge) -->
                                 <DataGrid x:Name="GridCellDiffs"
                                           Grid.Row="1"
                                           AutoGenerateColumns="False"
@@ -646,12 +807,14 @@
                                           GridLinesVisibility="All"
                                           HorizontalGridLinesBrush="#F1F5F9"
                                           VerticalGridLinesBrush="#F1F5F9"
+                                          MouseDoubleClick="GridCellDiffs_MouseDoubleClick"
                                           ScrollViewer.CanContentScroll="True"
-                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                     <DataGrid.CellStyle>
                                         <Style TargetType="DataGridCell">
                                             <Setter Property="BorderThickness" Value="0"/>
-                                            <Setter Property="Padding" Value="8,5"/>
+                                            <Setter Property="Padding" Value="8,6"/>
                                             <Style.Triggers>
                                                 <Trigger Property="IsSelected" Value="True">
                                                     <Setter Property="Background" Value="#EFF6FF"/>
@@ -661,37 +824,60 @@
                                         </Style>
                                     </DataGrid.CellStyle>
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Ligne / Clé"
-                                                            Binding="{Binding RowAndKeyDisplay}"
-                                                            Width="185"
-                                                            FontFamily="Consolas"
-                                                            FontSize="11.5"
-                                                            Foreground="#475569"/>
+                                        <!-- Index compact (56px, zéro débordement) -->
+                                        <DataGridTemplateColumn Header="#" Width="58">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding RowLabel}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="11.5"
+                                                               Foreground="#64748B"
+                                                               VerticalAlignment="Top"
+                                                               ToolTip="{Binding RowAndKeyDisplay}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                        <DataGridTextColumn Header="Colonne"
-                                                            Binding="{Binding ColumnName}"
-                                                            Width="155"
-                                                            FontFamily="Consolas"
-                                                            FontWeight="SemiBold"
-                                                            FontSize="12"
-                                                            Foreground="#0F172A"/>
+                                        <!-- Colonne SQL + Sous-clé compacte éventuelle -->
+                                        <DataGridTemplateColumn Header="Colonne" Width="170">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel VerticalAlignment="Top" ToolTip="{Binding RowAndKeyDisplay}">
+                                                        <TextBlock Text="{Binding ColumnName}"
+                                                                   FontFamily="Consolas"
+                                                                   FontWeight="SemiBold"
+                                                                   FontSize="12"
+                                                                   Foreground="#0F172A"
+                                                                   TextWrapping="Wrap"/>
+                                                        <TextBlock Text="{Binding CompactKeyHint}"
+                                                                   Visibility="{Binding CompactKeyVisibility}"
+                                                                   FontFamily="Consolas"
+                                                                   FontSize="10.5"
+                                                                   Foreground="#64748B"
+                                                                   Margin="0,2,0,0"
+                                                                   TextWrapping="Wrap"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                        <!-- Valeur SOURCE (Baseline) : neutre -->
-                                        <DataGridTemplateColumn Header="Valeur SOURCE (Baseline)" Width="*">
+                                        <!-- Valeur SOURCE : large et neutre -->
+                                        <DataGridTemplateColumn Header="SOURCE (Référence)" Width="*">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding SourceDisplay}"
                                                                FontFamily="Consolas"
                                                                FontSize="12"
                                                                Foreground="#334155"
+                                                               VerticalAlignment="Top"
                                                                TextWrapping="Wrap"
                                                                ToolTip="{Binding SourceDisplay}"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
 
-                                        <!-- Valeur TARGET (Extrait) : ROUGE UNIQUEMENT SUR LA DIFFÉRENCE -->
-                                        <DataGridTemplateColumn Header="Valeur TARGET (Extrait)" Width="*">
+                                        <!-- Valeur TARGET : large et ROUGE UNIQUEMENT SUR LA DIFFÉRENCE -->
+                                        <DataGridTemplateColumn Header="TARGET (Cible)" Width="*">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding TargetDisplay}"
@@ -699,6 +885,7 @@
                                                                FontSize="12"
                                                                FontWeight="Bold"
                                                                Foreground="#DC2626"
+                                                               VerticalAlignment="Top"
                                                                TextWrapping="Wrap"
                                                                ToolTip="{Binding TargetDisplay}"/>
                                                 </DataTemplate>
@@ -712,7 +899,7 @@
                 </TabItem>
 
                 <!-- ========================================================================= -->
-                <!-- ONGLET 2 : DIFFÉRENCES IGNORÉES (0% IMPACT SUR LE SCORE)                  -->
+                <!-- ONGLET 2 : DIFFÉRENCES IGNORÉES (LARGE & LISIBLE, 0% IMPACT SCORE)        -->
                 <!-- ========================================================================= -->
                 <TabItem x:Name="TabIgnoredDiffs">
                     <TabItem.Header>
@@ -725,15 +912,14 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Barre de filtres sobre sur 1 ligne -->
-                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid Grid.Row="0" Margin="0,0,0,7">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="8"/>
                                 <ColumnDefinition Width="195"/>
                                 <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="210"/>
-                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -758,6 +944,8 @@
 
                             <ComboBox x:Name="CmbFilterIgnoredContract"
                                       Grid.Column="4"
+                                      Width="190"
+                                      Visibility="Collapsed"
                                       Style="{StaticResource CompactComboStyle}"
                                       SelectedIndex="0"
                                       SelectionChanged="FilterIgnored_Changed">
@@ -777,7 +965,6 @@
                                     Style="{StaticResource NeutralButtonStyle}"/>
                         </Grid>
 
-                        <!-- Grille sobre des différences ignorées -->
                         <DataGrid x:Name="GridIgnoredDiffs"
                                   Grid.Row="1"
                                   AutoGenerateColumns="False"
@@ -796,7 +983,8 @@
                                   HorizontalGridLinesBrush="#F1F5F9"
                                   VerticalGridLinesBrush="#F1F5F9"
                                   ScrollViewer.CanContentScroll="True"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                             <DataGrid.CellStyle>
                                 <Style TargetType="DataGridCell">
                                     <Setter Property="BorderThickness" Value="0"/>
@@ -812,60 +1000,78 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Table SQL"
                                                     Binding="{Binding CleanTableName}"
-                                                    Width="135"
+                                                    Width="124"
                                                     FontFamily="Consolas"
                                                     FontWeight="SemiBold"
                                                     FontSize="12"
                                                     Foreground="#0F172A"/>
 
-                                <DataGridTextColumn Header="Colonne ignorée"
-                                                    Binding="{Binding ColumnName}"
-                                                    Width="165"
-                                                    FontFamily="Consolas"
-                                                    FontWeight="SemiBold"
-                                                    FontSize="12"
-                                                    Foreground="#334155"/>
+                                <DataGridTemplateColumn Header="Colonne ignorée" Width="170">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel VerticalAlignment="Top" ToolTip="{Binding RowAndKeyDisplay}">
+                                                <TextBlock Text="{Binding ColumnName}"
+                                                           FontFamily="Consolas"
+                                                           FontWeight="SemiBold"
+                                                           FontSize="12"
+                                                           Foreground="#334155"
+                                                           TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding CompactKeyHint}"
+                                                           Visibility="{Binding CompactKeyVisibility}"
+                                                           FontFamily="Consolas"
+                                                           FontSize="10.5"
+                                                           Foreground="#64748B"
+                                                           Margin="0,2,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
                                 <DataGridTextColumn Header="Règle"
                                                     Binding="{Binding CategoryBadge}"
-                                                    Width="135"
+                                                    Width="120"
                                                     FontSize="11.5"
                                                     Foreground="#475569"/>
 
-                                <DataGridTextColumn Header="Contrat"
+                                <DataGridTextColumn x:Name="ColIgnoredContract"
+                                                    Header="Contrat"
                                                     Binding="{Binding ContractAndTestDisplay}"
-                                                    Width="150"
+                                                    Width="140"
+                                                    Visibility="Collapsed"
                                                     FontFamily="Consolas"
                                                     FontSize="11.5"
                                                     Foreground="#475569"/>
 
-                                <DataGridTextColumn Header="Ligne / Clé"
-                                                    Binding="{Binding RowAndKeyDisplay}"
-                                                    Width="175"
+                                <DataGridTextColumn Header="#"
+                                                    Binding="{Binding ShortRowLabel}"
+                                                    Width="52"
                                                     FontFamily="Consolas"
                                                     FontSize="11.5"
                                                     Foreground="#64748B"/>
 
-                                <DataGridTemplateColumn Header="Valeur SOURCE" Width="*">
+                                <DataGridTemplateColumn Header="SOURCE (Référence)" Width="*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding SourceDisplay}"
                                                        FontFamily="Consolas"
                                                        FontSize="12"
                                                        Foreground="#334155"
+                                                       VerticalAlignment="Top"
                                                        TextWrapping="Wrap"
                                                        ToolTip="{Binding SourceDisplay}"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
 
-                                <DataGridTemplateColumn Header="Valeur TARGET" Width="*">
+                                <DataGridTemplateColumn Header="TARGET (Cible)" Width="*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding TargetDisplay}"
                                                        FontFamily="Consolas"
                                                        FontSize="12"
                                                        Foreground="#DC2626"
+                                                       VerticalAlignment="Top"
                                                        TextWrapping="Wrap"
                                                        ToolTip="{Binding TargetDisplay}"/>
                                         </DataTemplate>

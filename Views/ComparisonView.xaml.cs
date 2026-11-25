@@ -5,6 +5,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -36,6 +38,8 @@ namespace AutoActivator.Gui.Views
         public string BranchDisplay => IsBranch23 ? "Branche 23" : "Branche 21";
         public string RowsSummary { get; set; } = string.Empty;
         public string VolumeDisplay { get; set; } = string.Empty;
+        public int BaseRowCount { get; set; }
+        public int TargetRowCount { get; set; }
         public string Status { get; set; } = string.Empty;
         public string ErrorDetails { get; set; } = string.Empty;
         public int DifferingColumnsCount { get; set; }
@@ -53,40 +57,48 @@ namespace AutoActivator.Gui.Views
             "OK" => "OK",
             "OK_EMPTY" => "Vide (0/0)",
             "KO_ROW_COUNT" => "Écart volume",
-            "KO_MISSING_DATA" => "Données absentes",
+            "KO_MISSING_DATA" => BaseRowCount == 0 ? $"Ajouté dans Target (0 -> {TargetRowCount})" : $"Absent dans Target ({BaseRowCount} -> 0)",
             _ => "Écart métier"
         };
 
-        public string CompactStatusSummary
+        /// <summary>
+        /// Libellé ultra-concis (<= 14 car.) pour le panneau gauche de 235px afin de ne jamais être coupé.
+        /// </summary>
+        public string ShortTableStatus
         {
             get
             {
                 if (IsMatch)
                 {
                     return string.Equals(Status, "OK_EMPTY", StringComparison.OrdinalIgnoreCase)
-                        ? "Vide (0/0)"
+                        ? "Vide"
                         : "OK";
                 }
 
                 if (string.Equals(Status, "KO_MISSING_DATA", StringComparison.OrdinalIgnoreCase))
                 {
-                    return !string.IsNullOrWhiteSpace(DifferingColumnsSummary) && DifferingColumnsSummary != "-"
-                        ? DifferingColumnsSummary
-                        : "Données absentes";
+                    return BaseRowCount == 0
+                        ? $"+{TargetRowCount} Target"
+                        : $"-{BaseRowCount} Target";
                 }
 
                 if (string.Equals(Status, "KO_ROW_COUNT", StringComparison.OrdinalIgnoreCase))
                 {
                     return DifferingColumnsCount > 0
-                        ? $"Volume + {DifferingColumnsCount} col. KO"
-                        : "Écart volume";
+                        ? $"Vol. +{DifferingColumnsCount} col."
+                        : $"Vol. {BaseRowCount}->{TargetRowCount}";
                 }
 
                 return DifferingColumnsCount > 0
-                    ? $"{DifferingColumnsCount} col. KO ({DifferingColumnsSummary})"
-                    : DifferingColumnsSummary;
+                    ? $"{DifferingColumnsCount} col. KO"
+                    : "Écart";
             }
         }
+
+        public string LeftRowTooltip =>
+            IsMatch
+                ? $"{CleanTableName} ({FileType}) — Identique ({VolumeDisplay} lignes)"
+                : $"{CleanTableName} ({FileType}) — Lignes : {VolumeDisplay}\n{DifferingColumnsSummary}";
     }
 
     public partial class ComparisonView : UserControl
@@ -96,6 +108,7 @@ namespace AutoActivator.Gui.Views
         private static readonly SolidColorBrush DiffRedBrush = CreateFrozenBrush("#DC2626");
 
         private readonly OperationProgressController _progressController;
+        private readonly ExtractionService _extractionService = new ExtractionService();
 
         private List<UIComparisonResult> _currentResults = new List<UIComparisonResult>();
         private List<IgnoredDifferenceItem> _currentIgnoredDiffs = new List<IgnoredDifferenceItem>();
@@ -105,6 +118,8 @@ namespace AutoActivator.Gui.Views
         private string _ignoredCategoryFilter = "ALL";
         private bool _suppressStatusComboSync;
         private bool _suppressIgnoredCategorySync;
+        private bool _isLeftPaneCollapsed;
+        private GridLength _savedLeftPaneWidth = new GridLength(238);
 
         private static SolidColorBrush CreateFrozenBrush(string hex)
         {
@@ -126,23 +141,38 @@ namespace AutoActivator.Gui.Views
                 TxtCompElapsedTime,
                 TxtCompProgressPercentage);
 
-            _progressController.Reset("Prêt — sélectionnez SOURCE et TARGET");
+            UpdateModeVisibilityAndRunButton();
+            _progressController.Reset("Prêt — saisissez un Contrat / Demand ID ou choisissez deux CSV");
         }
 
-        private void BtnHelp_Click(object sender, RoutedEventArgs e)
-        {
-            if (Window.GetWindow(this) is MainWindow mainWindow)
-            {
-                mainWindow.OpenHelpTargetingTab(2);
-            }
-        }
+        private bool IsDirectSqlMode => RbModeDirectSql?.IsChecked == true;
 
         private void UserControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
             if (e.NewValue is bool isVisible && isVisible)
             {
                 LoadBaselines();
+                CheckEnableRunButton();
             }
+        }
+
+        private void ComparisonMode_Changed(object sender, RoutedEventArgs e)
+        {
+            UpdateModeVisibilityAndRunButton();
+        }
+
+        private void UpdateModeVisibilityAndRunButton()
+        {
+            if (PanelDirectSqlMode == null || PanelCsvFilesMode == null || BtnRunComparison == null)
+            {
+                return;
+            }
+
+            bool directSql = IsDirectSqlMode;
+            PanelDirectSqlMode.Visibility = directSql ? Visibility.Visible : Visibility.Collapsed;
+            PanelCsvFilesMode.Visibility = directSql ? Visibility.Collapsed : Visibility.Visible;
+            BtnRunComparison.Content = directSql ? "Extraire & Comparer" : "Comparer";
+            CheckEnableRunButton();
         }
 
         public void LoadLatestExtractionForComparison(string? targetCsvPath)
@@ -151,6 +181,12 @@ namespace AutoActivator.Gui.Views
 
             if (!string.IsNullOrWhiteSpace(targetCsvPath) && File.Exists(targetCsvPath))
             {
+                if (RbModeCsvFiles != null)
+                {
+                    RbModeCsvFiles.IsChecked = true;
+                }
+                UpdateModeVisibilityAndRunButton();
+
                 TxtTargetFile.Text = targetCsvPath;
                 string fileName = Path.GetFileName(targetCsvPath);
                 string[] channels = { "C01", "C02", "C03", "C05" };
@@ -175,6 +211,8 @@ namespace AutoActivator.Gui.Views
 
         private void LoadBaselines()
         {
+            if (CmbBaselineSelector == null) return;
+
             if (Directory.Exists(Settings.BaselineDir))
             {
                 var files = Directory.GetFiles(Settings.BaselineDir, "*.csv")
@@ -249,14 +287,56 @@ namespace AutoActivator.Gui.Views
             return null;
         }
 
+        // =============================================================
+        // CONTRÔLES D'ENTRÉE (SQL DIRECT & FICHIERS CSV)
+        // =============================================================
+
+        private void DirectInput_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            CheckEnableRunButton();
+        }
+
+        private void DirectInput_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            CheckEnableRunButton();
+        }
+
+        private void DirectInput_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && BtnRunComparison?.IsEnabled == true)
+            {
+                e.Handled = true;
+                BtnRunComparisonAction_Click(sender, e);
+            }
+        }
+
+        private void BtnSwapDirectInputs_Click(object sender, RoutedEventArgs e)
+        {
+            if (TxtDirectSourceInput == null || TxtDirectTargetInput == null ||
+                CmbDirectSourceEnv == null || CmbDirectTargetEnv == null)
+            {
+                return;
+            }
+
+            string tmpText = TxtDirectSourceInput.Text;
+            TxtDirectSourceInput.Text = TxtDirectTargetInput.Text;
+            TxtDirectTargetInput.Text = tmpText;
+
+            int tmpEnvIdx = CmbDirectSourceEnv.SelectedIndex;
+            CmbDirectSourceEnv.SelectedIndex = CmbDirectTargetEnv.SelectedIndex;
+            CmbDirectTargetEnv.SelectedIndex = tmpEnvIdx;
+
+            CheckEnableRunButton();
+        }
+
         private void BtnOpenBaseFile_Click(object sender, RoutedEventArgs e)
         {
-            MainWindow.TryOpenFileDirect(TxtBaseFile?.Text, "Ouverture SOURCE (Baseline)");
+            MainWindow.TryOpenFileDirect(TxtBaseFile?.Text, "Snapshot CSV SOURCE");
         }
 
         private void BtnOpenTargetFile_Click(object sender, RoutedEventArgs e)
         {
-            MainWindow.TryOpenFileDirect(TxtTargetFile?.Text, "Ouverture TARGET (Extrait)");
+            MainWindow.TryOpenFileDirect(TxtTargetFile?.Text, "Snapshot CSV TARGET");
         }
 
         private void BtnSwapFiles_Click(object sender, RoutedEventArgs e)
@@ -310,24 +390,6 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-        private void BtnOpenBaselineFolder_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                Directory.CreateDirectory(Settings.BaselineDir);
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = Path.GetFullPath(Settings.BaselineDir),
-                    UseShellExecute = true,
-                    Verb = "open"
-                });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Impossible d'ouvrir le dossier Baselines : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
         private void BtnBrowseBase_Click(object sender, RoutedEventArgs e)
         {
             var openFileDialog = new OpenFileDialog
@@ -368,13 +430,38 @@ namespace AutoActivator.Gui.Views
             }
         }
 
+        private bool CanRunCurrentMode()
+        {
+            if (IsDirectSqlMode)
+            {
+                string srcId = TxtDirectSourceInput?.Text?.Trim() ?? string.Empty;
+                string tgtId = TxtDirectTargetInput?.Text?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(srcId) && string.IsNullOrWhiteSpace(tgtId))
+                {
+                    return false;
+                }
+
+                string srcEnv = (CmbDirectSourceEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q";
+                string tgtEnv = (CmbDirectTargetEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q";
+
+                // Valide si les deux champs sont renseignés, OU si un seul champ est renseigné sur deux environnements différents (ex. Q000 vs D000)
+                if (!string.IsNullOrWhiteSpace(srcId) && !string.IsNullOrWhiteSpace(tgtId))
+                {
+                    return true;
+                }
+
+                return !string.Equals(srcEnv, tgtEnv, StringComparison.OrdinalIgnoreCase);
+            }
+
+            return !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) &&
+                   !string.IsNullOrWhiteSpace(TxtTargetFile?.Text);
+        }
+
         private void CheckEnableRunButton()
         {
             if (BtnRunComparison == null) return;
-            bool hasFiles = !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) &&
-                            !string.IsNullOrWhiteSpace(TxtTargetFile?.Text);
             bool running = Window.GetWindow(this) is MainWindow mw && mw.IsProcessRunning;
-            BtnRunComparison.IsEnabled = hasFiles && !running;
+            BtnRunComparison.IsEnabled = !running && CanRunCurrentMode();
         }
 
         private void SetComparisonButtons(bool running)
@@ -385,9 +472,7 @@ namespace AutoActivator.Gui.Views
             }
             if (BtnRunComparison != null)
             {
-                bool hasFiles = !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) &&
-                                !string.IsNullOrWhiteSpace(TxtTargetFile?.Text);
-                BtnRunComparison.IsEnabled = !running && hasFiles;
+                BtnRunComparison.IsEnabled = !running && CanRunCurrentMode();
             }
         }
 
@@ -399,27 +484,106 @@ namespace AutoActivator.Gui.Views
             }
         }
 
+        private void BtnToggleTablesPane_Click(object sender, RoutedEventArgs e)
+        {
+            if (ColLeftTablesPane == null || ColSplitterTablesPane == null || PanelLeftTablesList == null || BtnToggleTablesPane == null)
+            {
+                return;
+            }
+
+            if (!_isLeftPaneCollapsed)
+            {
+                if (ColLeftTablesPane.ActualWidth > 120)
+                {
+                    _savedLeftPaneWidth = new GridLength(ColLeftTablesPane.ActualWidth);
+                }
+                _isLeftPaneCollapsed = true;
+                PanelLeftTablesList.Visibility = Visibility.Collapsed;
+                SplitterTablesPane.Visibility = Visibility.Collapsed;
+                ColLeftTablesPane.MinWidth = 0;
+                ColLeftTablesPane.Width = new GridLength(0);
+                ColSplitterTablesPane.Width = new GridLength(0);
+                BtnToggleTablesPane.Content = "Afficher tables";
+            }
+            else
+            {
+                _isLeftPaneCollapsed = false;
+                PanelLeftTablesList.Visibility = Visibility.Visible;
+                SplitterTablesPane.Visibility = Visibility.Visible;
+                ColLeftTablesPane.MinWidth = 185;
+                ColLeftTablesPane.Width = _savedLeftPaneWidth.Value >= 185 ? _savedLeftPaneWidth : new GridLength(238);
+                ColSplitterTablesPane.Width = new GridLength(8);
+                BtnToggleTablesPane.Content = "Pleine largeur";
+            }
+        }
+
         // =============================================================
-        // EXECUTION ASYNCHRONE AVEC PROGRESSION DYNAMIQUE & STOP
+        // EXÉCUTION ASYNCHRONE : EXTRACTION SQL DIRECTE + COMPARAISON
         // =============================================================
 
         private void ChkIgnoreTechColumns_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentResults.Count > 0 && BtnRunComparison?.IsEnabled == true)
+            // En cas de bascule de la case d'audit, relance instantanément sur les deux CSV déjà disponibles sans ré-extraire SQL
+            if (_currentResults.Count > 0 &&
+                !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) &&
+                !string.IsNullOrWhiteSpace(TxtTargetFile?.Text) &&
+                File.Exists(TxtBaseFile.Text) &&
+                File.Exists(TxtTargetFile.Text) &&
+                !(Window.GetWindow(this) is MainWindow mw && mw.IsProcessRunning))
             {
-                BtnRunComparisonAction_Click(sender, e);
+                _ = ExecuteComparisonAsync(forceUseExistingCsvFiles: true);
             }
         }
 
         private async void BtnRunComparisonAction_Click(object sender, RoutedEventArgs e)
         {
+            await ExecuteComparisonAsync(forceUseExistingCsvFiles: false);
+        }
+
+        private async Task ExecuteComparisonAsync(bool forceUseExistingCsvFiles)
+        {
             if (Window.GetWindow(this) is not MainWindow mainWindow) return;
 
-            string baseFile = TxtBaseFile.Text.Trim();
-            string targetFile = TxtTargetFile.Text.Trim();
             bool ignoreTechCols = ChkIgnoreTechColumns?.IsChecked == true;
+            bool runDirectSql = IsDirectSqlMode && !forceUseExistingCsvFiles;
 
-            if (string.IsNullOrEmpty(baseFile) || string.IsNullOrEmpty(targetFile)) return;
+            string directSrcInput = TxtDirectSourceInput?.Text?.Trim() ?? string.Empty;
+            string directTgtInput = TxtDirectTargetInput?.Text?.Trim() ?? string.Empty;
+            string srcEnvLetter = (CmbDirectSourceEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q";
+            string tgtEnvLetter = (CmbDirectTargetEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q";
+
+            if (runDirectSql)
+            {
+                if (string.IsNullOrWhiteSpace(directSrcInput) && !string.IsNullOrWhiteSpace(directTgtInput) &&
+                    !string.Equals(srcEnvLetter, tgtEnvLetter, StringComparison.OrdinalIgnoreCase))
+                {
+                    directSrcInput = directTgtInput;
+                }
+                else if (string.IsNullOrWhiteSpace(directTgtInput) && !string.IsNullOrWhiteSpace(directSrcInput) &&
+                         !string.Equals(srcEnvLetter, tgtEnvLetter, StringComparison.OrdinalIgnoreCase))
+                {
+                    directTgtInput = directSrcInput;
+                }
+
+                if (string.IsNullOrWhiteSpace(directSrcInput) || string.IsNullOrWhiteSpace(directTgtInput))
+                {
+                    MessageBox.Show(
+                        "Veuillez saisir le Contrat ou Demand ID SOURCE et le Contrat ou Demand ID TARGET (ou choisir deux environnements différents Q000 vs D000 pour comparer un même contrat).",
+                        "Comparaison par Contrat / Demand ID",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+            }
+            else
+            {
+                string b = TxtBaseFile?.Text?.Trim() ?? string.Empty;
+                string t = TxtTargetFile?.Text?.Trim() ?? string.Empty;
+                if (string.IsNullOrEmpty(b) || string.IsNullOrEmpty(t))
+                {
+                    return;
+                }
+            }
 
             SetComparisonButtons(running: true);
 
@@ -427,21 +591,119 @@ namespace AutoActivator.Gui.Views
             TabComparisonMain.Visibility = Visibility.Collapsed;
             PanelWaitingCard.Visibility = Visibility.Visible;
             TxtComparisonWaiting.Foreground = SlateMutedBrush;
-            TxtComparisonWaiting.Text = "Comparaison SOURCE vs TARGET en cours...";
+            TxtComparisonWaiting.Text = runDirectSql
+                ? $"Extraction SQL complète LISA + ELIA en cours pour SOURCE ({directSrcInput} en {srcEnvLetter}000) et TARGET ({directTgtInput} en {tgtEnvLetter}000)..."
+                : "Comparaison SOURCE vs TARGET en cours...";
 
-            _progressController.Start("Initialisation de la comparaison SOURCE vs TARGET...", totalUnits: 0, showEta: true);
-            mainWindow.TxtStatus.Text = "Comparaison table par table en cours...";
+            _progressController.Start(
+                runDirectSql
+                    ? $"Extraction parallèle SOURCE ({srcEnvLetter}000) & TARGET ({tgtEnvLetter}000)..."
+                    : "Initialisation de la comparaison SOURCE vs TARGET...",
+                totalUnits: runDirectSql ? 12 : 0,
+                showEta: true);
+
+            mainWindow.TxtStatus.Text = runDirectSql
+                ? $"Extraction SQL complète et comparaison : {directSrcInput} ({srcEnvLetter}000) vs {directTgtInput} ({tgtEnvLetter}000)..."
+                : "Comparaison table par table en cours...";
 
             await mainWindow.RunProcessAsync(async token =>
             {
                 try
                 {
+                    string baseFile;
+                    string targetFile;
+
+                    if (runDirectSql)
+                    {
+                        bool srcIsDemand = ExcelHelper.IsDemandIdInput(directSrcInput);
+                        bool tgtIsDemand = ExcelHelper.IsDemandIdInput(directTgtInput);
+                        int srcStep = 0;
+                        int tgtStep = 0;
+
+                        void ReportDualExtractionProgress(string latestDetail)
+                        {
+                            double completed = Math.Min(10.0, srcStep + tgtStep);
+                            _progressController.Report(completed, 12.0, latestDetail);
+                        }
+
+                        Task<ExtractionResult> srcTask = _extractionService.PerformExtractionAsync(
+                            directSrcInput,
+                            $"{srcEnvLetter}000",
+                            saveIndividualFile: true,
+                            isDemandId: srcIsDemand,
+                            token: token,
+                            onStepProgress: (s, _, msg) =>
+                            {
+                                Interlocked.Exchange(ref srcStep, Math.Clamp(s, 0, 5));
+                                ReportDualExtractionProgress($"[SOURCE {srcEnvLetter}000] {msg}");
+                            },
+                            fileTag: "SRC");
+
+                        Task<ExtractionResult> tgtTask = _extractionService.PerformExtractionAsync(
+                            directTgtInput,
+                            $"{tgtEnvLetter}000",
+                            saveIndividualFile: true,
+                            isDemandId: tgtIsDemand,
+                            token: token,
+                            onStepProgress: (s, _, msg) =>
+                            {
+                                Interlocked.Exchange(ref tgtStep, Math.Clamp(s, 0, 5));
+                                ReportDualExtractionProgress($"[TARGET {tgtEnvLetter}000] {msg}");
+                            },
+                            fileTag: "TGT");
+
+                        ExtractionResult[] extracted = await Task.WhenAll(srcTask, tgtTask).ConfigureAwait(false);
+                        ExtractionResult srcResult = extracted[0];
+                        ExtractionResult tgtResult = extracted[1];
+
+                        bool srcEmpty = srcResult.InternalId == "Not found" && srcResult.UconId == "Not found";
+                        bool tgtEmpty = tgtResult.InternalId == "Not found" && tgtResult.UconId == "Not found";
+                        if (srcEmpty || tgtEmpty)
+                        {
+                            string missingMsg = srcEmpty && tgtEmpty
+                                ? $"SOURCE ({directSrcInput} en {srcEnvLetter}000) et TARGET ({directTgtInput} en {tgtEnvLetter}000) sont tous deux introuvables dans LISA et ELIA."
+                                : srcEmpty
+                                    ? $"SOURCE ({directSrcInput} en {srcEnvLetter}000) est introuvable dans LISA et ELIA."
+                                    : $"TARGET ({directTgtInput} en {tgtEnvLetter}000) est introuvable dans LISA et ELIA.";
+                            throw new InvalidOperationException(missingMsg);
+                        }
+
+                        baseFile = srcResult.FilePath;
+                        targetFile = tgtResult.FilePath;
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            if (TxtBaseFile != null) TxtBaseFile.Text = baseFile;
+                            if (TxtTargetFile != null) TxtTargetFile.Text = targetFile;
+                        });
+                    }
+                    else
+                    {
+                        baseFile = await Dispatcher.InvokeAsync(() => TxtBaseFile?.Text?.Trim() ?? string.Empty);
+                        targetFile = await Dispatcher.InvokeAsync(() => TxtTargetFile?.Text?.Trim() ?? string.Empty);
+                    }
+
+                    token.ThrowIfCancellationRequested();
+
                     var orchestrator = new ComparisonOrchestrator();
                     ComparisonReport report = await orchestrator.RunFullComparisonAsync(
                             baseFile,
                             targetFile,
                             ignoreTechCols,
-                            progress => _progressController.Report(progress.CurrentStep, progress.TotalSteps, progress.Message),
+                            progress =>
+                            {
+                                if (runDirectSql)
+                                {
+                                    double mapped = 10.0 + (progress.TotalSteps > 0
+                                        ? (double)progress.CurrentStep / progress.TotalSteps * 2.0
+                                        : 1.0);
+                                    _progressController.Report(mapped, 12.0, progress.Message);
+                                }
+                                else
+                                {
+                                    _progressController.Report(progress.CurrentStep, progress.TotalSteps, progress.Message);
+                                }
+                            },
                             token)
                         .ConfigureAwait(false);
 
@@ -465,7 +727,7 @@ namespace AutoActivator.Gui.Views
                             $"Comparaison terminée — Conformité : {report.GlobalSuccessPercentage:F2}% " +
                             $"({report.TotalTablesWithDifferences} table(s) KO, {report.IgnoredDifferences.Count} diff. ignorée(s) à 0% d'impact).";
                         _progressController.Complete(
-                            $"Terminé — Conformité : {report.GlobalSuccessPercentage:F2}% ({report.ComparedTestsCount} contrat(s))",
+                            $"Terminé — Conformité : {report.GlobalSuccessPercentage:F2}% ({report.TotalTablesWithDifferences} table(s) en écart)",
                             warning: report.TotalTablesWithDifferences > 0);
                         UpdateDashboardUI(report);
                     });
@@ -474,7 +736,7 @@ namespace AutoActivator.Gui.Views
                 {
                     await Dispatcher.InvokeAsync(() =>
                     {
-                        _progressController.Cancel("Comparaison annulée par l'utilisateur.");
+                        _progressController.Cancel("Opération annulée par l'utilisateur.");
                         TxtComparisonWaiting.Text = "Comparaison arrêtée à la demande de l'utilisateur.";
                         TxtComparisonWaiting.Foreground = SlateMutedBrush;
                     });
@@ -535,6 +797,7 @@ namespace AutoActivator.Gui.Views
             CmbFilterCompContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
             ColCompContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
             CmbFilterIgnoredContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
+            ColIgnoredContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
 
             var uiResults = new List<UIComparisonResult>(report.FileResults.Count);
             foreach (FileComparisonResult r in report.FileResults)
@@ -556,6 +819,8 @@ namespace AutoActivator.Gui.Views
                     IsBranch23 = r.IsBranch23,
                     RowsSummary = r.RowsSummary,
                     VolumeDisplay = r.VolumeDisplay,
+                    BaseRowCount = r.BaseRowCount,
+                    TargetRowCount = r.TargetRowCount,
                     Status = r.Status,
                     IsMatch = r.IsMatch,
                     DifferingColumns = r.DifferingColumns,
@@ -735,7 +1000,7 @@ namespace AutoActivator.Gui.Views
 
             if (TxtFilteredTablesCount != null)
             {
-                TxtFilteredTablesCount.Text = $"{visibleCount} / {_currentResults.Count} table(s)";
+                TxtFilteredTablesCount.Text = $"{visibleCount} / {_currentResults.Count} tables";
             }
 
             if (visibleCount == 0)
@@ -746,7 +1011,7 @@ namespace AutoActivator.Gui.Views
                 TxtInlineDiffHeader.Text = "Aucune table ne correspond au filtre";
                 TxtInlineDiffHeader.Foreground = SlateDarkBrush;
                 TxtInlineDiffSubHeader.Text = "-";
-                TxtSelectedTableMatchMessage.Text = "Modifiez le filtre de statut ou la recherche ci-dessus.";
+                TxtSelectedTableMatchMessage.Text = "Modifiez le filtre de statut ou la recherche à gauche.";
                 BtnJumpToTableIgnored.Visibility = Visibility.Collapsed;
                 return;
             }
@@ -817,9 +1082,12 @@ namespace AutoActivator.Gui.Views
             TxtInlineDiffHeader.Text = $"{selected.CleanTableName} ({selected.FileType}) — {selected.StatusBadgeText}";
             TxtInlineDiffHeader.Foreground = selected.IsMatch ? SlateDarkBrush : DiffRedBrush;
 
+            string contractLabel = string.Equals(selected.TestId, "SINGLE_CONTRACT", StringComparison.OrdinalIgnoreCase)
+                ? $"Contrat : {selected.ContractNumber}"
+                : $"Contrat : {selected.ContractNumber} [{selected.TestId}]";
+
             string subHeader =
-                $"Contrat : {selected.ContractNumber} [{selected.TestId}]  |  " +
-                $"{selected.BranchDisplay} ({selected.ProductCode}/{selected.ProcessCode})  |  " +
+                $"{contractLabel}  |  {selected.BranchDisplay} ({selected.ProductCode}/{selected.ProcessCode})  |  " +
                 $"Lignes (Src -> Tgt) : {selected.VolumeDisplay}  |  OK/Total : {selected.RowsSummary}";
             if (selected.IgnoredDifferencesCount > 0)
             {
@@ -851,6 +1119,11 @@ namespace AutoActivator.Gui.Views
             PanelSelectedTableMatchBanner.Visibility = Visibility.Collapsed;
             GridCellDiffs.Visibility = Visibility.Visible;
             GridCellDiffs.ItemsSource = selected.ActiveDifferences;
+        }
+
+        private void GridCellDiffs_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            InspectSelectedComparisonRow();
         }
 
         private void BtnJumpToTableIgnored_Click(object sender, RoutedEventArgs e)
@@ -1228,7 +1501,7 @@ namespace AutoActivator.Gui.Views
             sb.AppendLine("                   SQL TABLE COMPARISON DIAGNOSTIC REPORT");
             sb.AppendLine("====================================================================================");
             sb.AppendLine("[0. SYNTHÈSE DU CONTRAT & ROUTAGE MÉTIER]");
-            sb.AppendLine($"  - Contrat (3-7-2)      : {selected.ContractNumber}  |  Excel Row : {selected.ExcelRowDisplay}  |  Test ID : {selected.TestId}");
+            sb.AppendLine($"  - Contrat(s)           : {selected.ContractNumber}  |  Excel Row : {selected.ExcelRowDisplay}  |  Test ID : {selected.TestId}");
             sb.AppendLine($"  - Produit / Process    : {selected.ProductCode}  /  {selected.ProcessCode}  (ChannelCode ELIA : {selected.ChannelCode})");
             sb.AppendLine($"  - Canal & Paiement     : {selected.BusinessChannel}  ->  BUCP / CMDPMT = {selected.BucpCmdpmtDisplay}");
             sb.AppendLine($"  - Branche & Fonds      : {selected.BranchDisplay}  |  Fonds : {selected.FundsSummary}");
@@ -1240,7 +1513,7 @@ namespace AutoActivator.Gui.Views
 
             var reportWindow = new DiagnosticReportWindow(
                 title: $"Table Comparison — {selected.CleanTableName} ({selected.BranchDisplay})",
-                subtitle: $"Excel Row: {selected.ExcelRowDisplay} | Test: {selected.TestId} | Contract: {selected.ContractNumber} | Volume: {selected.VolumeDisplay} | Rows: {selected.RowsSummary}",
+                subtitle: $"Contract: {selected.ContractNumber} | Volume: {selected.VolumeDisplay} | Rows: {selected.RowsSummary}",
                 status: selected.IsMatch ? "SUCCESS" : "FAILED",
                 reportContent: sb.ToString(),
                 contractReference: selected.ContractNumber != "-" ? selected.ContractNumber : selected.TableName)
@@ -1250,24 +1523,46 @@ namespace AutoActivator.Gui.Views
             reportWindow.ShowDialog();
         }
 
+        private static string ExtractFirstSingleContract(string? rawContractDisplay)
+        {
+            if (string.IsNullOrWhiteSpace(rawContractDisplay) || rawContractDisplay == "-")
+            {
+                return string.Empty;
+            }
+
+            int arrowIdx = rawContractDisplay.IndexOf("->", StringComparison.Ordinal);
+            string candidate = arrowIdx >= 0
+                ? rawContractDisplay.Substring(arrowIdx + 2).Trim()
+                : rawContractDisplay.Trim();
+
+            if (candidate.StartsWith("Demand ", StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = candidate.Substring(7).Trim();
+            }
+
+            return candidate;
+        }
+
         private void MenuCompSendToExtraction_Click(object sender, RoutedEventArgs e)
         {
             if (GridResults.SelectedItem == null && _currentResults.Count > 0)
             {
                 GridResults.SelectedIndex = 0;
             }
-            if (GridResults.SelectedItem is not UIComparisonResult selected ||
-                string.IsNullOrWhiteSpace(selected.ContractNumber) ||
-                selected.ContractNumber == "-")
+
+            string targetContract = ExtractFirstSingleContract((GridResults.SelectedItem as UIComparisonResult)?.ContractNumber);
+            if (string.IsNullOrWhiteSpace(targetContract))
             {
-                MessageBox.Show("Veuillez sélectionner une ligne possédant un numéro de contrat valide.", "Re-Extraire Contrat", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Veuillez sélectionner une ligne possédant un numéro de contrat ou Demand ID valide.", "Re-Extraire Contrat", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            string envLetter = CmbSmartEnv?.SelectedItem is ComboBoxItem item ? item.Tag?.ToString() ?? "Q" : "Q";
+            string envLetter = IsDirectSqlMode
+                ? ((CmbDirectTargetEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q")
+                : ((CmbSmartEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q");
             if (Window.GetWindow(this) is MainWindow mainWindow)
             {
-                mainWindow.NavigateToExtractionWithContract(selected.ContractNumber, false, envLetter);
+                mainWindow.NavigateToExtractionWithContract(targetContract, ExcelHelper.IsDemandIdInput(targetContract), envLetter);
             }
         }
 
@@ -1277,18 +1572,20 @@ namespace AutoActivator.Gui.Views
             {
                 GridResults.SelectedIndex = 0;
             }
-            if (GridResults.SelectedItem is not UIComparisonResult selected ||
-                string.IsNullOrWhiteSpace(selected.ContractNumber) ||
-                selected.ContractNumber == "-")
+
+            string targetContract = ExtractFirstSingleContract((GridResults.SelectedItem as UIComparisonResult)?.ContractNumber);
+            if (string.IsNullOrWhiteSpace(targetContract))
             {
-                MessageBox.Show("Veuillez sélectionner une ligne possédant un numéro de contrat valide.", "Activer Contrat", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Veuillez sélectionner une ligne possédant un numéro de contrat ou Demand ID valide.", "Activer Contrat", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            string envLetter = CmbSmartEnv?.SelectedItem is ComboBoxItem item ? item.Tag?.ToString() ?? "Q" : "Q";
+            string envLetter = IsDirectSqlMode
+                ? ((CmbDirectTargetEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q")
+                : ((CmbSmartEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Q");
             if (Window.GetWindow(this) is MainWindow mainWindow)
             {
-                mainWindow.NavigateToActivationWithContract(selected.ContractNumber, false, envLetter);
+                mainWindow.NavigateToActivationWithContract(targetContract, ExcelHelper.IsDemandIdInput(targetContract), envLetter);
             }
         }
 
@@ -1299,47 +1596,6 @@ namespace AutoActivator.Gui.Views
                 selected.ContractNumber != "-")
             {
                 Clipboard.SetText(selected.ContractNumber);
-            }
-        }
-
-        private void BtnOpenFolder_Click(object sender, RoutedEventArgs e)
-        {
-            if (Window.GetWindow(this) is MainWindow mainWindow)
-            {
-                string pathToOpen = mainWindow.LastGeneratedPath;
-                if (!string.IsNullOrEmpty(pathToOpen))
-                {
-                    if (File.Exists(pathToOpen))
-                    {
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{Path.GetFullPath(pathToOpen)}\"")
-                        {
-                            UseShellExecute = true
-                        });
-                        return;
-                    }
-                    if (Directory.Exists(pathToOpen))
-                    {
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.GetFullPath(pathToOpen))
-                        {
-                            UseShellExecute = true,
-                            Verb = "open"
-                        });
-                        return;
-                    }
-                }
-
-                if (Directory.Exists(Settings.OutputDir))
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.GetFullPath(Settings.OutputDir))
-                    {
-                        UseShellExecute = true,
-                        Verb = "open"
-                    });
-                }
-                else
-                {
-                    MessageBox.Show("Aucun dossier Output disponible pour le moment.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
             }
         }
     }

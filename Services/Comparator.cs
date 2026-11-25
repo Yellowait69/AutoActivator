@@ -241,10 +241,10 @@ namespace AutoActivator.Services
                         continue;
                     }
 
-                    string val = NormalizeSingleCell(row[col]);
+                    string val = CleanPreviewValue(NormalizeSingleCell(row[col]));
                     if (!string.IsNullOrWhiteSpace(val))
                     {
-                        previewFields.Add($"{col.ColumnName}={val}");
+                        previewFields.Add($"{col.ColumnName} = {val}");
                     }
                 }
 
@@ -256,26 +256,29 @@ namespace AutoActivator.Services
                         {
                             break;
                         }
-                        string val = NormalizeSingleCell(row[col]);
+                        string val = CleanPreviewValue(NormalizeSingleCell(row[col]));
                         if (!string.IsNullOrWhiteSpace(val))
                         {
-                            previewFields.Add($"{col.ColumnName}={val}");
+                            previewFields.Add($"{col.ColumnName} = {val}");
                         }
                     }
                 }
 
-                string rowSummary = previewFields.Count > 0
+                string multiLineSummary = previewFields.Count > 0
+                    ? string.Join("\n", previewFields)
+                    : "(enregistrement présent)";
+                string inlineLogSummary = previewFields.Count > 0
                     ? string.Join(" | ", previewFields)
                     : "(enregistrement présent)";
 
                 cellItems.Add(new CellDifferenceItem
                 {
                     RowNumber = r + 1,
-                    RowLabel = presentInBaseOnly ? $"Source #{r + 1}" : $"Target #{r + 1}",
+                    RowLabel = presentInBaseOnly ? $"Src #{r + 1}" : $"Tgt #{r + 1}",
                     RowContextKey = contextKey,
-                    ColumnName = "(Enregistrement complet)",
-                    SourceValue = presentInBaseOnly ? rowSummary : "(absent dans Source)",
-                    TargetValue = presentInBaseOnly ? "(absent dans Target)" : rowSummary,
+                    ColumnName = "Ligne entière",
+                    SourceValue = presentInBaseOnly ? multiLineSummary : "(absent dans Source)",
+                    TargetValue = presentInBaseOnly ? "(absent dans Target)" : multiLineSummary,
                     DiffKind = presentInBaseOnly ? "MISSING_IN_TARGET" : "EXTRA_IN_TARGET"
                 });
 
@@ -284,7 +287,7 @@ namespace AutoActivator.Services
                     string keyPrefix = string.IsNullOrWhiteSpace(contextKey) || contextKey == "-"
                         ? string.Empty
                         : $" [{contextKey}]";
-                    missingSb.AppendLine($"  - Ligne #{r + 1}{keyPrefix} : {rowSummary}");
+                    missingSb.AppendLine($"  - Ligne #{r + 1}{keyPrefix} : {inlineLogSummary}");
                 }
             }
 
@@ -578,7 +581,8 @@ namespace AutoActivator.Services
                 NormalizedRow extraBase = unmatchedRef[m];
                 int displayRowNo = matchedPairNumber + m + 1;
                 string ctx = BuildSingleRowContextKey(extraBase, activeCols, excludedCols);
-                string summaryValues = BuildRowNonEmptyPreview(extraBase.ActiveValues, activeCols);
+                string summaryMultiLine = BuildRowNonEmptyPreview(extraBase.ActiveValues, activeCols, multiLine: true);
+                string summaryInline = BuildRowNonEmptyPreview(extraBase.ActiveValues, activeCols, multiLine: false);
                 totalActiveCellDiffs++;
 
                 if (activeCellItems.Count < MAX_CELL_ITEMS_PER_TABLE)
@@ -586,10 +590,10 @@ namespace AutoActivator.Services
                     activeCellItems.Add(new CellDifferenceItem
                     {
                         RowNumber = displayRowNo,
-                        RowLabel = $"Source #{extraBase.SourceRowIndex + 1}",
+                        RowLabel = $"Src #{extraBase.SourceRowIndex + 1}",
                         RowContextKey = ctx,
-                        ColumnName = "(Enregistrement complet)",
-                        SourceValue = summaryValues,
+                        ColumnName = "Ligne entière",
+                        SourceValue = summaryMultiLine,
                         TargetValue = "(absent dans Target)",
                         DiffKind = "MISSING_IN_TARGET"
                     });
@@ -598,7 +602,7 @@ namespace AutoActivator.Services
                 if (m - pairedModifiedCount < 15)
                 {
                     string keyNote = string.IsNullOrWhiteSpace(ctx) || ctx == "-" ? string.Empty : $" [{ctx}]";
-                    countReport.AppendLine($"  - Absent de TARGET (Source #{extraBase.SourceRowIndex + 1}{keyNote}) : {summaryValues}");
+                    countReport.AppendLine($"  - Absent de TARGET (Source #{extraBase.SourceRowIndex + 1}{keyNote}) : {summaryInline}");
                 }
             }
 
@@ -607,7 +611,8 @@ namespace AutoActivator.Services
                 NormalizedRow extraTarget = unmatchedNew[m];
                 int displayRowNo = matchedPairNumber + m + 1;
                 string ctx = BuildSingleRowContextKey(extraTarget, activeCols, excludedCols);
-                string summaryValues = BuildRowNonEmptyPreview(extraTarget.ActiveValues, activeCols);
+                string summaryMultiLine = BuildRowNonEmptyPreview(extraTarget.ActiveValues, activeCols, multiLine: true);
+                string summaryInline = BuildRowNonEmptyPreview(extraTarget.ActiveValues, activeCols, multiLine: false);
                 totalActiveCellDiffs++;
 
                 if (activeCellItems.Count < MAX_CELL_ITEMS_PER_TABLE)
@@ -615,11 +620,11 @@ namespace AutoActivator.Services
                     activeCellItems.Add(new CellDifferenceItem
                     {
                         RowNumber = displayRowNo,
-                        RowLabel = $"Target #{extraTarget.SourceRowIndex + 1}",
+                        RowLabel = $"Tgt #{extraTarget.SourceRowIndex + 1}",
                         RowContextKey = ctx,
-                        ColumnName = "(Enregistrement complet)",
+                        ColumnName = "Ligne entière",
                         SourceValue = "(absent dans Source)",
-                        TargetValue = summaryValues,
+                        TargetValue = summaryMultiLine,
                         DiffKind = "EXTRA_IN_TARGET"
                     });
                 }
@@ -627,7 +632,7 @@ namespace AutoActivator.Services
                 if (m - pairedModifiedCount < 15)
                 {
                     string keyNote = string.IsNullOrWhiteSpace(ctx) || ctx == "-" ? string.Empty : $" [{ctx}]";
-                    countReport.AppendLine($"  - Ajouté dans TARGET (Target #{extraTarget.SourceRowIndex + 1}{keyNote}) : {summaryValues}");
+                    countReport.AppendLine($"  - Ajouté dans TARGET (Target #{extraTarget.SourceRowIndex + 1}{keyNote}) : {summaryInline}");
                 }
             }
 
@@ -952,18 +957,51 @@ namespace AutoActivator.Services
             return keys.Count > 0 ? string.Join(", ", keys) : "-";
         }
 
-        private static string BuildRowNonEmptyPreview(string[] activeValues, List<string> activeCols)
+        private static string CleanPreviewValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.Trim();
+            if (trimmed.StartsWith("1/01/0001", StringComparison.Ordinal) ||
+                trimmed.StartsWith("01/01/0001", StringComparison.Ordinal) ||
+                trimmed.StartsWith("0001-01-01", StringComparison.Ordinal))
+            {
+                return string.Empty;
+            }
+
+            if (trimmed.EndsWith(" 00:00:00", StringComparison.Ordinal))
+            {
+                trimmed = trimmed.Substring(0, trimmed.Length - 9);
+            }
+            else if (trimmed.EndsWith(" 0:00:00", StringComparison.Ordinal))
+            {
+                trimmed = trimmed.Substring(0, trimmed.Length - 8);
+            }
+
+            return trimmed;
+        }
+
+        private static string BuildRowNonEmptyPreview(string[] activeValues, List<string> activeCols, bool multiLine = false)
         {
             var items = new List<string>(6);
             for (int j = 0; j < activeCols.Count && items.Count < 6; j++)
             {
-                if (!string.IsNullOrWhiteSpace(activeValues[j]))
+                string cleaned = CleanPreviewValue(activeValues[j]);
+                if (!string.IsNullOrWhiteSpace(cleaned))
                 {
-                    items.Add($"{activeCols[j]}='{activeValues[j]}'");
+                    items.Add($"{activeCols[j]} = {cleaned}");
                 }
             }
 
-            return items.Count > 0 ? string.Join(" | ", items) : "(toutes colonnes actives vides)";
+            if (items.Count == 0)
+            {
+                return "(enregistrement présent)";
+            }
+
+            return multiLine ? string.Join("\n", items) : string.Join(" | ", items);
         }
 
         private static bool IsBusinessKeyColumn(string col)

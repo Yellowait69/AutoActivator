@@ -105,6 +105,22 @@ namespace AutoActivator.Services
 
             var commonTestIds = baseIds.Intersect(targetIds, StringComparer.OrdinalIgnoreCase).ToList();
 
+            // Support comparing any two single-contract snapshots even when one came from a 1-row batch (e.g. TEST01 vs SINGLE_CONTRACT)
+            bool pairSingleBlocksDirectly = commonTestIds.Count == 0 && baseBlocks.Count == 1 && targetBlocks.Count == 1;
+            if (pairSingleBlocksDirectly)
+            {
+                string unifiedKey = !string.Equals(baseIds[0], "SINGLE_CONTRACT", StringComparison.OrdinalIgnoreCase)
+                    ? baseIds[0]
+                    : targetIds[0];
+                string bVal = baseBlocks[baseIds[0]];
+                string tVal = targetBlocks[targetIds[0]];
+                baseBlocks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [unifiedKey] = bVal };
+                targetBlocks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [unifiedKey] = tVal };
+                baseIds = new List<string> { unifiedKey };
+                targetIds = new List<string> { unifiedKey };
+                commonTestIds = new List<string> { unifiedKey };
+            }
+
             report.TotalBaseTests = baseIds.Count;
             report.TotalTargetTests = targetIds.Count;
             report.ComparedTestsCount = commonTestIds.Count;
@@ -113,7 +129,7 @@ namespace AutoActivator.Services
 
             if (commonTestIds.Count == 0)
             {
-                throw new Exception($"No common Test IDs found. Comparison impossible. (Base: {baseIds.Count} tests, Target: {targetIds.Count} tests)");
+                throw new Exception($"Aucun Test ID commun trouvé entre SOURCE ({baseIds.Count}) et TARGET ({targetIds.Count}).");
             }
 
             string baseFileName = Path.GetFileName(baseFile);
@@ -228,22 +244,58 @@ namespace AutoActivator.Services
             IReadOnlyDictionary<string, DataTable> targetTables,
             string fallbackTestId)
         {
-            string? fromUcon = TryGetColumnValue(baseTables, "FJ1.TB5UCON", "IT5UCONLREFEXN")
-                            ?? TryGetColumnValue(targetTables, "FJ1.TB5UCON", "IT5UCONLREFEXN")
-                            ?? TryGetColumnValue(baseTables, "LV.SCNTT0", "NO_CNT_EXTENDED")
-                            ?? TryGetColumnValue(targetTables, "LV.SCNTT0", "NO_CNT_EXTENDED");
-            if (!string.IsNullOrWhiteSpace(fromUcon))
-                return fromUcon;
+            string? baseContract = ResolveSingleSideIdentifier(baseContent, baseTables);
+            string? targetContract = ResolveSingleSideIdentifier(targetContent, targetTables);
 
-            Match m = HeaderContractRegex.Match(baseContent);
+            if (!string.IsNullOrWhiteSpace(baseContract) && !string.IsNullOrWhiteSpace(targetContract))
+            {
+                return string.Equals(baseContract, targetContract, StringComparison.OrdinalIgnoreCase)
+                    ? baseContract
+                    : $"{baseContract} -> {targetContract}";
+            }
+
+            return baseContract ?? targetContract ?? fallbackTestId;
+        }
+
+        private static string? ResolveSingleSideIdentifier(
+            string content,
+            IReadOnlyDictionary<string, DataTable> tables)
+        {
+            string? fromTable = TryGetColumnValue(tables, "FJ1.TB5UCON", "IT5UCONLREFEXN")
+                             ?? TryGetColumnValue(tables, "LV.SCNTT0", "NO_CNT_EXTENDED");
+            if (!string.IsNullOrWhiteSpace(fromTable))
+            {
+                return fromTable.Trim();
+            }
+
+            Match m = HeaderContractRegex.Match(content);
             if (m.Success && !string.IsNullOrWhiteSpace(m.Groups["contract"].Value))
+            {
                 return m.Groups["contract"].Value.Trim();
+            }
 
-            m = HeaderContractRegex.Match(targetContent);
-            if (m.Success && !string.IsNullOrWhiteSpace(m.Groups["contract"].Value))
-                return m.Groups["contract"].Value.Trim();
+            int synthIdx = content.IndexOf("Contrat (3-7-2)", StringComparison.OrdinalIgnoreCase);
+            if (synthIdx >= 0)
+            {
+                int colonIdx = content.IndexOf(':', synthIdx);
+                int pipeIdx = colonIdx >= 0 ? content.IndexOf('|', colonIdx) : -1;
+                if (colonIdx >= 0 && pipeIdx > colonIdx)
+                {
+                    string parsed = content.Substring(colonIdx + 1, pipeIdx - colonIdx - 1).Trim();
+                    if (!string.IsNullOrWhiteSpace(parsed) && parsed != "-")
+                    {
+                        return parsed;
+                    }
+                }
+            }
 
-            return fallbackTestId;
+            string? demandId = TryGetColumnValue(tables, "FJ1.TB5HDMD", "IT5HDMDAIDN");
+            if (!string.IsNullOrWhiteSpace(demandId))
+            {
+                return $"Demand {demandId.Trim()}";
+            }
+
+            return null;
         }
 
         private static string ResolveProductCode(

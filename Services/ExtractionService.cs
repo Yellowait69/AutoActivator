@@ -27,7 +27,8 @@ namespace AutoActivator.Services
             bool saveIndividualFile = true,
             bool isDemandId = false,
             CancellationToken token = default,
-            Action<int, int, string>? onStepProgress = null)
+            Action<int, int, string>? onStepProgress = null,
+            string? fileTag = null)
         {
             if (string.IsNullOrWhiteSpace(targetContract))
                 throw new ArgumentException("The input value is empty.", nameof(targetContract));
@@ -746,7 +747,8 @@ namespace AutoActivator.Services
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 char envLetter = !string.IsNullOrEmpty(envSuffix) ? char.ToUpperInvariant(envSuffix[0]) : 'U';
                 string safeContractName = SanitizeFileName(cleanedContract);
-                string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_Uniq_{safeContractName}_{timestamp}.csv");
+                string tagSegment = string.IsNullOrWhiteSpace(fileTag) ? "Uniq" : SanitizeFileName(fileTag);
+                string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{tagSegment}_{safeContractName}_{timestamp}.csv");
 
                 string lisaHeader =
                     "================================================================================\n" +
