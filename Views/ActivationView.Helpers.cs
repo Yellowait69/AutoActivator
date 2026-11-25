@@ -633,7 +633,7 @@ namespace AutoActivator.Gui.Views
                 $"{_batchPlannedCount} completed, {remaining} remaining. " +
                 $"Excel Row={progress.RowNum}, Current={currentIdentifier}, Product={product}, " +
                 $"Process={process}, Branche={progress.BranchDisplay}.";
-            mainWindow.TxtStatus.Foreground = Brushes.RoyalBlue;
+            mainWindow.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
         }
 
         // =============================================================

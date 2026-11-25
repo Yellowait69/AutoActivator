@@ -36,8 +36,8 @@
 
                 <!-- Brand Header -->
                 <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,22">
-                    <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="12" Padding="12,4" HorizontalAlignment="Center" Margin="0,0,0,10">
-                        <TextBlock Text="⚡ AG INSURANCE • LISA &amp; ELIA SUITE" FontSize="11" FontWeight="Bold" Foreground="#1D4ED8"/>
+                    <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Padding="12,4" HorizontalAlignment="Center" Margin="0,0,0,10">
+                        <TextBlock Text="AG INSURANCE  ·  LISA &amp; ELIA SUITE" FontSize="11" FontWeight="Bold" Foreground="#334155"/>
                     </Border>
                     <TextBlock Text="Mainframe Authentication" FontSize="22" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Center"/>
                     <TextBlock Text="Sign in with your ESCWA / Mainframe credentials" FontSize="12.5" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,4,0,0"/>

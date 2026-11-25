@@ -1014,7 +1014,15 @@ ORDER BY C_FONDS ASC, D_COURS DESC;";
                     }
                     catch (Exception ex)
                     {
-                        resultsArray[index] = $"### TABLE : {table} | EXTRACTION ERROR\nSQL Error: {ex.Message}\n";
+                        string cleanErr = (ex.Message ?? "SQL Error")
+                            .Replace("\r", " ")
+                            .Replace("\n", " ")
+                            .Trim();
+                        resultsArray[index] =
+                            "--------------------------------------------------------------------------------\n" +
+                            $"### TABLE : {table} | Rows : 0 | EXTRACTION ERROR : {cleanErr}\n" +
+                            "--------------------------------------------------------------------------------\n" +
+                            "NO DATA FOUND\n\n";
                     }
                 }
 

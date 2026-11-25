@@ -7,28 +7,28 @@
 
     <Window.Resources>
 
-        <!-- Primary Action Button (Emerald) -->
+        <!-- Primary Action Button (Corporate Slate Blue) -->
         <Style TargetType="Button" x:Key="ActionButtonStyle">
-            <Setter Property="Background" Value="#10B981"/>
+            <Setter Property="Background" Value="#2563EB"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="5">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#059669"/>
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#1D4ED8"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#CBD5E1"/>
-                                <Setter Property="Foreground" Value="#64748B"/>
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#E2E8F0"/>
+                                <Setter Property="Foreground" Value="#94A3B8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -36,27 +36,33 @@
             </Setter>
         </Style>
 
-        <!-- Cancel / Danger Button (Crimson) -->
+        <!-- Cancel / Stop Button (Sober neutral at rest, crisp red outline when enabled) -->
         <Style TargetType="Button" x:Key="CancelButtonStyle">
-            <Setter Property="Background" Value="#EF4444"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="15,10"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="FontSize" Value="13.5"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#DC2626"/>
+            <Setter Property="BorderBrush" Value="#FCA5A5"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12.5"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                        <Border x:Name="BtnBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#DC2626"/>
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#FEF2F2"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="#E2E8F0"/>
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#F8FAFC"/>
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="#E2E8F0"/>
                                 <Setter Property="Foreground" Value="#94A3B8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -109,36 +115,36 @@
                 </Grid.RowDefinitions>
 
                 <!-- Brand Header -->
-                <StackPanel Grid.Row="0" Margin="20,28,20,24">
+                <StackPanel Grid.Row="0" Margin="20,26,20,22">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Background="#10B981" CornerRadius="8" Width="34" Height="34" Margin="0,0,12,0">
-                            <TextBlock Text="⚡" FontSize="18" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border Background="#2563EB" CornerRadius="6" Width="32" Height="32" Margin="0,0,12,0">
+                            <TextBlock Text="AA" FontSize="13" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="AUTO-ACTIVATOR" Foreground="White" FontSize="17" FontWeight="Bold"/>
-                            <TextBlock Text="LISA &amp; ELIA E.T.L SUITE" Foreground="#38BDF8" FontSize="10.5" FontWeight="Bold" Margin="0,2,0,0"/>
+                            <TextBlock Text="AUTO-ACTIVATOR" Foreground="White" FontSize="16" FontWeight="Bold"/>
+                            <TextBlock Text="LISA &amp; ELIA SUITE" Foreground="#94A3B8" FontSize="10.5" FontWeight="SemiBold" Margin="0,2,0,0"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
                 <!-- Navigation Menu -->
                 <StackPanel Grid.Row="1">
-                    <TextBlock Text="WORKFLOW MODULES" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
+                    <TextBlock Text="MODULES" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
 
-                    <Button x:Name="BtnActivation" Content="⚡   Contract Activation" Style="{StaticResource MenuButtonStyle}" Background="#10B981" Foreground="White" Click="BtnMenu_Click"/>
-                    <Button x:Name="BtnExtraction" Content="📥   Data Extraction" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
-                    <Button x:Name="BtnComparison" Content="📊   Deep Comparison" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
-
-                    <Border BorderBrush="#1E293B" BorderThickness="0,1,0,0" Margin="20,18,20,18"/>
-
-                    <TextBlock Text="KNOWLEDGE BASE" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
-                    <Button x:Name="BtnHelp" Content="❓   Help &amp; Documentation" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+                    <Button x:Name="BtnActivation" Content="Activation Contrats" Style="{StaticResource MenuButtonStyle}" Background="#2563EB" Foreground="White" Click="BtnMenu_Click"/>
+                    <Button x:Name="BtnExtraction" Content="Extraction SQL" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+                    <Button x:Name="BtnComparison" Content="Comparaison" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
 
                     <Border BorderBrush="#1E293B" BorderThickness="0,1,0,0" Margin="20,18,20,18"/>
 
-                    <TextBlock Text="QUICK FOLDERS" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
-                    <Button x:Name="BtnSidebarOutput" Content="📂   Output Reports Folder" Style="{StaticResource MenuButtonStyle}" Click="BtnSidebarOutput_Click"/>
-                    <Button x:Name="BtnSidebarBaselines" Content="📂   Golden Baselines Folder" Style="{StaticResource MenuButtonStyle}" Click="BtnSidebarBaselines_Click"/>
+                    <TextBlock Text="DOCUMENTATION" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
+                    <Button x:Name="BtnHelp" Content="Aide &amp; Référentiel" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+
+                    <Border BorderBrush="#1E293B" BorderThickness="0,1,0,0" Margin="20,18,20,18"/>
+
+                    <TextBlock Text="DOSSIERS" Foreground="#64748B" FontSize="10.5" FontWeight="Bold" Margin="24,0,0,8"/>
+                    <Button x:Name="BtnSidebarOutput" Content="Dossier Rapports (Output)" Style="{StaticResource MenuButtonStyle}" Click="BtnSidebarOutput_Click"/>
+                    <Button x:Name="BtnSidebarBaselines" Content="Dossier Baselines" Style="{StaticResource MenuButtonStyle}" Click="BtnSidebarBaselines_Click"/>
                 </StackPanel>
 
                 <!-- Connected Session Card in Sidebar Footer -->
@@ -183,14 +189,17 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="StatusDotEllipse"
+                                 Width="7"
+                                 Height="7"
+                                 Fill="#2563EB"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,8,0"/>
                         <TextBlock x:Name="TxtStatusDot"
-                                   Text="●"
-                                   Foreground="#3B82F6"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"
-                                   Margin="0,0,8,0"/>
+                                   Text=""
+                                   Visibility="Collapsed"/>
                         <TextBlock x:Name="TxtStatus"
-                                   FontSize="13"
+                                   FontSize="12.5"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="#1E293B"
                                    FontWeight="SemiBold"
@@ -206,20 +215,20 @@
                                 Margin="14,0,0,0">
                         <Button x:Name="BtnOpenGeneratedFile"
                                 Click="BtnOpenGeneratedFile_Click"
-                                Background="#EFF6FF"
-                                Foreground="#1D4ED8"
-                                BorderBrush="#BFDBFE"
+                                Background="White"
+                                Foreground="#1E293B"
+                                BorderBrush="#CBD5E1"
                                 BorderThickness="1"
                                 Padding="10,4"
                                 Margin="0,0,6,0"
                                 FontSize="12"
-                                FontWeight="Bold"
+                                FontWeight="SemiBold"
                                 Cursor="Hand"
                                 ToolTip="Ouvrir directement le fichier rapport / CSV généré">
-                            <TextBlock x:Name="TxtOpenGeneratedFileLabel" Text="📄 Ouvrir le rapport"/>
+                            <TextBlock x:Name="TxtOpenGeneratedFileLabel" Text="Ouvrir le rapport"/>
                         </Button>
                         <Button x:Name="BtnRevealGeneratedFolder"
-                                Content="📂 Dossier"
+                                Content="Dossier"
                                 Click="Hyperlink_Click"
                                 Background="#F8FAFC"
                                 Foreground="#334155"

@@ -24,8 +24,9 @@ namespace AutoActivator.Utils
     public sealed class OperationProgressController
     {
         private static readonly SolidColorBrush RunningBrush = CreateFrozenBrush("#2563EB");
-        private static readonly SolidColorBrush SuccessBrush = CreateFrozenBrush("#10B981");
-        private static readonly SolidColorBrush WarningBrush = CreateFrozenBrush("#D97706");
+        private static readonly SolidColorBrush SuccessBrush = CreateFrozenBrush("#2563EB");
+        private static readonly SolidColorBrush WarningBrush = CreateFrozenBrush("#2563EB");
+        private static readonly SolidColorBrush CancelledBrush = CreateFrozenBrush("#64748B");
         private static readonly SolidColorBrush ErrorBrush = CreateFrozenBrush("#DC2626");
 
         private readonly Dispatcher _dispatcher;
@@ -136,7 +137,7 @@ namespace AutoActivator.Utils
             if (_processedText != null) _processedText.Text = "0";
             if (_plannedText != null) _plannedText.Text = "0";
             if (_percentageText != null) _percentageText.Text = "0%";
-            if (_elapsedText != null) _elapsedText.Text = "  ⏱️ 0.0s";
+            if (_elapsedText != null) _elapsedText.Text = "  0.0s";
         }
 
         /// <summary>
@@ -377,7 +378,7 @@ namespace AutoActivator.Utils
                     break;
 
                 case OperationTerminalState.Cancelled:
-                    _progressBar.Foreground = WarningBrush;
+                    _progressBar.Foreground = CancelledBrush;
                     if (_totalUnits > 0)
                     {
                         double ratio = Math.Clamp(_completedUnits / _totalUnits, 0.0, 1.0);
@@ -489,11 +490,11 @@ namespace AutoActivator.Utils
                 double remainingUnits = Math.Max(0.0, _totalUnits - _completedUnits);
                 double secondsPerUnit = elapsed.TotalSeconds / _completedUnits;
                 TimeSpan eta = TimeSpan.FromSeconds(secondsPerUnit * remainingUnits);
-                _elapsedText.Text = $"  ⏱️ {formattedElapsed} (ETA ~{FormatShortEta(eta)})";
+                _elapsedText.Text = $"  {formattedElapsed} (ETA ~{FormatShortEta(eta)})";
             }
             else
             {
-                _elapsedText.Text = $"  ⏱️ {formattedElapsed}";
+                _elapsedText.Text = $"  {formattedElapsed}";
             }
         }
 

@@ -217,7 +217,7 @@ namespace AutoActivator.Gui.Views
                 {
                     mainWindow.LastGeneratedPath = exportPath;
                     mainWindow.TxtStatus.Text = $"Activation history exported to CSV: {Path.GetFileName(exportPath)}";
-                    mainWindow.TxtStatus.Foreground = Brushes.ForestGreen;
+                    mainWindow.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
                 }
 
                 MessageBox.Show(
@@ -283,18 +283,46 @@ namespace AutoActivator.Gui.Views
 
             UpdateHistoryCounters();
 
-            if (item.IsFailed)
+            int newRowOrder = GetActivationRowOrder(item.RowNum);
+            int insertIndex = 0;
+            while (insertIndex < ActivationHistory.Count)
             {
-                ActivationHistory.Insert(0, item);
-                if (ListActivationHistory != null)
+                if (GetActivationRowOrder(ActivationHistory[insertIndex].RowNum) > newRowOrder)
                 {
-                    ListActivationHistory.SelectedItem = item;
+                    break;
                 }
+                insertIndex++;
             }
-            else
+
+            ActivationHistory.Insert(insertIndex, item);
+            if (ListActivationHistory != null && (item.IsFailed || ListActivationHistory.SelectedItem == null))
             {
-                ActivationHistory.Add(item);
+                ListActivationHistory.SelectedItem = item;
             }
+        }
+
+        private static int GetActivationRowOrder(string? rowNum)
+        {
+            if (string.IsNullOrWhiteSpace(rowNum))
+            {
+                return int.MaxValue;
+            }
+
+            string trimmed = rowNum.Trim().TrimStart('#');
+            return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) && parsed > 0
+                ? parsed
+                : int.MaxValue;
+        }
+
+        private void ListActivationHistory_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (ColActDetail == null || ListActivationHistory == null)
+            {
+                return;
+            }
+
+            const double fixedColumnsAndChrome = 736.0;
+            ColActDetail.Width = Math.Max(200.0, ListActivationHistory.ActualWidth - fixedColumnsAndChrome);
         }
 
         private void UpdateHistoryCounters()
@@ -468,6 +496,10 @@ namespace AutoActivator.Gui.Views
             {
                 _isCustomBatchFileSelected = true;
                 TxtBatchActCsv.Text = openFileDialog.FileName;
+                if (BtnDefaultQcAct != null)
+                {
+                    BtnDefaultQcAct.Visibility = Visibility.Visible;
+                }
             }
         }
 
@@ -552,6 +584,10 @@ namespace AutoActivator.Gui.Views
         private void BtnUseDefaultQcActFile_Click(object sender, RoutedEventArgs e)
         {
             _isCustomBatchFileSelected = false;
+            if (BtnDefaultQcAct != null)
+            {
+                BtnDefaultQcAct.Visibility = Visibility.Collapsed;
+            }
             UpdateBatchActCsvPath();
         }
 
@@ -778,11 +814,11 @@ namespace AutoActivator.Gui.Views
             if (string.IsNullOrWhiteSpace(singleInput))
             {
                 _progressController.Reset(
-                    "Veuillez saisir un N° de Contrat ou Demand ID pour une activation unitaire (ou utilisez « 📁 Lancer Batch »).");
+                    "Veuillez saisir un N° de Contrat ou Demand ID pour une activation unitaire (ou cliquez sur Lancer Batch).");
                 if (Window.GetWindow(this) is MainWindow mw)
                 {
-                    mw.TxtStatus.Text = "Saisissez un Contrat / Demand ID unitaire, ou cliquez sur « 📁 Lancer Batch » pour traiter le fichier Excel.";
-                    mw.TxtStatus.Foreground = Brushes.DarkOrange;
+                    mw.TxtStatus.Text = "Saisissez un Contrat / Demand ID unitaire, ou cliquez sur Lancer Batch pour traiter le fichier Excel.";
+                    mw.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
                 }
                 TxtActContract?.Focus();
                 return;
@@ -869,16 +905,24 @@ namespace AutoActivator.Gui.Views
                         !input.JobSelection.RequiresPremelia &&
                         input.JobSelection.HasAnyBranch23Step;
 
-                    bool bypassPrimeValidation =
-                        skipPrime || onlyRunningPostActivationBranch23Steps;
+                    bool bypassPrimeAndActiveChecks =
+                        skipPrime ||
+                        onlyRunningPostActivationBranch23Steps ||
+                        (input.JobSelection != null && !input.JobSelection.RunAddPrct && !input.JobSelection.UseSqlPrctInsert);
 
                     IReadOnlyList<ActivationPlanIssue> blockingIssues = plan
                         .Validate()
                         .Where(issue => issue.IsBlocking &&
-                                        !(onlyRunningPostActivationBranch23Steps && issue.Code == "ALREADY_ACTIVE") &&
-                                        !(bypassPrimeValidation &&
-                                          (issue.Code == "PREMIUM_NOT_POSITIVE" ||
-                                           issue.Code == "PREMIUM_CANDIDATE_COUNT_INVALID")))
+                                        !(bypassPrimeAndActiveChecks &&
+                                          (issue.Code == "ALREADY_ACTIVE" ||
+                                           issue.Code == "PREMIUM_NOT_POSITIVE" ||
+                                           issue.Code == "PREMIUM_CANDIDATE_COUNT_INVALID" ||
+                                           issue.Code == "MULTIPLE_EXISTING_RECEIPTS" ||
+                                           issue.Code == "PAYMENT_CANDIDATE_MISSING" ||
+                                           issue.Code == "BUCP_MISSING" ||
+                                           issue.Code == "CMDPMT_MISSING" ||
+                                           issue.Code == "CHANNEL_NOT_SUPPORTED" ||
+                                           issue.Code == "INVALID_PAYMENT_PAIR")))
                         .ToList();
                     if (blockingIssues.Count > 0)
                     {
@@ -890,9 +934,22 @@ namespace AutoActivator.Gui.Views
                         throw new InvalidOperationException(trace.FailureReason);
                     }
 
+                    if (!ContractNumberHelper.TryDeriveNoCnt(
+                            plan.MainframeContractNumber,
+                            allowTechnicalShortContract: true,
+                            out long verifiedSingleNoCnt,
+                            out _) ||
+                        verifiedSingleNoCnt <= 0)
+                    {
+                        trace.FailureStage = "CONTRACT_NO_CNT_INVALID";
+                        trace.FailureReason =
+                            $"Sécurité minimale : NO_CNT LISA invalide ou non identifiable pour '{input.RawInput}'.";
+                        throw new InvalidOperationException(trace.FailureReason);
+                    }
+
                     if ((plan.ResumeStrategy == ActivationResumeStrategy.AlreadyActive ||
                          plan.IsAlreadyActive) &&
-                        !onlyRunningPostActivationBranch23Steps)
+                        !bypassPrimeAndActiveChecks)
                     {
                         throw new InvalidOperationException("ALREADY_ACTIVE");
                     }
@@ -1051,7 +1108,7 @@ namespace AutoActivator.Gui.Views
                             $"Activation completed in " +
                             $"{trace.TotalDurationMs / 1000.0:F1}s for " +
                             $"{resolvedContract} ({trace.BranchDisplay}). {trace.StepsSummary}";
-                        mainWindow.TxtStatus.Foreground = Brushes.DarkGreen;
+                        mainWindow.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
 
                         MessageBox.Show(
                             $"Contract {resolvedContract} " +
@@ -1076,7 +1133,7 @@ namespace AutoActivator.Gui.Views
                     await Dispatcher.InvokeAsync(() =>
                     {
                         mainWindow.TxtStatus.Text = "Activation cancelled.";
-                        mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
+                        mainWindow.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
                     });
                     throw;
                 }
@@ -1093,7 +1150,7 @@ namespace AutoActivator.Gui.Views
                     {
                         mainWindow.TxtStatus.Text =
                             $"Contract {trace.ResolvedContract} is already active in LISA.";
-                        mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
+                        mainWindow.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
 
                         MessageBox.Show(
                             $"Contract {trace.ResolvedContract} is already active.\n\n" +
@@ -1130,7 +1187,7 @@ namespace AutoActivator.Gui.Views
                     {
                         mainWindow.TxtStatus.Text =
                             $"Activation failed: {trace.FailureReason}";
-                        mainWindow.TxtStatus.Foreground = Brushes.DarkRed;
+                        mainWindow.TxtStatus.Foreground = MainWindow.StatusErrorBrush;
                     });
                 }
                 finally
@@ -1262,8 +1319,8 @@ namespace AutoActivator.Gui.Views
                             $"Already active: {result.alreadyActiveCount} | " +
                             $"Failed: {result.errorCount}";
                         mainWindow.TxtStatus.Foreground = result.errorCount > 0
-                            ? Brushes.DarkOrange
-                            : Brushes.DarkGreen;
+                            ? MainWindow.StatusErrorBrush
+                            : MainWindow.StatusDefaultBrush;
 
                         MessageBox.Show(
                             $"Batch activation completed.\n\n" +
@@ -1302,7 +1359,7 @@ namespace AutoActivator.Gui.Views
                             $"{_batchProcessedCount}/{_batchPlannedCount} " +
                             $"completed, {remaining} remaining. " +
                             "Partial report saved.";
-                        mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
+                        mainWindow.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
                     });
                     throw;
                 }
@@ -1322,7 +1379,7 @@ namespace AutoActivator.Gui.Views
 
                         mainWindow.TxtStatus.Text =
                             $"Batch activation failed: {exception.Message}";
-                        mainWindow.TxtStatus.Foreground = Brushes.DarkRed;
+                        mainWindow.TxtStatus.Foreground = MainWindow.StatusErrorBrush;
                     });
                 }
                 finally

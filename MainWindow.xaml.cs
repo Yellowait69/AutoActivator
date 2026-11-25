@@ -15,8 +15,11 @@ namespace AutoActivator.Gui
     {
         private static readonly SolidColorBrush InactiveNavBrush = CreateFrozenBrush("#1E293B");
         private static readonly SolidColorBrush InactiveTextBrush = CreateFrozenBrush("#CBD5E1");
-        private static readonly SolidColorBrush ActiveNavBrush = CreateFrozenBrush("#10B981");
-        private static readonly SolidColorBrush HelpNavBrush = CreateFrozenBrush("#7C3AED");
+        private static readonly SolidColorBrush ActiveNavBrush = CreateFrozenBrush("#2563EB");
+        private static readonly SolidColorBrush HelpNavBrush = CreateFrozenBrush("#334155");
+        internal static readonly SolidColorBrush StatusDefaultBrush = CreateFrozenBrush("#1E293B");
+        internal static readonly SolidColorBrush StatusMutedBrush = CreateFrozenBrush("#64748B");
+        internal static readonly SolidColorBrush StatusErrorBrush = CreateFrozenBrush("#DC2626");
 
         private CancellationTokenSource? _cts;
         private bool _isProcessRunning;
@@ -123,14 +126,14 @@ namespace AutoActivator.Gui
                 if (Dispatcher.CheckAccess())
                 {
                     TxtStatus.Text = "Arrêt demandé... Annulation propre des requêtes et étapes en cours.";
-                    TxtStatus.Foreground = Brushes.DarkOrange;
+                    TxtStatus.Foreground = StatusDefaultBrush;
                 }
                 else
                 {
                     Dispatcher.InvokeAsync(() =>
                     {
                         TxtStatus.Text = "Arrêt demandé... Annulation propre des requêtes et étapes en cours.";
-                        TxtStatus.Foreground = Brushes.DarkOrange;
+                        TxtStatus.Foreground = StatusDefaultBrush;
                     });
                 }
             }
@@ -160,7 +163,7 @@ namespace AutoActivator.Gui
 
                 if (TxtOpenGeneratedFileLabel != null)
                 {
-                    TxtOpenGeneratedFileLabel.Text = $"📄 Ouvrir : {fileName}";
+                    TxtOpenGeneratedFileLabel.Text = $"Ouvrir : {fileName}";
                 }
                 if (BtnOpenGeneratedFile != null)
                 {
@@ -354,11 +357,8 @@ namespace AutoActivator.Gui
             _cts = new CancellationTokenSource();
             CancellationToken token = _cts.Token;
 
-            TxtStatus.Foreground = Brushes.RoyalBlue;
-            if (TxtStatusDot != null)
-            {
-                TxtStatusDot.Foreground = Brushes.RoyalBlue;
-            }
+            TxtStatus.Foreground = StatusDefaultBrush;
+            if (StatusDotEllipse != null) StatusDotEllipse.Fill = ActiveNavBrush;
 
             try
             {
@@ -368,13 +368,17 @@ namespace AutoActivator.Gui
 
                 if (_cts != null && _cts.IsCancellationRequested)
                 {
-                    TxtStatus.Foreground = Brushes.DarkOrange;
-                    if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.DarkOrange;
+                    TxtStatus.Foreground = StatusDefaultBrush;
+                    if (StatusDotEllipse != null) StatusDotEllipse.Fill = StatusMutedBrush;
                 }
-                else if (TxtStatus.Foreground == Brushes.RoyalBlue)
+                else if (TxtStatus.Foreground != StatusErrorBrush)
                 {
-                    TxtStatus.Foreground = Brushes.ForestGreen;
-                    if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.ForestGreen;
+                    TxtStatus.Foreground = StatusDefaultBrush;
+                    if (StatusDotEllipse != null) StatusDotEllipse.Fill = ActiveNavBrush;
+                }
+                else
+                {
+                    if (StatusDotEllipse != null) StatusDotEllipse.Fill = StatusErrorBrush;
                 }
             }
             catch (OperationCanceledException)
@@ -384,15 +388,15 @@ namespace AutoActivator.Gui
                 {
                     TxtStatus.Text = "Opération arrêtée proprement par l'utilisateur.";
                 }
-                TxtStatus.Foreground = Brushes.DarkOrange;
-                if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.DarkOrange;
+                TxtStatus.Foreground = StatusDefaultBrush;
+                if (StatusDotEllipse != null) StatusDotEllipse.Fill = StatusMutedBrush;
                 RefreshGeneratedPathBar();
             }
             catch (Exception ex)
             {
                 TxtStatus.Text = $"Erreur : {ex.Message}";
-                TxtStatus.Foreground = Brushes.Crimson;
-                if (TxtStatusDot != null) TxtStatusDot.Foreground = Brushes.Crimson;
+                TxtStatus.Foreground = StatusErrorBrush;
+                if (StatusDotEllipse != null) StatusDotEllipse.Fill = StatusErrorBrush;
                 RefreshGeneratedPathBar();
                 MessageBox.Show(ex.Message, "Erreur d'exécution", MessageBoxButton.OK, MessageBoxImage.Error);
             }

@@ -291,7 +291,7 @@ namespace AutoActivator.Services
                     builder.AppendLine(
                         "  -------------------------------------------------------------------------------------------------------");
                     builder.AppendLine(
-                        $"  ▶ STEP #{step.StepOrder} : {step.JobName} (Template JCL: {step.EffectiveTemplateName}) | " +
+                        $"  STEP #{step.StepOrder} : {step.JobName} (Template JCL: {step.EffectiveTemplateName}) | " +
                         $"JobID: {step.JobNum} | Status: {step.Status} | RC: {step.ReturnCode}");
                     if (!string.IsNullOrWhiteSpace(step.PhaseDescription))
                     {

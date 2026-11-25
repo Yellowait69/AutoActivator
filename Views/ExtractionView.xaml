@@ -6,17 +6,15 @@
     <UserControl.Resources>
         <SolidColorBrush x:Key="TextPrimary" Color="#0F172A" />
         <SolidColorBrush x:Key="TextSecondary" Color="#64748B" />
-        <SolidColorBrush x:Key="BorderDefault" Color="#E2E8F0" />
+        <SolidColorBrush x:Key="BorderDefault" Color="#CBD5E1" />
         <SolidColorBrush x:Key="SurfaceMuted" Color="#F8FAFC" />
-        <SolidColorBrush x:Key="PrimaryBlue" Color="#2563EB" />
-        <SolidColorBrush x:Key="SuccessGreen" Color="#16A34A" />
         <SolidColorBrush x:Key="DangerRed" Color="#DC2626" />
 
         <Style x:Key="CardStyle" TargetType="Border">
             <Setter Property="Background" Value="White" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="18,14" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderDefault}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
 
@@ -28,252 +26,227 @@
         </Style>
 
         <Style x:Key="InputComboBoxStyle" TargetType="ComboBox">
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontSize" Value="12.5" />
             <Setter Property="BorderBrush" Value="#CBD5E1" />
             <Setter Property="Background" Value="White" />
-            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="MinHeight" Value="30" />
         </Style>
 
         <Style x:Key="InputTextBoxStyle" TargetType="TextBox">
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontSize" Value="12.5" />
             <Setter Property="BorderBrush" Value="#CBD5E1" />
             <Setter Property="Background" Value="White" />
-            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="MinHeight" Value="30" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="NeutralButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#334155" />
+            <Setter Property="BorderBrush" Value="#CBD5E1" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F8FAFC" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#94A3B8" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#F8FAFC" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#E2E8F0" />
+                                <Setter Property="Foreground" Value="#94A3B8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
-                  Padding="0,0,8,0">
-        <Grid Margin="4">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+    <Grid Margin="2">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-            <!-- EN-TÊTE COMPACT (IDENTIQUE À ACTIVATION) -->
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <TextBlock Text="Extraction Contrats"
-                           FontSize="21"
-                           FontWeight="Bold"
-                           Foreground="{StaticResource TextPrimary}"
-                           VerticalAlignment="Center" />
+        <!-- EN-TÊTE SOBRE -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <TextBlock Text="Extraction Contrats"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimary}"
+                       VerticalAlignment="Center" />
 
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button x:Name="BtnAddBaselineExt"
-                            Content="➕ Baseline"
-                            Click="BtnAddBaseline_Click"
-                            Background="#EFF6FF"
-                            Foreground="#1D4ED8"
-                            BorderBrush="#BFDBFE"
-                            BorderThickness="1"
-                            Padding="12,5"
-                            Margin="0,0,6,0"
-                            Cursor="Hand"
-                            FontWeight="Bold" />
-                    <Button x:Name="BtnOpenBaselineExt"
-                            Content="📂 Baselines"
-                            Click="BtnOpenBaselineFolder_Click"
-                            Background="#F8FAFC"
-                            Foreground="#334155"
-                            BorderBrush="#CBD5E1"
-                            BorderThickness="1"
-                            Padding="12,5"
-                            Margin="0,0,6,0"
-                            Cursor="Hand"
-                            FontWeight="Bold" />
-                    <Button Content="❓ Help"
-                            Background="#EFF6FF"
-                            Foreground="#2563EB"
-                            BorderBrush="#BFDBFE"
-                            BorderThickness="1"
-                            Padding="12,5"
-                            Cursor="Hand"
-                            FontWeight="Bold"
-                            Click="BtnHelp_Click" />
-                </StackPanel>
-            </Grid>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="BtnCompareLatest"
+                        Content="Comparer dernier CSV"
+                        Click="BtnCompareLatestExt_Click"
+                        Style="{StaticResource NeutralButtonStyle}"
+                        Margin="0,0,6,0"
+                        ToolTip="Envoyer la dernière extraction CSV vers le module de Comparaison" />
+                <Button x:Name="BtnAddBaselineExt"
+                        Content="Ajouter aux Baselines"
+                        Click="BtnAddBaseline_Click"
+                        Style="{StaticResource NeutralButtonStyle}" />
+            </StackPanel>
+        </Grid>
 
-            <!-- CARTE UNIQUE : CONFIGURATION + EXÉCUTION UNITAIRE & BATCH (IDENTIQUE À ACTIVATION) -->
-            <Border Grid.Row="2"
-                    Style="{StaticResource CardStyle}"
-                    Margin="0,0,0,12">
-                <StackPanel>
-                    <!-- LIGNE 1 : CONFIGURATION RAPIDE -->
-                    <Grid Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.1*" />
-                            <ColumnDefinition Width="14" />
-                            <ColumnDefinition Width="1.1*" />
-                        </Grid.ColumnDefinitions>
+        <!-- CARTE CONFIGURATION & EXÉCUTION (SOBRE, BOUTONS ALIGNÉS PAR LIGNE) -->
+        <Border Grid.Row="1"
+                Style="{StaticResource CardStyle}"
+                Margin="0,0,0,10">
+            <StackPanel>
+                <!-- LIGNE 1 : CONFIGURATION RAPIDE -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="Environnement :" Style="{StaticResource FieldLabelStyle}" />
-                            <ComboBox x:Name="CmbExtEnv"
-                                      Style="{StaticResource InputComboBoxStyle}"
-                                      SelectedIndex="0"
-                                      SelectionChanged="CmbExtEnv_SelectionChanged">
-                                <ComboBoxItem Content="D000 - Development (IM7T)" Tag="D" />
-                                <ComboBoxItem Content="Q000 - Qualification (IM7C)" Tag="Q" />
-                            </ComboBox>
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="Process :" Style="{StaticResource FieldLabelStyle}" />
-                            <ComboBox x:Name="CmbExtChannel"
-                                      Style="{StaticResource InputComboBoxStyle}"
-                                      SelectedIndex="0"
-                                      SelectionChanged="CmbExtChannel_SelectionChanged">
-                                <ComboBoxItem Content="C01 - Standard Life / UL" Tag="C01" />
-                                <ComboBoxItem Content="C02 - Bank Standard" Tag="C02" />
-                                <ComboBoxItem Content="C03 - Classic / Pension" Tag="C03" />
-                                <ComboBoxItem Content="C05 - Direct IMS / No Billing" Tag="C05" />
-                            </ComboBox>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- LIGNE 2 : EXTRACTION UNITAIRE -->
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="155" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   Text="⚡ Contrat / Demand ID :"
-                                   FontWeight="Bold"
-                                   FontSize="12.5"
-                                   Foreground="#0F172A"
-                                   VerticalAlignment="Center" />
-                        <TextBox x:Name="TxtExtContract"
-                                 Grid.Column="1"
-                                 Style="{StaticResource InputTextBoxStyle}"
-                                 FontSize="13.5"
-                                 FontWeight="SemiBold"
-                                 TextChanged="TxtExtContract_TextChanged"
-                                 KeyDown="TxtExtContract_KeyDown"
-                                 ToolTip="Numéro de Contrat (582-...) ou Demand ID ELIA" />
-                    </Grid>
-
-                    <!-- LIGNE 3 : EXTRACTION BATCH (EXCEL / CSV) AVEC ACCÈS DIRECT AU FICHIER -->
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="155" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   Text="📁 Fichier Batch Excel :"
-                                   FontWeight="Bold"
-                                   FontSize="12.5"
-                                   Foreground="#0F172A"
-                                   VerticalAlignment="Center" />
-                        <TextBox x:Name="TxtBatchExtCsv"
-                                 Grid.Column="1"
-                                 Style="{StaticResource InputTextBoxStyle}"
-                                 Background="#F8FAFC"
-                                 Margin="0,0,6,0"
-                                 ToolTip="Chemin du fichier Excel (.xls/.xlsx) ou CSV d'entrée Batch (réseau QC par défaut ou fichier personnalisé)" />
-                        <Button x:Name="BtnOpenBatchExtExcel"
-                                Grid.Column="2"
-                                Content="📊 Ouvrir Excel"
-                                Padding="10,6"
-                                Margin="0,0,5,0"
-                                Background="#ECFDF5"
-                                Foreground="#047857"
-                                BorderBrush="#A7F3D0"
-                                BorderThickness="1"
-                                FontWeight="Bold"
-                                Cursor="Hand"
-                                ToolTip="Ouvrir directement le fichier Excel / CSV d'entrée sélectionné"
-                                Click="BtnOpenBatchExtFile_Click" />
-                        <Button x:Name="BtnPreviewBatchExt"
-                                Grid.Column="3"
-                                Content="🔎 Aperçu"
-                                Padding="10,6"
-                                Margin="0,0,5,0"
-                                Background="#EFF6FF"
-                                Foreground="#1D4ED8"
-                                BorderBrush="#BFDBFE"
-                                BorderThickness="1"
-                                FontWeight="Bold"
-                                Cursor="Hand"
-                                ToolTip="Inspecter les lignes et identifiants détectés dans le fichier Batch"
-                                Click="BtnPreviewExtFile_Click" />
-                        <Button x:Name="BtnDefaultQcExt"
-                                Grid.Column="4"
-                                Content="📋 Défaut QC"
-                                Padding="10,6"
-                                Margin="0,0,5,0"
-                                Background="#F8FAFC"
-                                Foreground="#334155"
-                                BorderBrush="#CBD5E1"
-                                BorderThickness="1"
-                                FontWeight="SemiBold"
-                                Cursor="Hand"
-                                ToolTip="Restaurer le chemin réseau Excel générique par défaut selon l'Environnement et le Process"
-                                Click="BtnUseDefaultQcExtFile_Click" />
-                        <Button Grid.Column="5"
-                                Content="📂 Parcourir"
-                                Padding="12,6"
-                                Background="#334155"
-                                Foreground="White"
-                                FontWeight="Bold"
-                                BorderThickness="0"
-                                Cursor="Hand"
-                                Click="BtnBrowseExtCsv_Click" />
-                    </Grid>
-
-                    <!-- BOUTONS D'ACTION SÉPARÉS : UNITAIRE vs BATCH + STOP -->
-                    <StackPanel Orientation="Horizontal"
-                                HorizontalAlignment="Right"
-                                Margin="0,0,0,8">
-                        <Button x:Name="BtnCompareLatest"
-                                Content="📊 Comparer Dernier CSV"
-                                Click="BtnCompareLatestExt_Click"
-                                Padding="12,8"
-                                Margin="0,0,8,0"
-                                Background="#F5F3FF"
-                                Foreground="#6D28D9"
-                                BorderBrush="#DDD6FE"
-                                BorderThickness="1"
-                                FontWeight="Bold"
-                                Cursor="Hand"
-                                ToolTip="Envoyer la dernière extraction CSV vers le module de Comparaison" />
-                        <Button x:Name="BtnRunSingle"
-                                Content="⚡ Extraire Unitaire"
-                                Click="BtnRunSingle_Click"
-                                Style="{DynamicResource ActionButtonStyle}"
-                                Width="165"
-                                Margin="0,0,6,0" />
-                        <Button x:Name="BtnRunBatchExt"
-                                Content="📁 Extraire Batch"
-                                Click="BtnRunBatch_Click"
-                                Style="{DynamicResource ActionButtonStyle}"
-                                Background="#2563EB"
-                                Width="155"
-                                Margin="0,0,6,0" />
-                        <Button x:Name="BtnCancelSingleExt"
-                                Content="🛑 Stop"
-                                Click="BtnCancelExtraction_Click"
-                                Style="{DynamicResource CancelButtonStyle}"
-                                Width="105"
-                                IsEnabled="False" />
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Environnement :" Style="{StaticResource FieldLabelStyle}" />
+                        <ComboBox x:Name="CmbExtEnv"
+                                  Style="{StaticResource InputComboBoxStyle}"
+                                  SelectedIndex="0"
+                                  SelectionChanged="CmbExtEnv_SelectionChanged">
+                            <ComboBoxItem Content="D000 - Development (IM7T)" Tag="D" />
+                            <ComboBoxItem Content="Q000 - Qualification (IM7C)" Tag="Q" />
+                        </ComboBox>
                     </StackPanel>
 
-                    <!-- BARRE DE PROGRESSION COMPACTE DYNAMIQUE + CHRONOMÈTRE TEMPS RÉEL -->
-                    <Border Background="#F8FAFC"
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Process (fichier QC par défaut) :" Style="{StaticResource FieldLabelStyle}" />
+                        <ComboBox x:Name="CmbExtChannel"
+                                  Style="{StaticResource InputComboBoxStyle}"
+                                  SelectedIndex="0"
+                                  SelectionChanged="CmbExtChannel_SelectionChanged">
+                            <ComboBoxItem Content="C01 - Standard Life / UL" Tag="C01" />
+                            <ComboBoxItem Content="C02 - Bank Standard" Tag="C02" />
+                            <ComboBoxItem Content="C03 - Classic / Pension" Tag="C03" />
+                            <ComboBoxItem Content="C05 - Direct IMS / No Billing" Tag="C05" />
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
+
+                <!-- LIGNE UNITAIRE : SAISIE + BOUTON ALIGNÉ -->
+                <Grid Margin="0,0,0,7">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="145" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Contrat / Demand ID :"
+                               FontWeight="SemiBold"
+                               FontSize="12.5"
+                               Foreground="#0F172A"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="TxtExtContract"
+                             Grid.Column="1"
+                             Style="{StaticResource InputTextBoxStyle}"
+                             FontWeight="SemiBold"
+                             Margin="0,0,6,0"
+                             TextChanged="TxtExtContract_TextChanged"
+                             KeyDown="TxtExtContract_KeyDown"
+                             ToolTip="Numéro de Contrat (582-...) ou Demand ID ELIA" />
+                    <Button x:Name="BtnRunSingle"
+                            Grid.Column="2"
+                            Content="Extraire"
+                            Click="BtnRunSingle_Click"
+                            Style="{DynamicResource ActionButtonStyle}"
+                            Width="135" />
+                </Grid>
+
+                <!-- LIGNE BATCH : FICHIER EXCEL + ACCÈS DIRECT + BOUTON BATCH -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="145" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Fichier Batch Excel :"
+                               FontWeight="SemiBold"
+                               FontSize="12.5"
+                               Foreground="#0F172A"
+                               VerticalAlignment="Center" />
+                    <TextBox x:Name="TxtBatchExtCsv"
+                             Grid.Column="1"
+                             Style="{StaticResource InputTextBoxStyle}"
+                             Background="#F8FAFC"
+                             Margin="0,0,6,0"
+                             ToolTip="Chemin du fichier Excel (.xls/.xlsx) ou CSV d'entrée Batch" />
+                    <Button x:Name="BtnOpenBatchExtExcel"
+                            Grid.Column="2"
+                            Content="Ouvrir"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Margin="0,0,4,0"
+                            ToolTip="Ouvrir directement le fichier Excel / CSV d'entrée sélectionné"
+                            Click="BtnOpenBatchExtFile_Click" />
+                    <Button x:Name="BtnPreviewBatchExt"
+                            Grid.Column="3"
+                            Content="Aperçu"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Margin="0,0,4,0"
+                            ToolTip="Inspecter les lignes et identifiants détectés dans le fichier Batch"
+                            Click="BtnPreviewExtFile_Click" />
+                    <Button x:Name="BtnDefaultQcExt"
+                            Grid.Column="4"
+                            Content="Défaut QC"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Margin="0,0,4,0"
+                            Visibility="Collapsed"
+                            ToolTip="Restaurer le chemin réseau Excel générique par défaut"
+                            Click="BtnUseDefaultQcExtFile_Click" />
+                    <Button Grid.Column="5"
+                            Content="Parcourir"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Click="BtnBrowseExtCsv_Click" />
+                    <Button x:Name="BtnRunBatchExt"
+                            Grid.Column="7"
+                            Content="Extraire Batch"
+                            Click="BtnRunBatch_Click"
+                            Style="{DynamicResource ActionButtonStyle}"
+                            Width="135" />
+                </Grid>
+
+                <!-- BARRE DE PROGRESSION DYNAMIQUE + CHRONOMÈTRE + STOP INTÉGRÉ -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Background="#F8FAFC"
                             BorderBrush="#E2E8F0"
                             BorderThickness="1"
-                            CornerRadius="6"
-                            Padding="10,6">
+                            CornerRadius="5"
+                            Padding="10,5"
+                            Margin="0,0,6,0">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -288,19 +261,19 @@
                                            FontSize="11.5"
                                            TextTrimming="CharacterEllipsis"
                                            VerticalAlignment="Center">
-                                    <Run x:Name="TxtExtBatchCurrentContract" Text="Prêt" Foreground="#1E293B" FontWeight="SemiBold" />
+                                    <Run x:Name="TxtExtBatchCurrentContract" Text="Prêt" Foreground="#334155" FontWeight="SemiBold" />
                                 </TextBlock>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TxtExtBatchProcessedCount" Text="0" FontWeight="Bold" Foreground="#15803D" FontSize="12" />
-                                    <TextBlock Text="/" Foreground="#64748B" FontSize="12" Margin="2,0" />
-                                    <TextBlock x:Name="TxtExtBatchPlannedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="12" />
-                                    <TextBlock x:Name="TxtExtElapsedTime" Text="   ⏱️ 0.0s" FontWeight="SemiBold" Foreground="#475569" FontSize="11.5" Margin="6,0,8,0" />
-                                    <TextBlock x:Name="TxtExtBatchProgressPercentage" Text="0%" FontWeight="Bold" FontSize="12.5" Foreground="#2563EB" />
+                                    <TextBlock x:Name="TxtExtBatchProcessedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="11.5" />
+                                    <TextBlock Text="/" Foreground="#64748B" FontSize="11.5" Margin="2,0" />
+                                    <TextBlock x:Name="TxtExtBatchPlannedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="11.5" />
+                                    <TextBlock x:Name="TxtExtElapsedTime" Text="  0.0s" FontWeight="SemiBold" Foreground="#64748B" FontSize="11.5" Margin="8,0,8,0" />
+                                    <TextBlock x:Name="TxtExtBatchProgressPercentage" Text="0%" FontWeight="Bold" FontSize="11.5" Foreground="#2563EB" />
                                 </StackPanel>
                             </Grid>
                             <ProgressBar x:Name="ProgressBatchExtraction"
                                          Grid.Row="1"
-                                         Height="6"
+                                         Height="4"
                                          Margin="0,4,0,0"
                                          Minimum="0"
                                          Maximum="1000"
@@ -309,236 +282,216 @@
                                          Background="#E2E8F0" />
                         </Grid>
                     </Border>
-                </StackPanel>
-            </Border>
 
-            <!-- TABLEAU DES RÉSULTATS (ÉCHECS ROUGES EN HAUT, SUCCÈS/DÉJÀ ACTIFS EN VERT) -->
-            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="16,12">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                    <Button x:Name="BtnCancelSingleExt"
+                            Grid.Column="1"
+                            Content="Stop"
+                            Click="BtnCancelExtraction_Click"
+                            Style="{DynamicResource CancelButtonStyle}"
+                            Width="74"
+                            IsEnabled="False" />
+                </Grid>
+            </StackPanel>
+        </Border>
 
-                    <!-- BARRE COMPTEURS (3 BADGES) + FILTRE + 2 BOUTONS -->
-                    <Grid Grid.Row="0" Margin="0,0,0,10">
+        <!-- TABLEAU DES RÉSULTATS (8 COLONNES SANS ASCENSEUR HORIZONTAL, FOND BLANC SOBRE, ÉCHECS EN ROUGE) -->
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="14,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- BARRE COMPTEURS DISCRÈTE + RECHERCHE + FILTRE -->
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
+                        <TextBlock Text="Total : " FontSize="12" Foreground="#64748B" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="BadgeExtAll_Click" />
+                        <TextBlock x:Name="TxtTotalCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="BadgeExtAll_Click" />
+                        <TextBlock Text="   ·   Actifs : " FontSize="12" Foreground="#64748B" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="BadgeExtGreen_Click" />
+                        <TextBlock x:Name="TxtOkCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="BadgeExtGreen_Click" />
+                        <TextBlock Text="   ·   Échecs : " FontSize="12" Foreground="#64748B" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="BadgeExtFailed_Click" />
+                        <TextBlock x:Name="TxtKoCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#DC2626" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="BadgeExtFailed_Click" />
+                    </StackPanel>
+
+                    <Grid Grid.Column="1" Margin="0,0,10,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="165" />
                         </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="10" Padding="10,3" Margin="0,0,6,0" Cursor="Hand" MouseLeftButtonDown="BadgeExtAll_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Total : " FontSize="12" FontWeight="SemiBold" Foreground="#475569" />
-                                    <TextBlock x:Name="TxtTotalCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#0F172A" />
-                                </StackPanel>
-                            </Border>
-                            <Border Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="10" Padding="10,3" Margin="0,0,6,0" Cursor="Hand" MouseLeftButtonDown="BadgeExtGreen_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🟢 Actifs / Déjà actifs : " FontSize="12" FontWeight="SemiBold" Foreground="#15803D" />
-                                    <TextBlock x:Name="TxtOkCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#15803D" />
-                                </StackPanel>
-                            </Border>
-                            <Border Background="#FEE2E2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="10" Padding="10,3" Margin="0,0,12,0" Cursor="Hand" MouseLeftButtonDown="BadgeExtFailed_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🔴 Échecs : " FontSize="12" FontWeight="SemiBold" Foreground="#B91C1C" />
-                                    <TextBlock x:Name="TxtKoCount" Text="0" FontSize="12" FontWeight="Bold" Foreground="#B91C1C" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <Grid Grid.Column="1" Margin="0,0,10,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="8" />
-                                <ColumnDefinition Width="170" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtFilterExtHistory"
-                                     Grid.Column="0"
-                                     Padding="8,4"
-                                     FontSize="12"
-                                     BorderBrush="#CBD5E1"
-                                     ToolTip="Rechercher par Contrat, Demand ID, Produit, LISA ID ou Canal"
-                                     TextChanged="FilterExtHistory_Changed" />
-                            <ComboBox x:Name="CmbFilterExtStatus"
-                                      Grid.Column="2"
-                                      Padding="8,4"
-                                      FontSize="12"
-                                      SelectedIndex="0"
-                                      SelectionChanged="FilterExtHistory_Changed">
-                                <ComboBoxItem Content="Tous les statuts" Tag="ALL" />
-                                <ComboBoxItem Content="🟢 Actifs / Déjà actifs" Tag="OK" />
-                                <ComboBoxItem Content="🔴 Échecs uniquement" Tag="KO_OR_ELIA" />
-                            </ComboBox>
-                        </Grid>
-
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button x:Name="BtnExportExtHistoryCsv"
-                                    Content="📥 Export CSV"
-                                    Click="BtnExportExtHistoryCsv_Click"
-                                    Cursor="Hand"
-                                    Padding="10,4"
-                                    Margin="0,0,6,0"
-                                    FontWeight="Bold"
-                                    Background="#EFF6FF"
-                                    Foreground="#2563EB"
-                                    BorderBrush="#BFDBFE"
-                                    BorderThickness="1" />
-                            <Button x:Name="BtnClearHistory"
-                                    Content="🗑️ Vider"
-                                    Click="BtnClearHistory_Click"
-                                    Cursor="Hand"
-                                    Padding="10,4"
-                                    FontWeight="Bold"
-                                    Background="White"
-                                    Foreground="{StaticResource DangerRed}"
-                                    BorderBrush="{StaticResource DangerRed}"
-                                    BorderThickness="1" />
-                        </StackPanel>
+                        <TextBox x:Name="TxtFilterExtHistory"
+                                 Grid.Column="0"
+                                 Style="{StaticResource InputTextBoxStyle}"
+                                 MinHeight="28"
+                                 Padding="8,3"
+                                 FontSize="12"
+                                 ToolTip="Filtrer par Contrat, Demand ID, Produit, LISA ID ou Canal"
+                                 TextChanged="FilterExtHistory_Changed" />
+                        <ComboBox x:Name="CmbFilterExtStatus"
+                                  Grid.Column="2"
+                                  Style="{StaticResource InputComboBoxStyle}"
+                                  MinHeight="28"
+                                  Padding="8,3"
+                                  FontSize="12"
+                                  SelectedIndex="0"
+                                  SelectionChanged="FilterExtHistory_Changed">
+                            <ComboBoxItem Content="Tous les statuts" Tag="ALL" />
+                            <ComboBoxItem Content="Actifs uniquement" Tag="OK" />
+                            <ComboBoxItem Content="Échecs / ELIA seul" Tag="KO_OR_ELIA" />
+                        </ComboBox>
                     </Grid>
 
-                    <ListView x:Name="ListHistory"
-                              Grid.Row="1"
-                              Background="White"
-                              BorderBrush="{StaticResource BorderDefault}"
-                              BorderThickness="1"
-                              MinHeight="240"
-                              MaxHeight="520"
-                              MouseDoubleClick="ListHistory_MouseDoubleClick"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                              ScrollViewer.CanContentScroll="True">
-                        <ListView.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="🔍 Ouvrir le rapport complet (SQL &amp; Métadonnées)" Click="MenuExtInspect_Click" FontWeight="Bold" />
-                                <MenuItem Header="🔄 Charger dans l'entrée unitaire" Click="MenuExtLoadSingle_Click" FontWeight="SemiBold" />
-                                <Separator />
-                                <MenuItem Header="📋 Copier le N° de Contrat" Click="MenuExtCopyContract_Click" />
-                                <MenuItem Header="📋 Copier le Demand ID" Click="MenuExtCopyDemand_Click" />
-                                <MenuItem Header="📂 Ouvrir le fichier CSV extrait" Click="MenuExtOpenCsv_Click" />
-                                <Separator />
-                                <MenuItem Header="⚡ Envoyer vers Activation Contrats" Click="MenuExtSendToActivation_Click" />
-                            </ContextMenu>
-                        </ListView.ContextMenu>
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="Padding" Value="4,5" />
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="Background" Value="#F0FDF4" />
-                                <Setter Property="BorderBrush" Value="#BBF7D0" />
-                                <Setter Property="BorderThickness" Value="0,0,0,1" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsFailed}" Value="True">
-                                        <Setter Property="Background" Value="#FEF2F2" />
-                                        <Setter Property="BorderBrush" Value="#FECACA" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                        <ListView.View>
-                            <GridView AllowsColumnReorder="True">
-                                <!-- 1. STATUT (VERT OU ROUGE) -->
-                                <GridViewColumn Header="Statut" Width="125">
-                                    <GridViewColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Border x:Name="StatusBadge"
-                                                    Background="#DCFCE7"
-                                                    BorderBrush="#86EFAC"
-                                                    BorderThickness="1"
-                                                    CornerRadius="6"
-                                                    Padding="8,2"
-                                                    HorizontalAlignment="Left">
-                                                <TextBlock x:Name="StatusText"
-                                                           Text="{Binding StatusBadgeText}"
-                                                           FontWeight="Bold"
-                                                           FontSize="11.5"
-                                                           Foreground="#15803D" />
-                                            </Border>
-                                            <DataTemplate.Triggers>
-                                                <DataTrigger Binding="{Binding IsFailed}" Value="True">
-                                                    <Setter TargetName="StatusBadge" Property="Background" Value="#FEE2E2" />
-                                                    <Setter TargetName="StatusBadge" Property="BorderBrush" Value="#FCA5A5" />
-                                                    <Setter TargetName="StatusText" Property="Foreground" Value="#B91C1C" />
-                                                </DataTrigger>
-                                            </DataTemplate.Triggers>
-                                        </DataTemplate>
-                                    </GridViewColumn.CellTemplate>
-                                </GridViewColumn>
-
-                                <!-- 2. ROW EXCEL -->
-                                <GridViewColumn Header="Row" DisplayMemberBinding="{Binding RowNum}" Width="56" />
-
-                                <!-- 3. ENV -->
-                                <GridViewColumn Header="Env" DisplayMemberBinding="{Binding Env}" Width="54" />
-
-                                <!-- 4. CONTRAT -->
-                                <GridViewColumn Header="Contrat" Width="128">
-                                    <GridViewColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding ContractId}" FontWeight="Bold" Foreground="#0F172A" />
-                                        </DataTemplate>
-                                    </GridViewColumn.CellTemplate>
-                                </GridViewColumn>
-
-                                <!-- 5. DEMAND ID -->
-                                <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="98" />
-
-                                <!-- 6. LISA ID -->
-                                <GridViewColumn Header="LISA ID" DisplayMemberBinding="{Binding InternalId}" Width="82" />
-
-                                <!-- 7. BRANCHE -->
-                                <GridViewColumn Header="Branche" Width="92">
-                                    <GridViewColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Border x:Name="BranchBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8" Padding="7,1" HorizontalAlignment="Center">
-                                                <TextBlock x:Name="BranchText" Text="{Binding BranchDisplay}" FontWeight="Bold" FontSize="11" Foreground="#1D4ED8" />
-                                            </Border>
-                                            <DataTemplate.Triggers>
-                                                <DataTrigger Binding="{Binding IsBranch23}" Value="True">
-                                                    <Setter TargetName="BranchBadge" Property="Background" Value="#F5F3FF" />
-                                                    <Setter TargetName="BranchBadge" Property="BorderBrush" Value="#DDD6FE" />
-                                                    <Setter TargetName="BranchText" Property="Foreground" Value="#6D28D9" />
-                                                </DataTrigger>
-                                            </DataTemplate.Triggers>
-                                        </DataTemplate>
-                                    </GridViewColumn.CellTemplate>
-                                </GridViewColumn>
-
-                                <!-- 8. PRODUIT / PROCESS -->
-                                <GridViewColumn Header="Produit (Proc.)" DisplayMemberBinding="{Binding ProductProcessDisplay}" Width="105" />
-
-                                <!-- 9. CANAL & PAIEMENT -->
-                                <GridViewColumn Header="Canal (BUCP/CMD)" DisplayMemberBinding="{Binding ChannelPaymentDisplay}" Width="155" />
-
-                                <!-- 10. PRIME -->
-                                <GridViewColumn Header="Prime" DisplayMemberBinding="{Binding Premium}" Width="85" />
-
-                                <!-- 11. RÉSULTAT / ERREUR -->
-                                <GridViewColumn Header="Résultat / Erreur" Width="380">
-                                    <GridViewColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <TextBlock x:Name="DiagText"
-                                                       Text="{Binding SummaryDisplay}"
-                                                       Foreground="#15803D"
-                                                       FontWeight="SemiBold"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding SummaryDisplay}" />
-                                            <DataTemplate.Triggers>
-                                                <DataTrigger Binding="{Binding IsFailed}" Value="True">
-                                                    <Setter TargetName="DiagText" Property="Foreground" Value="#B91C1C" />
-                                                    <Setter TargetName="DiagText" Property="FontWeight" Value="Bold" />
-                                                </DataTrigger>
-                                            </DataTemplate.Triggers>
-                                        </DataTemplate>
-                                    </GridViewColumn.CellTemplate>
-                                </GridViewColumn>
-                            </GridView>
-                        </ListView.View>
-                    </ListView>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button x:Name="BtnExportExtHistoryCsv"
+                                Content="Exporter CSV"
+                                Click="BtnExportExtHistoryCsv_Click"
+                                Style="{StaticResource NeutralButtonStyle}"
+                                Padding="10,4"
+                                Margin="0,0,5,0" />
+                        <Button x:Name="BtnClearHistory"
+                                Content="Vider"
+                                Click="BtnClearHistory_Click"
+                                Style="{StaticResource NeutralButtonStyle}"
+                                Padding="10,4" />
+                    </StackPanel>
                 </Grid>
-            </Border>
-        </Grid>
-    </ScrollViewer>
+
+                <ListView x:Name="ListHistory"
+                          Grid.Row="1"
+                          Background="White"
+                          BorderBrush="#E2E8F0"
+                          BorderThickness="1"
+                          VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          MouseDoubleClick="ListHistory_MouseDoubleClick"
+                          SizeChanged="ListHistory_SizeChanged"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.CanContentScroll="True">
+                    <ListView.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Ouvrir le rapport complet (SQL &amp; Métadonnées)" Click="MenuExtInspect_Click" FontWeight="SemiBold" />
+                            <MenuItem Header="Charger dans l'entrée unitaire" Click="MenuExtLoadSingle_Click" />
+                            <Separator />
+                            <MenuItem Header="Copier le N° de Contrat" Click="MenuExtCopyContract_Click" />
+                            <MenuItem Header="Copier le Demand ID" Click="MenuExtCopyDemand_Click" />
+                            <MenuItem Header="Ouvrir le fichier CSV extrait" Click="MenuExtOpenCsv_Click" />
+                            <Separator />
+                            <MenuItem Header="Envoyer vers Activation Contrats" Click="MenuExtSendToActivation_Click" />
+                        </ContextMenu>
+                    </ListView.ContextMenu>
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="4,5" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Background" Value="White" />
+                            <Setter Property="BorderBrush" Value="#F1F5F9" />
+                            <Setter Property="BorderThickness" Value="0,0,0,1" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                    <Setter Property="Background" Value="#FEF2F2" />
+                                    <Setter Property="BorderBrush" Value="#FECACA" />
+                                </DataTrigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.View>
+                        <GridView AllowsColumnReorder="True">
+                            <!-- 1. STATUT -->
+                            <GridViewColumn Header="Statut" Width="92">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock x:Name="StatusText"
+                                                   Text="{Binding StatusBadgeText}"
+                                                   FontWeight="Bold"
+                                                   FontSize="11.5"
+                                                   Foreground="#334155" />
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                                <Setter TargetName="StatusText" Property="Foreground" Value="#DC2626" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
+                            <!-- 2. LIGNE EXCEL -->
+                            <GridViewColumn Header="Ligne" DisplayMemberBinding="{Binding RowNum}" Width="50" />
+
+                            <!-- 3. TEMPS (HH:mm:ss) -->
+                            <GridViewColumn Header="Temps" DisplayMemberBinding="{Binding Time}" Width="66" />
+
+                            <!-- 4. CONTRAT -->
+                            <GridViewColumn Header="Contrat" Width="120">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding ContractId}" FontWeight="SemiBold" FontFamily="Consolas" FontSize="12" Foreground="#0F172A" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
+                            <!-- 5. LISA / DEMAND -->
+                            <GridViewColumn Header="LISA / Demand" Width="140">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding LisaAndDemandDisplay}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="11.5"
+                                                   Foreground="#475569"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding LisaAndDemandDisplay}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
+                            <!-- 6. BRANCHE -->
+                            <GridViewColumn Header="Branche" DisplayMemberBinding="{Binding ShortBranchDisplay}" Width="58" />
+
+                            <!-- 7. PRODUIT / CANAL -->
+                            <GridViewColumn Header="Produit / Canal" Width="180">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding CompactProductChannelDisplay}"
+                                                   FontSize="11.5"
+                                                   Foreground="#334155"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding CompactProductChannelDisplay}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
+                            <!-- 8. DÉTAIL / MESSAGE (OCCUPE TOUTE LA LARGEUR RESTANTE) -->
+                            <GridViewColumn x:Name="ColExtDetail" Header="Détail / Résultat" Width="260">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock x:Name="DiagText"
+                                                   Text="{Binding SummaryDisplay}"
+                                                   Foreground="#475569"
+                                                   FontSize="12"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding SummaryDisplay}" />
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                                <Setter TargetName="DiagText" Property="Foreground" Value="#DC2626" />
+                                                <Setter TargetName="DiagText" Property="FontWeight" Value="SemiBold" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </Grid>
+        </Border>
+    </Grid>
 </UserControl>

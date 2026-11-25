@@ -5,8 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -20,41 +18,8 @@ using AutoActivator.Utils;
 
 namespace AutoActivator.Gui.Views
 {
-    public sealed class HotTableSummaryPill
-    {
-        public string CleanTableName { get; init; } = string.Empty;
-
-        public string BadgeSummary { get; init; } = string.Empty;
-
-        public string TooltipText { get; init; } = string.Empty;
-    }
-
-    public sealed class DiffColumnFilterChip
-    {
-        public string ColumnFilterKey { get; init; } = string.Empty;
-
-        public string DisplayLabel { get; init; } = string.Empty;
-
-        public SolidColorBrush ChipBackground { get; init; } = Brushes.White;
-
-        public SolidColorBrush ChipForeground { get; init; } = Brushes.Black;
-
-        public SolidColorBrush ChipBorder { get; init; } = Brushes.Gray;
-    }
-
     public sealed class UIComparisonResult
     {
-        internal static readonly SolidColorBrush MatchBrush = CreateFrozenBrush("#10B981");
-        internal static readonly SolidColorBrush VolumeWarnBrush = CreateFrozenBrush("#D97706");
-        internal static readonly SolidColorBrush DiffBrush = CreateFrozenBrush("#DC2626");
-
-        private static SolidColorBrush CreateFrozenBrush(string hex)
-        {
-            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-            if (brush.CanFreeze) brush.Freeze();
-            return brush;
-        }
-
         public string TestId { get; set; } = string.Empty;
         public string ExcelRowDisplay { get; set; } = "-";
         public string ContractNumber { get; set; } = string.Empty;
@@ -81,52 +46,54 @@ namespace AutoActivator.Gui.Views
         public int IgnoredDifferencesCount { get; set; }
         public bool IsMatch { get; set; }
 
-        public string StatusIcon => IsMatch ? "✔ OK" : "✖ KO";
+        public string StatusIcon => IsMatch ? "OK" : "KO";
 
         public string StatusBadgeText => Status switch
         {
-            "OK" => "✓ IDENTIQUE",
-            "OK_EMPTY" => "✓ VIDE (0/0)",
-            "KO_ROW_COUNT" => "⚠️ ÉCART VOLUME",
-            "KO_MISSING_DATA" => "🔴 MANQUANTE",
-            _ => "🔴 ÉCART MÉTIER"
+            "OK" => "OK",
+            "OK_EMPTY" => "Vide (0/0)",
+            "KO_ROW_COUNT" => "Écart volume",
+            "KO_MISSING_DATA" => "Données absentes",
+            _ => "Écart métier"
         };
 
-        public SolidColorBrush StatusColor =>
-            IsMatch
-                ? MatchBrush
-                : string.Equals(Status, "KO_ROW_COUNT", StringComparison.OrdinalIgnoreCase)
-                    ? VolumeWarnBrush
-                    : DiffBrush;
+        public string CompactStatusSummary
+        {
+            get
+            {
+                if (IsMatch)
+                {
+                    return string.Equals(Status, "OK_EMPTY", StringComparison.OrdinalIgnoreCase)
+                        ? "Vide (0/0)"
+                        : "OK";
+                }
 
-        public string DiffColsBadge =>
-            IsMatch
-                ? "0"
-                : DifferingColumnsCount > 0
-                    ? $"{DifferingColumnsCount} col."
-                    : "Vol.";
+                if (string.Equals(Status, "KO_MISSING_DATA", StringComparison.OrdinalIgnoreCase))
+                {
+                    return !string.IsNullOrWhiteSpace(DifferingColumnsSummary) && DifferingColumnsSummary != "-"
+                        ? DifferingColumnsSummary
+                        : "Données absentes";
+                }
 
-        public string IgnoredBadgeText =>
-            IgnoredDifferencesCount > 0 ? $"🛡️ {IgnoredDifferencesCount}" : "-";
+                if (string.Equals(Status, "KO_ROW_COUNT", StringComparison.OrdinalIgnoreCase))
+                {
+                    return DifferingColumnsCount > 0
+                        ? $"Volume + {DifferingColumnsCount} col. KO"
+                        : "Écart volume";
+                }
+
+                return DifferingColumnsCount > 0
+                    ? $"{DifferingColumnsCount} col. KO ({DifferingColumnsSummary})"
+                    : DifferingColumnsSummary;
+            }
+        }
     }
 
     public partial class ComparisonView : UserControl
     {
-        private static readonly SolidColorBrush YellowStrokeBrush = CreateFrozenBrush("#F59E0B");
-        private static readonly SolidColorBrush OrangeTitleBrush = CreateFrozenBrush("#D97706");
-        private static readonly SolidColorBrush ActiveKoBtnBg = CreateFrozenBrush("#DC2626");
-        private static readonly SolidColorBrush ActiveAllBtnBg = CreateFrozenBrush("#0F172A");
-        private static readonly SolidColorBrush ActiveOkBtnBg = CreateFrozenBrush("#059669");
-        private static readonly SolidColorBrush ActiveSpecificBtnBg = CreateFrozenBrush("#D97706");
-        private static readonly SolidColorBrush ActiveGlobalBtnBg = CreateFrozenBrush("#2563EB");
-        private static readonly SolidColorBrush ActiveAuditBtnBg = CreateFrozenBrush("#475569");
-        private static readonly SolidColorBrush InactiveBtnBg = CreateFrozenBrush("#FFFFFF");
-        private static readonly SolidColorBrush InactiveBorderBrush = CreateFrozenBrush("#CBD5E1");
-        private static readonly SolidColorBrush DarkTextBrush = CreateFrozenBrush("#334155");
-        private static readonly SolidColorBrush ChipSelectedBg = CreateFrozenBrush("#1E3A8A");
-        private static readonly SolidColorBrush ChipUnselectedBg = CreateFrozenBrush("#EFF6FF");
-        private static readonly SolidColorBrush ChipUnselectedFg = CreateFrozenBrush("#1D4ED8");
-        private static readonly SolidColorBrush ChipUnselectedBorder = CreateFrozenBrush("#BFDBFE");
+        private static readonly SolidColorBrush SlateDarkBrush = CreateFrozenBrush("#0F172A");
+        private static readonly SolidColorBrush SlateMutedBrush = CreateFrozenBrush("#64748B");
+        private static readonly SolidColorBrush DiffRedBrush = CreateFrozenBrush("#DC2626");
 
         private readonly OperationProgressController _progressController;
 
@@ -135,10 +102,9 @@ namespace AutoActivator.Gui.Views
         private ICollectionView? _resultsCollectionView;
         private ICollectionView? _ignoredCollectionView;
 
-        private string _quickExactTableFilter = string.Empty;
-        private string _selectedInspectorColumnFilter = "ALL";
         private string _ignoredCategoryFilter = "ALL";
         private bool _suppressStatusComboSync;
+        private bool _suppressIgnoredCategorySync;
 
         private static SolidColorBrush CreateFrozenBrush(string hex)
         {
@@ -330,7 +296,7 @@ namespace AutoActivator.Gui.Views
                     string destPath = Path.Combine(Settings.BaselineDir, fileName);
 
                     File.Copy(latestExtractionFile, destPath, true);
-                    MessageBox.Show($"La dernière extraction ({fileName}) a été copiée dans les Baselines !", "Baseline ajoutée", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show($"La dernière extraction ({fileName}) a été copiée dans les Baselines.", "Baseline ajoutée", MessageBoxButton.OK, MessageBoxImage.Information);
                     LoadBaselines();
                 }
                 else
@@ -460,8 +426,8 @@ namespace AutoActivator.Gui.Views
             PanelDashboard.Visibility = Visibility.Collapsed;
             TabComparisonMain.Visibility = Visibility.Collapsed;
             PanelWaitingCard.Visibility = Visibility.Visible;
-            TxtComparisonWaiting.Foreground = Brushes.SlateGray;
-            TxtComparisonWaiting.Text = "Analyse matricielle SOURCE vs TARGET en cours...\nComparaison cellule par cellule et audit des règles d'exclusion.";
+            TxtComparisonWaiting.Foreground = SlateMutedBrush;
+            TxtComparisonWaiting.Text = "Comparaison SOURCE vs TARGET en cours...";
 
             _progressController.Start("Initialisation de la comparaison SOURCE vs TARGET...", totalUnits: 0, showEta: true);
             mainWindow.TxtStatus.Text = "Comparaison table par table en cours...";
@@ -499,7 +465,7 @@ namespace AutoActivator.Gui.Views
                             $"Comparaison terminée — Conformité : {report.GlobalSuccessPercentage:F2}% " +
                             $"({report.TotalTablesWithDifferences} table(s) KO, {report.IgnoredDifferences.Count} diff. ignorée(s) à 0% d'impact).";
                         _progressController.Complete(
-                            $"Terminé — Conformité : {report.GlobalSuccessPercentage:F2}% ({report.ComparedTestsCount} contrat(s) analysé(s))",
+                            $"Terminé — Conformité : {report.GlobalSuccessPercentage:F2}% ({report.ComparedTestsCount} contrat(s))",
                             warning: report.TotalTablesWithDifferences > 0);
                         UpdateDashboardUI(report);
                     });
@@ -510,7 +476,7 @@ namespace AutoActivator.Gui.Views
                     {
                         _progressController.Cancel("Comparaison annulée par l'utilisateur.");
                         TxtComparisonWaiting.Text = "Comparaison arrêtée à la demande de l'utilisateur.";
-                        TxtComparisonWaiting.Foreground = Brushes.DarkOrange;
+                        TxtComparisonWaiting.Foreground = SlateMutedBrush;
                     });
                     throw;
                 }
@@ -519,8 +485,8 @@ namespace AutoActivator.Gui.Views
                     await Dispatcher.InvokeAsync(() =>
                     {
                         _progressController.Fail($"Échec : {ex.Message}");
-                        TxtComparisonWaiting.Text = $"ERREUR DE COMPARAISON :\n{ex.Message}";
-                        TxtComparisonWaiting.Foreground = Brushes.Crimson;
+                        TxtComparisonWaiting.Text = $"Erreur de comparaison :\n{ex.Message}";
+                        TxtComparisonWaiting.Foreground = DiffRedBrush;
                     });
                     throw;
                 }
@@ -532,7 +498,7 @@ namespace AutoActivator.Gui.Views
         }
 
         // =============================================================
-        // RENDU DU TABLEAU DE BORD & DES DEUX ONGLETS
+        // RENDU DE LA BARRE DE SYNTHÈSE SOBRE & DES DEUX ONGLETS
         // =============================================================
 
         private void UpdateDashboardUI(ComparisonReport report)
@@ -544,72 +510,32 @@ namespace AutoActivator.Gui.Views
             int matchedTables = report.FileResults.Count(r => r.IsMatch);
             int totalTables = report.FileResults.Count;
             int koTables = totalTables - matchedTables;
+            bool hasActiveDiffs = koTables > 0 || report.TotalDifferencesFound > 0;
 
-            int lisaTotal = report.FileResults.Count(r => string.Equals(r.FileType, "LISA", StringComparison.OrdinalIgnoreCase));
-            int lisaOk = report.FileResults.Count(r => string.Equals(r.FileType, "LISA", StringComparison.OrdinalIgnoreCase) && r.IsMatch);
-            int eliaTotal = report.FileResults.Count(r => string.Equals(r.FileType, "ELIA", StringComparison.OrdinalIgnoreCase));
-            int eliaOk = report.FileResults.Count(r => string.Equals(r.FileType, "ELIA", StringComparison.OrdinalIgnoreCase) && r.IsMatch);
-
-            int br21Total = report.FileResults.Count(r => !r.IsBranch23);
-            int br21Ok = report.FileResults.Count(r => !r.IsBranch23 && r.IsMatch);
-            int br23Total = report.FileResults.Count(r => r.IsBranch23);
-            int br23Ok = report.FileResults.Count(r => r.IsBranch23 && r.IsMatch);
-
-            int contractsOk = report.TestMetrics.Values.Count(m => m.ErrorRows == 0);
-            int contractsKo = report.TestMetrics.Values.Count(m => m.ErrorRows > 0);
+            TxtScorePercentage.Text = $"{report.GlobalSuccessPercentage:F2}%";
+            TxtScorePercentage.Foreground = hasActiveDiffs ? DiffRedBrush : SlateDarkBrush;
 
             TxtComparedTests.Text = report.ComparedTestsCount.ToString("N0", CultureInfo.InvariantCulture);
-            TxtContractsSummary.Text = $"{contractsOk} OK • {contractsKo} avec écart(s)";
             TxtTablesMatched.Text = $"{matchedTables} / {totalTables}";
-            TxtSystemBreakdown.Text = $"LISA: {lisaOk}/{lisaTotal} | ELIA: {eliaOk}/{eliaTotal}";
-            TxtKoTablesCount.Text = $"{koTables} table(s)";
-            TxtDiffColsTotal.Text = $"{report.TotalDifferingColumnsDistinct} col. • {report.TotalActiveCellDifferences:N0} cell.";
-            TxtBranchBreakdown.Text = $"B21: {br21Ok}/{br21Total} | B23: {br23Ok}/{br23Total}";
-            TxtTotalRows.Text = report.TotalRowsCompared.ToString("N0", CultureInfo.InvariantCulture);
-            TxtTotalErrors.Text = $"{report.TotalDifferencesFound:N0} ligne(s) KO";
-            TxtIgnoredTotalCount.Text = report.IgnoredDifferences.Count.ToString("N0", CultureInfo.InvariantCulture);
-            TxtIgnoredBreakdown.Text = $"{report.IgnoredSpecificTableCount} spécifique(s) table → Voir";
-            TxtScorePercentage.Text = $"{report.GlobalSuccessPercentage:F2}%";
+
+            TxtKoTablesCount.Text = koTables.ToString("N0", CultureInfo.InvariantCulture);
+            TxtKoTablesCount.Foreground = koTables > 0 ? DiffRedBrush : SlateDarkBrush;
+
+            TxtRowsKoSummary.Text = $"{report.TotalDifferencesFound:N0} / {report.TotalRowsCompared:N0}";
+            TxtRowsKoSummary.Foreground = report.TotalDifferencesFound > 0 ? DiffRedBrush : SlateDarkBrush;
+
+            TxtIgnoredSummary.Text = $"{report.IgnoredDifferences.Count:N0} (0% impact)";
 
             TxtTabActiveHeader.Text = koTables > 0
-                ? $"📊 Écarts Métier & Tables SQL ({koTables} KO / {totalTables})"
-                : $"📊 Écarts Métier & Tables SQL (✔ {totalTables}/{totalTables} OK)";
-            TxtTabIgnoredHeader.Text = $"🛡️ Différences ignorées ({report.IgnoredDifferences.Count:N0})";
+                ? $"Écarts métier ({koTables} KO / {totalTables})"
+                : $"Écarts métier ({totalTables}/{totalTables} OK)";
+            TxtTabIgnoredHeader.Text = $"Différences ignorées ({report.IgnoredDifferences.Count:N0})";
 
-            string testSummary = string.Join(" | ", report.TestMetrics.Take(8).Select(t => $"{t.Key}: {t.Value.SuccessPercentage}%"));
-            if (report.TestMetrics.Count > 8)
-            {
-                testSummary += $" (+{report.TestMetrics.Count - 8})";
-            }
+            bool multiContracts = report.ComparedTestsCount > 1;
+            CmbFilterCompContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
+            ColCompContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
+            CmbFilterIgnoredContract.Visibility = multiContracts ? Visibility.Visible : Visibility.Collapsed;
 
-            string productSummary = string.Join(" | ", report.ProductMetrics.Select(p => $"{p.Key}: {p.Value.SuccessPercentage}%"));
-            string scoresLine = $" • Tests : {testSummary}" + (report.ProductMetrics.Count > 0 ? $"  |  Produits : {productSummary}" : string.Empty);
-
-            double radius = 57.5;
-            double circumference = 2 * Math.PI * radius;
-            double dashLength = (report.GlobalSuccessPercentage / 100.0) * circumference;
-            CircleProgress.StrokeDashArray = new DoubleCollection { dashLength / 11.0, circumference };
-
-            if (report.GlobalSuccessPercentage >= 100.0 && koTables == 0)
-            {
-                CircleProgress.Stroke = UIComparisonResult.MatchBrush;
-                TxtDashboardTitle.Text = "🎉 Conformité Métier Parfaite (100%)" + scoresLine;
-                TxtDashboardTitle.Foreground = UIComparisonResult.MatchBrush;
-            }
-            else if (report.GlobalSuccessPercentage >= 95.0)
-            {
-                CircleProgress.Stroke = YellowStrokeBrush;
-                TxtDashboardTitle.Text = $"⚠️ Écarts ciblés détectés ({koTables} table(s) en écart)" + scoresLine;
-                TxtDashboardTitle.Foreground = OrangeTitleBrush;
-            }
-            else
-            {
-                CircleProgress.Stroke = UIComparisonResult.DiffBrush;
-                TxtDashboardTitle.Text = $"🔴 Écarts significatifs détectés ({koTables} table(s) en écart)" + scoresLine;
-                TxtDashboardTitle.Foreground = UIComparisonResult.DiffBrush;
-            }
-
-            // Construction des résultats de l'onglet 1
             var uiResults = new List<UIComparisonResult>(report.FileResults.Count);
             foreach (FileComparisonResult r in report.FileResults)
             {
@@ -635,13 +561,13 @@ namespace AutoActivator.Gui.Views
                     DifferingColumns = r.DifferingColumns,
                     DifferingColumnsCount = r.DifferingColumnsCount,
                     DifferingColumnsSummary = string.IsNullOrWhiteSpace(r.DifferingColumnsSummary)
-                        ? (r.IsMatch ? "✓ Identique" : "-")
+                        ? (r.IsMatch ? "Identique" : "-")
                         : r.DifferingColumnsSummary,
                     ActiveDifferences = r.ActiveDifferences,
                     ActiveCellDifferencesCount = r.ActiveCellDifferencesCount,
                     IgnoredDifferencesCount = r.IgnoredDifferencesCount,
                     ErrorDetails = string.IsNullOrWhiteSpace(r.ErrorDetails)
-                        ? "✓ Aucune différence métier active détectée entre SOURCE et TARGET."
+                        ? "Aucune différence métier active détectée entre SOURCE et TARGET."
                         : r.ErrorDetails.Trim()
                 });
             }
@@ -653,10 +579,9 @@ namespace AutoActivator.Gui.Views
                 .ThenBy(x => x.TestId, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            BuildHotTablePills(_currentResults);
             PopulateContractFilterComboBoxes(report.ComparedTestsCount);
+            UpdateIgnoredCategoryComboLabels(report);
 
-            _quickExactTableFilter = string.Empty;
             _resultsCollectionView = CollectionViewSource.GetDefaultView(_currentResults);
             if (_resultsCollectionView != null)
             {
@@ -664,10 +589,8 @@ namespace AutoActivator.Gui.Views
             }
             GridResults.ItemsSource = _resultsCollectionView ?? (System.Collections.IEnumerable)_currentResults;
 
-            // Sélection automatique intelligente : KO uniquement s'il existe des écarts, sinon Toutes
             ApplyQuickStatusFilter(koTables > 0 ? "KO" : "ALL");
 
-            // Construction de l'onglet 2 : Différences ignorées (Spécifiques Table affichées en premier !)
             _currentIgnoredDiffs = report.IgnoredDifferences
                 .OrderBy(d => d.Category == ExclusionRuleCategory.SpecificTable ? 0 : d.Category == ExclusionRuleCategory.Global ? 1 : 2)
                 .ThenBy(d => d.CleanTableName, StringComparer.OrdinalIgnoreCase)
@@ -675,11 +598,6 @@ namespace AutoActivator.Gui.Views
                 .ThenBy(d => d.TestId, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(d => d.RowNumber)
                 .ToList();
-
-            BtnIgnoredCatAll.Content = $"📋 Toutes ({report.IgnoredDifferences.Count:N0})";
-            BtnIgnoredCatSpecific.Content = $"⚠️ Spécifiques Table ({report.IgnoredSpecificTableCount:N0})";
-            BtnIgnoredCatGlobal.Content = $"🌐 Globales ({report.IgnoredGlobalCount:N0})";
-            BtnIgnoredCatAudit.Content = $"⏱️ Audit / Timestamps ({report.IgnoredTechnicalAuditCount:N0})";
 
             _ignoredCollectionView = CollectionViewSource.GetDefaultView(_currentIgnoredDiffs);
             if (_ignoredCollectionView != null)
@@ -692,47 +610,30 @@ namespace AutoActivator.Gui.Views
             TabComparisonMain.SelectedIndex = 0;
         }
 
-        private void BuildHotTablePills(IReadOnlyList<UIComparisonResult> results)
+        private void UpdateIgnoredCategoryComboLabels(ComparisonReport report)
         {
-            var koGroups = results
-                .Where(r => !r.IsMatch)
-                .GroupBy(r => r.CleanTableName, StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(g => g.Count())
-                .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            if (CmbFilterIgnoredCategory == null) return;
 
-            if (koGroups.Count == 0)
+            _suppressIgnoredCategorySync = true;
+            try
             {
-                PanelHotTablesStrip.Visibility = Visibility.Collapsed;
-                ItemsHotTablePills.ItemsSource = null;
-                return;
-            }
-
-            var pills = new List<HotTableSummaryPill>(koGroups.Count);
-            foreach (var grp in koGroups)
-            {
-                var distinctCols = grp
-                    .SelectMany(x => x.DifferingColumns)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                string colsPreview = distinctCols.Count == 0
-                    ? "écart volume/présence"
-                    : distinctCols.Count <= 3
-                        ? string.Join(", ", distinctCols)
-                        : $"{string.Join(", ", distinctCols.Take(3))} +{distinctCols.Count - 3}";
-
-                pills.Add(new HotTableSummaryPill
+                foreach (object entry in CmbFilterIgnoredCategory.Items)
                 {
-                    CleanTableName = grp.Key,
-                    BadgeSummary = $"{grp.Count()}× • {colsPreview}",
-                    TooltipText = $"Cliquer pour filtrer sur {grp.Key}\nContrats en écart : {grp.Count()}\nColonnes impactées : {(distinctCols.Count > 0 ? string.Join(", ", distinctCols) : "Volume de lignes")}"
-                });
+                    if (entry is not ComboBoxItem item) continue;
+                    string tag = item.Tag?.ToString() ?? "ALL";
+                    item.Content = tag switch
+                    {
+                        "SPECIFIC" => $"Spécifiques table ({report.IgnoredSpecificTableCount:N0})",
+                        "GLOBAL" => $"Exclusions globales ({report.IgnoredGlobalCount:N0})",
+                        "AUDIT" => $"Audit / Timestamps ({report.IgnoredTechnicalAuditCount:N0})",
+                        _ => $"Toutes les règles ({report.IgnoredDifferences.Count:N0})"
+                    };
+                }
             }
-
-            ItemsHotTablePills.ItemsSource = pills;
-            PanelHotTablesStrip.Visibility = Visibility.Visible;
+            finally
+            {
+                _suppressIgnoredCategorySync = false;
+            }
         }
 
         private void PopulateContractFilterComboBoxes(int comparedTestsCount)
@@ -743,8 +644,8 @@ namespace AutoActivator.Gui.Views
             CmbFilterCompContract.Items.Clear();
             CmbFilterIgnoredContract.Items.Clear();
 
-            CmbFilterCompContract.Items.Add(new ComboBoxItem { Content = $"Tous les Contrats ({comparedTestsCount})", Tag = "ALL" });
-            CmbFilterIgnoredContract.Items.Add(new ComboBoxItem { Content = $"Tous les Contrats ({comparedTestsCount})", Tag = "ALL" });
+            CmbFilterCompContract.Items.Add(new ComboBoxItem { Content = $"Tous les contrats ({comparedTestsCount})", Tag = "ALL" });
+            CmbFilterIgnoredContract.Items.Add(new ComboBoxItem { Content = $"Tous les contrats ({comparedTestsCount})", Tag = "ALL" });
 
             var byTest = _currentResults
                 .GroupBy(x => x.TestId, StringComparer.OrdinalIgnoreCase)
@@ -754,7 +655,7 @@ namespace AutoActivator.Gui.Views
             {
                 string contractNum = grp.First().ContractNumber;
                 int koTables = grp.Count(x => !x.IsMatch);
-                string badge = koTables == 0 ? "✔ 100% OK" : $"✖ {koTables} KO";
+                string badge = koTables == 0 ? "100% OK" : $"{koTables} KO";
 
                 CmbFilterCompContract.Items.Add(new ComboBoxItem
                 {
@@ -776,7 +677,7 @@ namespace AutoActivator.Gui.Views
         }
 
         // =============================================================
-        // FILTRAGE ONGLET 1 (TABLES & INSPECTEUR CÔTE À CÔTE)
+        // FILTRAGE ONGLET 1 (LISTE TABLES GAUCHE & DÉTAIL DROITE)
         // =============================================================
 
         private void CardActiveDiffs_Click(object sender, MouseButtonEventArgs e)
@@ -789,25 +690,6 @@ namespace AutoActivator.Gui.Views
         {
             TabComparisonMain.SelectedIndex = 1;
         }
-
-        private void BtnHotTablePill_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button btn && btn.Tag is string tableName)
-            {
-                _quickExactTableFilter = tableName;
-                ApplyQuickStatusFilter("KO");
-            }
-        }
-
-        private void BtnResetTableQuickFilter_Click(object sender, RoutedEventArgs e)
-        {
-            _quickExactTableFilter = string.Empty;
-            RefreshActiveGridAndCounters();
-        }
-
-        private void BtnQuickFilterKo_Click(object sender, RoutedEventArgs e) => ApplyQuickStatusFilter("KO");
-        private void BtnQuickFilterAll_Click(object sender, RoutedEventArgs e) => ApplyQuickStatusFilter("ALL");
-        private void BtnQuickFilterOk_Click(object sender, RoutedEventArgs e) => ApplyQuickStatusFilter("OK");
 
         private void ApplyQuickStatusFilter(string statusTag)
         {
@@ -829,37 +711,13 @@ namespace AutoActivator.Gui.Views
                 _suppressStatusComboSync = false;
             }
 
-            UpdateQuickStatusButtonVisuals(statusTag);
             RefreshActiveGridAndCounters();
         }
 
         private void CmbFilterCompStatus_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_suppressStatusComboSync) return;
-            string tag = (CmbFilterCompStatus?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "ALL";
-            UpdateQuickStatusButtonVisuals(tag);
             RefreshActiveGridAndCounters();
-        }
-
-        private void UpdateQuickStatusButtonVisuals(string activeTag)
-        {
-            if (BtnQuickFilterKo == null || BtnQuickFilterAll == null || BtnQuickFilterOk == null) return;
-
-            bool isKo = string.Equals(activeTag, "KO", StringComparison.OrdinalIgnoreCase);
-            bool isAll = string.Equals(activeTag, "ALL", StringComparison.OrdinalIgnoreCase);
-            bool isOk = string.Equals(activeTag, "OK", StringComparison.OrdinalIgnoreCase);
-
-            BtnQuickFilterKo.Background = isKo ? ActiveKoBtnBg : InactiveBtnBg;
-            BtnQuickFilterKo.Foreground = isKo ? Brushes.White : UIComparisonResult.DiffBrush;
-            BtnQuickFilterKo.BorderBrush = isKo ? ActiveKoBtnBg : InactiveBorderBrush;
-
-            BtnQuickFilterAll.Background = isAll ? ActiveAllBtnBg : InactiveBtnBg;
-            BtnQuickFilterAll.Foreground = isAll ? Brushes.White : DarkTextBrush;
-            BtnQuickFilterAll.BorderBrush = isAll ? ActiveAllBtnBg : InactiveBorderBrush;
-
-            BtnQuickFilterOk.Background = isOk ? ActiveOkBtnBg : InactiveBtnBg;
-            BtnQuickFilterOk.Foreground = isOk ? Brushes.White : ActiveOkBtnBg;
-            BtnQuickFilterOk.BorderBrush = isOk ? ActiveOkBtnBg : InactiveBorderBrush;
         }
 
         private void FilterComparison_Changed(object sender, EventArgs e)
@@ -872,30 +730,41 @@ namespace AutoActivator.Gui.Views
             if (_resultsCollectionView == null) return;
             _resultsCollectionView.Refresh();
 
-            int visibleCount = _resultsCollectionView.Cast<object>().Count();
-            string tableNote = string.IsNullOrWhiteSpace(_quickExactTableFilter)
-                ? string.Empty
-                : $" [Filtre table : {_quickExactTableFilter}]";
+            var visibleItems = _resultsCollectionView.Cast<UIComparisonResult>().ToList();
+            int visibleCount = visibleItems.Count;
+
             if (TxtFilteredTablesCount != null)
             {
-                TxtFilteredTablesCount.Text = $"{visibleCount} / {_currentResults.Count} table(s) affichée(s){tableNote}";
+                TxtFilteredTablesCount.Text = $"{visibleCount} / {_currentResults.Count} table(s)";
             }
 
-            if (GridResults.SelectedItem == null && visibleCount > 0)
+            if (visibleCount == 0)
             {
-                GridResults.SelectedIndex = 0;
+                GridCellDiffs.ItemsSource = null;
+                GridCellDiffs.Visibility = Visibility.Collapsed;
+                PanelSelectedTableMatchBanner.Visibility = Visibility.Visible;
+                TxtInlineDiffHeader.Text = "Aucune table ne correspond au filtre";
+                TxtInlineDiffHeader.Foreground = SlateDarkBrush;
+                TxtInlineDiffSubHeader.Text = "-";
+                TxtSelectedTableMatchMessage.Text = "Modifiez le filtre de statut ou la recherche ci-dessus.";
+                BtnJumpToTableIgnored.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            if (GridResults.SelectedItem is not UIComparisonResult currentSelected ||
+                !visibleItems.Contains(currentSelected))
+            {
+                GridResults.SelectedItem = visibleItems[0];
+            }
+            else
+            {
+                RenderSelectedTableSideBySideInspector(currentSelected);
             }
         }
 
         private bool FilterComparisonPredicate(object obj)
         {
             if (obj is not UIComparisonResult item) return false;
-
-            if (!string.IsNullOrWhiteSpace(_quickExactTableFilter) &&
-                !string.Equals(item.CleanTableName, _quickExactTableFilter, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
 
             if (CmbFilterCompContract?.SelectedItem is ComboBoxItem contractItem)
             {
@@ -917,26 +786,6 @@ namespace AutoActivator.Gui.Views
                     return false;
             }
 
-            if (CmbFilterCompSystem?.SelectedItem is ComboBoxItem sysItem)
-            {
-                string sysTag = sysItem.Tag?.ToString() ?? "ALL";
-                if (!string.Equals(sysTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.FileType, sysTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
-            if (CmbFilterCompBranch?.SelectedItem is ComboBoxItem branchItem)
-            {
-                string branchTag = branchItem.Tag?.ToString() ?? "ALL";
-                if (!string.Equals(branchTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.BranchDisplay, branchTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
             string query = TxtFilterComparison?.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(query)) return true;
 
@@ -945,11 +794,9 @@ namespace AutoActivator.Gui.Views
                    (item.ContractNumber?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.CleanTableName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.TableName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (item.FileType?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.ProductCode?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.ProcessCode?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.BusinessChannel?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.BucpCmdpmtDisplay?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                   (item.FundsSummary?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.BranchDisplay?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.DifferingColumnsSummary?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.ErrorDetails?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
@@ -962,26 +809,27 @@ namespace AutoActivator.Gui.Views
                 return;
             }
 
-            _selectedInspectorColumnFilter = "ALL";
             RenderSelectedTableSideBySideInspector(selected);
         }
 
         private void RenderSelectedTableSideBySideInspector(UIComparisonResult selected)
         {
-            TxtInlineDiffHeader.Text =
-                $"🔎 Comparaison Côte à Côte — {selected.CleanTableName} ({selected.FileType})  |  Contrat : {selected.ContractNumber} [{selected.TestId}]  |  {selected.StatusBadgeText}";
-            TxtInlineDiffHeader.Foreground = selected.IsMatch
-                ? ActiveOkBtnBg
-                : UIComparisonResult.DiffBrush;
+            TxtInlineDiffHeader.Text = $"{selected.CleanTableName} ({selected.FileType}) — {selected.StatusBadgeText}";
+            TxtInlineDiffHeader.Foreground = selected.IsMatch ? SlateDarkBrush : DiffRedBrush;
 
-            TxtInlineDiffSubHeader.Text =
-                $"Excel Row: {selected.ExcelRowDisplay}  •  Branche: {selected.BranchDisplay} (Fonds: {selected.FundsSummary})  •  " +
-                $"Produit/Process: {selected.ProductCode}/{selected.ProcessCode}  •  Canal: {selected.BusinessChannel} ({selected.BucpCmdpmtDisplay})  •  " +
-                $"Volume (Src➔Tgt): {selected.VolumeDisplay}  •  Lignes OK/Total: {selected.RowsSummary}  •  Diff. ignorées: {selected.IgnoredDifferencesCount}";
+            string subHeader =
+                $"Contrat : {selected.ContractNumber} [{selected.TestId}]  |  " +
+                $"{selected.BranchDisplay} ({selected.ProductCode}/{selected.ProcessCode})  |  " +
+                $"Lignes (Src -> Tgt) : {selected.VolumeDisplay}  |  OK/Total : {selected.RowsSummary}";
+            if (selected.IgnoredDifferencesCount > 0)
+            {
+                subHeader += $"  |  Ignorées : {selected.IgnoredDifferencesCount}";
+            }
+            TxtInlineDiffSubHeader.Text = subHeader;
 
             if (selected.IgnoredDifferencesCount > 0)
             {
-                BtnJumpToTableIgnored.Content = $"🛡️ Voir les {selected.IgnoredDifferencesCount} diff. ignorée(s) de {selected.CleanTableName}";
+                BtnJumpToTableIgnored.Content = $"Ignorées ({selected.IgnoredDifferencesCount})";
                 BtnJumpToTableIgnored.Visibility = Visibility.Visible;
             }
             else
@@ -991,65 +839,18 @@ namespace AutoActivator.Gui.Views
 
             if (selected.IsMatch || selected.ActiveDifferences.Count == 0)
             {
-                ItemsDiffColumnChips.Visibility = Visibility.Collapsed;
+                GridCellDiffs.ItemsSource = null;
                 GridCellDiffs.Visibility = Visibility.Collapsed;
                 PanelSelectedTableMatchBanner.Visibility = Visibility.Visible;
                 TxtSelectedTableMatchMessage.Text = selected.IsMatch
-                    ? $"✓ Toutes les colonnes métier actives de {selected.CleanTableName} sont strictement identiques entre SOURCE (Baseline) et TARGET ({selected.VolumeDisplay} lignes)."
+                    ? $"Toutes les colonnes métier actives de {selected.CleanTableName} sont strictement identiques entre SOURCE et TARGET ({selected.VolumeDisplay} lignes)."
                     : selected.ErrorDetails;
                 return;
             }
 
             PanelSelectedTableMatchBanner.Visibility = Visibility.Collapsed;
             GridCellDiffs.Visibility = Visibility.Visible;
-
-            // Puces de filtrage par colonne SQL
-            var colGroups = selected.ActiveDifferences
-                .GroupBy(d => d.ColumnName, StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(g => g.Count())
-                .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            var chips = new List<DiffColumnFilterChip>(colGroups.Count + 1)
-            {
-                BuildColumnChip("ALL", $"Toutes les colonnes ({selected.ActiveDifferences.Count})", _selectedInspectorColumnFilter == "ALL")
-            };
-
-            foreach (var grp in colGroups)
-            {
-                bool isSel = string.Equals(_selectedInspectorColumnFilter, grp.Key, StringComparison.OrdinalIgnoreCase);
-                chips.Add(BuildColumnChip(grp.Key, $"{grp.Key} ({grp.Count()})", isSel));
-            }
-
-            ItemsDiffColumnChips.ItemsSource = chips;
-            ItemsDiffColumnChips.Visibility = Visibility.Visible;
-
-            IEnumerable<CellDifferenceItem> filteredCells = string.Equals(_selectedInspectorColumnFilter, "ALL", StringComparison.OrdinalIgnoreCase)
-                ? selected.ActiveDifferences
-                : selected.ActiveDifferences.Where(d => string.Equals(d.ColumnName, _selectedInspectorColumnFilter, StringComparison.OrdinalIgnoreCase));
-
-            GridCellDiffs.ItemsSource = filteredCells.ToList();
-        }
-
-        private static DiffColumnFilterChip BuildColumnChip(string key, string label, bool selected)
-        {
-            return new DiffColumnFilterChip
-            {
-                ColumnFilterKey = key,
-                DisplayLabel = label,
-                ChipBackground = selected ? ChipSelectedBg : ChipUnselectedBg,
-                ChipForeground = selected ? Brushes.White : ChipUnselectedFg,
-                ChipBorder = selected ? ChipSelectedBg : ChipUnselectedBorder
-            };
-        }
-
-        private void BtnDiffColumnChip_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button btn && btn.Tag is string colKey && GridResults.SelectedItem is UIComparisonResult selected)
-            {
-                _selectedInspectorColumnFilter = colKey;
-                RenderSelectedTableSideBySideInspector(selected);
-            }
+            GridCellDiffs.ItemsSource = selected.ActiveDifferences;
         }
 
         private void BtnJumpToTableIgnored_Click(object sender, RoutedEventArgs e)
@@ -1075,35 +876,37 @@ namespace AutoActivator.Gui.Views
         // FILTRAGE & EXPORT ONGLET 2 (DIFFÉRENCES IGNORÉES)
         // =============================================================
 
-        private void BtnIgnoredCatAll_Click(object sender, RoutedEventArgs e) => ApplyIgnoredCategoryFilter("ALL");
-        private void BtnIgnoredCatSpecific_Click(object sender, RoutedEventArgs e) => ApplyIgnoredCategoryFilter("SPECIFIC");
-        private void BtnIgnoredCatGlobal_Click(object sender, RoutedEventArgs e) => ApplyIgnoredCategoryFilter("GLOBAL");
-        private void BtnIgnoredCatAudit_Click(object sender, RoutedEventArgs e) => ApplyIgnoredCategoryFilter("AUDIT");
+        private void CmbFilterIgnoredCategory_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressIgnoredCategorySync) return;
+            string categoryKey = (CmbFilterIgnoredCategory?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "ALL";
+            _ignoredCategoryFilter = categoryKey;
+            RefreshIgnoredGridAndCounters();
+        }
 
         private void ApplyIgnoredCategoryFilter(string categoryKey)
         {
             _ignoredCategoryFilter = categoryKey;
-
-            bool isAll = categoryKey == "ALL";
-            bool isSpec = categoryKey == "SPECIFIC";
-            bool isGlob = categoryKey == "GLOBAL";
-            bool isAud = categoryKey == "AUDIT";
-
-            BtnIgnoredCatAll.Background = isAll ? ActiveAllBtnBg : InactiveBtnBg;
-            BtnIgnoredCatAll.Foreground = isAll ? Brushes.White : DarkTextBrush;
-            BtnIgnoredCatAll.BorderBrush = isAll ? ActiveAllBtnBg : InactiveBorderBrush;
-
-            BtnIgnoredCatSpecific.Background = isSpec ? ActiveSpecificBtnBg : InactiveBtnBg;
-            BtnIgnoredCatSpecific.Foreground = isSpec ? Brushes.White : ActiveSpecificBtnBg;
-            BtnIgnoredCatSpecific.BorderBrush = isSpec ? ActiveSpecificBtnBg : InactiveBorderBrush;
-
-            BtnIgnoredCatGlobal.Background = isGlob ? ActiveGlobalBtnBg : InactiveBtnBg;
-            BtnIgnoredCatGlobal.Foreground = isGlob ? Brushes.White : ActiveGlobalBtnBg;
-            BtnIgnoredCatGlobal.BorderBrush = isGlob ? ActiveGlobalBtnBg : InactiveBorderBrush;
-
-            BtnIgnoredCatAudit.Background = isAud ? ActiveAuditBtnBg : InactiveBtnBg;
-            BtnIgnoredCatAudit.Foreground = isAud ? Brushes.White : ActiveAuditBtnBg;
-            BtnIgnoredCatAudit.BorderBrush = isAud ? ActiveAuditBtnBg : InactiveBorderBrush;
+            if (CmbFilterIgnoredCategory != null)
+            {
+                _suppressIgnoredCategorySync = true;
+                try
+                {
+                    foreach (object entry in CmbFilterIgnoredCategory.Items)
+                    {
+                        if (entry is ComboBoxItem item &&
+                            string.Equals(item.Tag?.ToString(), categoryKey, StringComparison.OrdinalIgnoreCase))
+                        {
+                            CmbFilterIgnoredCategory.SelectedItem = item;
+                            break;
+                        }
+                    }
+                }
+                finally
+                {
+                    _suppressIgnoredCategorySync = false;
+                }
+            }
 
             RefreshIgnoredGridAndCounters();
         }
@@ -1121,7 +924,7 @@ namespace AutoActivator.Gui.Views
             int visible = _ignoredCollectionView.Cast<object>().Count();
             if (TxtFilteredIgnoredCount != null)
             {
-                TxtFilteredIgnoredCount.Text = $"{visible:N0} / {_currentIgnoredDiffs.Count:N0} différence(s) ignorée(s) affichée(s) (0% impact score)";
+                TxtFilteredIgnoredCount.Text = $"{visible:N0} / {_currentIgnoredDiffs.Count:N0} affichée(s) (0% impact)";
             }
         }
 
@@ -1153,16 +956,6 @@ namespace AutoActivator.Gui.Views
                 }
             }
 
-            if (CmbFilterIgnoredSystem?.SelectedItem is ComboBoxItem sysItem)
-            {
-                string sysTag = sysItem.Tag?.ToString() ?? "ALL";
-                if (!string.Equals(sysTag, "ALL", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(item.SystemType, sysTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
             string q = TxtFilterIgnored?.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(q)) return true;
 
@@ -1170,6 +963,7 @@ namespace AutoActivator.Gui.Views
                    (item.ColumnName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.ContractNumber?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.TestId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (item.SystemType?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.RowContextKey?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.SourceDisplay?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
                    (item.TargetDisplay?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
@@ -1224,7 +1018,6 @@ namespace AutoActivator.Gui.Views
                 {
                     mainWindow.LastGeneratedPath = exportPath;
                     mainWindow.TxtStatus.Text = $"Différences ignorées exportées en CSV ({exportedCount} lignes) : {Path.GetFileName(exportPath)}";
-                    mainWindow.TxtStatus.Foreground = Brushes.ForestGreen;
                 }
 
                 MessageBox.Show(
@@ -1289,7 +1082,6 @@ namespace AutoActivator.Gui.Views
                 {
                     mainWindow.LastGeneratedPath = exportPath;
                     mainWindow.TxtStatus.Text = $"Table de comparaison exportée en CSV : {Path.GetFileName(exportPath)}";
-                    mainWindow.TxtStatus.Foreground = Brushes.ForestGreen;
                 }
 
                 MessageBox.Show(
@@ -1366,7 +1158,7 @@ namespace AutoActivator.Gui.Views
 
             if (report.GlobalSuccessPercentage >= 100.0 && report.TotalTablesWithDifferences == 0)
             {
-                sb.AppendLine("✅ PERFECT MATCH!");
+                sb.AppendLine("[OK] PERFECT MATCH");
                 sb.AppendLine("All active business columns for the common tested contracts are strictly identical.");
             }
             else
@@ -1374,7 +1166,7 @@ namespace AutoActivator.Gui.Views
                 foreach (FileComparisonResult result in report.FileResults.Where(r => !r.IsMatch))
                 {
                     sb.AppendLine($"--- TABLE : {result.TableName} ({result.FileType} | Contract: {result.ContractNumber} | {result.BranchDisplay} | Product: {result.ProductCode} | Rows: {result.RowsSummary}) ---");
-                    sb.AppendLine($"Status  : ❌ {result.Status}");
+                    sb.AppendLine($"Status  : [KO] {result.Status}");
                     sb.AppendLine($"Columns : {result.DifferingColumnsSummary}");
                     sb.AppendLine("Details :");
                     sb.AppendLine(result.ErrorDetails);
@@ -1390,7 +1182,7 @@ namespace AutoActivator.Gui.Views
                 foreach (IgnoredDifferenceItem ign in report.IgnoredDifferences.Take(250))
                 {
                     sb.AppendLine(
-                        $"  • [{ign.CategoryBadge}] {ign.ContractAndTestDisplay} | {ign.CleanTableName}.{ign.ColumnName} (Row #{ign.RowNumber}, {ign.RowContextKey}) : SOURCE='{ign.SourceDisplay}' -> TARGET='{ign.TargetDisplay}'");
+                        $"  - [{ign.CategoryBadge}] {ign.ContractAndTestDisplay} | {ign.CleanTableName}.{ign.ColumnName} (Row #{ign.RowNumber}, {ign.RowContextKey}) : SOURCE='{ign.SourceDisplay}' -> TARGET='{ign.TargetDisplay}'");
                 }
                 if (report.IgnoredDifferences.Count > 250)
                 {
@@ -1436,12 +1228,12 @@ namespace AutoActivator.Gui.Views
             sb.AppendLine("                   SQL TABLE COMPARISON DIAGNOSTIC REPORT");
             sb.AppendLine("====================================================================================");
             sb.AppendLine("[0. SYNTHÈSE DU CONTRAT & ROUTAGE MÉTIER]");
-            sb.AppendLine($"  • Contrat (3-7-2)      : {selected.ContractNumber}  |  Excel Row : {selected.ExcelRowDisplay}  |  Test ID : {selected.TestId}");
-            sb.AppendLine($"  • Produit / Process    : {selected.ProductCode}  /  {selected.ProcessCode}  (ChannelCode ELIA : {selected.ChannelCode})");
-            sb.AppendLine($"  • Canal & Paiement     : {selected.BusinessChannel}  ->  BUCP / CMDPMT = {selected.BucpCmdpmtDisplay}");
-            sb.AppendLine($"  • Branche & Fonds      : {selected.BranchDisplay}  |  Fonds : {selected.FundsSummary}");
-            sb.AppendLine($"  • Table SQL Comparée   : {selected.CleanTableName} ({selected.FileType})  |  Volume (Src➔Tgt) : {selected.VolumeDisplay}  |  Lignes OK/Total : {selected.RowsSummary}  |  Statut : {selected.Status}");
-            sb.AppendLine($"  • Différences ignorées : {selected.IgnoredDifferencesCount} (0% impact sur le score)");
+            sb.AppendLine($"  - Contrat (3-7-2)      : {selected.ContractNumber}  |  Excel Row : {selected.ExcelRowDisplay}  |  Test ID : {selected.TestId}");
+            sb.AppendLine($"  - Produit / Process    : {selected.ProductCode}  /  {selected.ProcessCode}  (ChannelCode ELIA : {selected.ChannelCode})");
+            sb.AppendLine($"  - Canal & Paiement     : {selected.BusinessChannel}  ->  BUCP / CMDPMT = {selected.BucpCmdpmtDisplay}");
+            sb.AppendLine($"  - Branche & Fonds      : {selected.BranchDisplay}  |  Fonds : {selected.FundsSummary}");
+            sb.AppendLine($"  - Table SQL Comparée   : {selected.CleanTableName} ({selected.FileType})  |  Volume (Src -> Tgt) : {selected.VolumeDisplay}  |  Lignes OK/Total : {selected.RowsSummary}  |  Statut : {selected.Status}");
+            sb.AppendLine($"  - Différences ignorées : {selected.IgnoredDifferencesCount} (0% impact sur le score)");
             sb.AppendLine("------------------------------------------------------------------------------------");
             sb.AppendLine("[1. DÉTAIL DES ÉCARTS MÉTIER CELLULE PAR CELLULE (SOURCE vs TARGET)]");
             sb.AppendLine(selected.ErrorDetails);

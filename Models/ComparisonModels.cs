@@ -51,11 +51,16 @@ namespace AutoActivator.Models
         public string TargetDisplay =>
             string.IsNullOrEmpty(TargetValue) ? "(vide / NULL)" : TargetValue;
 
+        public string RowAndKeyDisplay =>
+            string.IsNullOrWhiteSpace(RowContextKey) || RowContextKey == "-"
+                ? RowLabel
+                : $"{RowLabel} · {RowContextKey}";
+
         public string DiffKindBadge => DiffKind switch
         {
-            "MISSING_IN_TARGET" => "− Absent Target",
-            "EXTRA_IN_TARGET" => "+ Ajout Target",
-            _ => "≠ Écart Valeur"
+            "MISSING_IN_TARGET" => "Absent Target",
+            "EXTRA_IN_TARGET" => "Ajout Target",
+            _ => "Écart valeur"
         };
     }
 
@@ -110,11 +115,16 @@ namespace AutoActivator.Models
                 ? $"{ContractNumber} [{TestId}]"
                 : TestId;
 
+        public string RowAndKeyDisplay =>
+            string.IsNullOrWhiteSpace(RowContextKey) || RowContextKey == "-"
+                ? $"#{RowNumber}"
+                : $"#{RowNumber} · {RowContextKey}";
+
         public string CategoryBadge => Category switch
         {
-            ExclusionRuleCategory.SpecificTable => "⚠️ Spécifique Table",
-            ExclusionRuleCategory.TechnicalAudit => "⏱️ Audit / Timestamp",
-            _ => "🌐 Exclusion Globale"
+            ExclusionRuleCategory.SpecificTable => "Spécifique table",
+            ExclusionRuleCategory.TechnicalAudit => "Audit / Timestamp",
+            _ => "Exclusion globale"
         };
     }
 
@@ -283,7 +293,7 @@ namespace AutoActivator.Models
 
         public string RowsSummary => $"{SuccessfulRows}/{TotalRows}";
 
-        public string VolumeDisplay => $"{BaseRowCount} ➔ {TargetRowCount}";
+        public string VolumeDisplay => $"{BaseRowCount} -> {TargetRowCount}";
 
         public bool IsMatch =>
             string.Equals(Status, "OK", StringComparison.OrdinalIgnoreCase) ||
@@ -293,11 +303,11 @@ namespace AutoActivator.Models
 
         public string StatusBadge => Status switch
         {
-            "OK" => "✓ IDENTIQUE",
-            "OK_EMPTY" => "✓ VIDE (0/0)",
-            "KO_ROW_COUNT" => "⚠️ ÉCART VOLUME",
-            "KO_MISSING_DATA" => "🔴 DONNÉES MANQUANTES",
-            _ => "🔴 ÉCART MÉTIER"
+            "OK" => "OK",
+            "OK_EMPTY" => "Vide (0/0)",
+            "KO_ROW_COUNT" => "Écart volume",
+            "KO_MISSING_DATA" => "Données manquantes",
+            _ => "Écart métier"
         };
     }
 }

@@ -257,7 +257,7 @@ namespace AutoActivator.Gui.Views
                 {
                     mainWindow.LastGeneratedPath = exportPath;
                     mainWindow.TxtStatus.Text = $"Extraction history exported to CSV: {Path.GetFileName(exportPath)}";
-                    mainWindow.TxtStatus.Foreground = Brushes.ForestGreen;
+                    mainWindow.TxtStatus.Foreground = MainWindow.StatusDefaultBrush;
                 }
 
                 MessageBox.Show(
@@ -296,9 +296,28 @@ namespace AutoActivator.Gui.Views
         // HISTORY MANAGEMENT & KPI COUNTERS
         // =============================================================
 
-        private static int GetRowNumValue(string rowNumStr)
+        private static int GetRowNumValue(string? rowNumStr)
         {
-            return int.TryParse(rowNumStr, out int val) ? val : int.MaxValue;
+            if (string.IsNullOrWhiteSpace(rowNumStr))
+            {
+                return int.MaxValue;
+            }
+
+            string trimmed = rowNumStr.Trim().TrimStart('#');
+            return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val) && val > 0
+                ? val
+                : int.MaxValue;
+        }
+
+        private void ListHistory_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (ColExtDetail == null || ListHistory == null)
+            {
+                return;
+            }
+
+            const double fixedColumnsAndChrome = 736.0;
+            ColExtDetail.Width = Math.Max(200.0, ListHistory.ActualWidth - fixedColumnsAndChrome);
         }
 
         private void AddExtractionItemToHistory(ExtractionItem item)
@@ -324,28 +343,27 @@ namespace AutoActivator.Gui.Views
 
             if (isKoOrEliaOnly)
             {
-                // Échecs / Non actifs insérés tout en haut du tableau (index 0)
-                ExtractionHistory.Insert(0, item);
-                ListHistory.SelectedItem = item;
                 _koExtractionCount++;
             }
             else
             {
-                int insertIndex = _koExtractionCount;
-                while (insertIndex < ExtractionHistory.Count)
-                {
-                    if (GetRowNumValue(ExtractionHistory[insertIndex].RowNum) > newItemRow)
-                    {
-                        break;
-                    }
-                    insertIndex++;
-                }
-                ExtractionHistory.Insert(insertIndex, item);
-                if (ListHistory.SelectedItem == null)
-                {
-                    ListHistory.SelectedItem = item;
-                }
                 _okExtractionCount++;
+            }
+
+            int insertIndex = 0;
+            while (insertIndex < ExtractionHistory.Count)
+            {
+                if (GetRowNumValue(ExtractionHistory[insertIndex].RowNum) > newItemRow)
+                {
+                    break;
+                }
+                insertIndex++;
+            }
+
+            ExtractionHistory.Insert(insertIndex, item);
+            if (ListHistory != null && (isKoOrEliaOnly || ListHistory.SelectedItem == null))
+            {
+                ListHistory.SelectedItem = item;
             }
 
             UpdateKpiCounters();
@@ -700,6 +718,10 @@ namespace AutoActivator.Gui.Views
         private void BtnUseDefaultQcExtFile_Click(object sender, RoutedEventArgs e)
         {
             _isCustomBatchFileSelected = false;
+            if (BtnDefaultQcExt != null)
+            {
+                BtnDefaultQcExt.Visibility = Visibility.Collapsed;
+            }
             UpdateBatchExtCsvPath();
         }
 
@@ -834,7 +856,7 @@ namespace AutoActivator.Gui.Views
             if (string.IsNullOrWhiteSpace(singleInput))
             {
                 MessageBox.Show(
-                    "Veuillez saisir un N° de Contrat ou un Demand ID dans le champ unitaire (ou utilisez « 📁 Extraire Batch » pour lancer le fichier Excel).",
+                    "Veuillez saisir un N° de Contrat ou un Demand ID dans le champ unitaire (ou cliquez sur Extraire Batch pour lancer le fichier Excel).",
                     "Extraction Unitaire",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -855,7 +877,7 @@ namespace AutoActivator.Gui.Views
 
             if (string.IsNullOrEmpty(rawInput))
             {
-                UpdateMainWindowStatus(mainWindow, "Veuillez saisir un N° de Contrat ou Demand ID.", Brushes.Orange);
+                UpdateMainWindowStatus(mainWindow, "Veuillez saisir un N° de Contrat ou Demand ID.", MainWindow.StatusDefaultBrush);
                 return;
             }
 
@@ -875,17 +897,17 @@ namespace AutoActivator.Gui.Views
                     if (token.IsCancellationRequested)
                     {
                         UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Annulé par l'utilisateur.", "CANCELLED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, "Extraction unitaire arrêtée par l'utilisateur.", Brushes.DarkOrange);
+                        UpdateMainWindowStatus(mainWindow, "Extraction unitaire arrêtée par l'utilisateur.", MainWindow.StatusDefaultBrush);
                     }
                     else if (string.Equals(outcomeStatus, "OK", StringComparison.OrdinalIgnoreCase))
                     {
                         UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, $"{rawInput} — Extraction complète LISA + ELIA terminée (OK).", "COMPLETED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, $"Extraction unitaire terminée avec succès pour {rawInput}.", Brushes.ForestGreen);
+                        UpdateMainWindowStatus(mainWindow, $"Extraction unitaire terminée avec succès pour {rawInput}.", MainWindow.StatusDefaultBrush);
                     }
                     else if (string.Equals(outcomeStatus, "ELIA ONLY", StringComparison.OrdinalIgnoreCase))
                     {
                         UpdateBatchProgressDisplay(_batchPlannedCount, _batchPlannedCount, $"{rawInput} — Extraction terminée (ELIA ONLY, contrat absent de LISA).", "ELIA_ONLY", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, "Extraction terminée (ELIA ONLY — contrat non actif dans LISA).", Brushes.DarkOrange);
+                        UpdateMainWindowStatus(mainWindow, "Extraction terminée (ELIA ONLY — contrat non actif dans LISA).", MainWindow.StatusDefaultBrush);
                     }
                     else
                     {
@@ -893,13 +915,13 @@ namespace AutoActivator.Gui.Views
                             ? "Contrat / Demand ID introuvable dans LISA et ELIA."
                             : errorDetail;
                         UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Échec : {reason}", "FAILED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, $"Extraction échouée : {reason}", Brushes.Crimson);
+                        UpdateMainWindowStatus(mainWindow, $"Extraction échouée : {reason}", MainWindow.StatusErrorBrush);
                     }
                 }
                 catch (OperationCanceledException)
                 {
                     UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"{rawInput} — Annulé par l'utilisateur.", "CANCELLED", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                    UpdateMainWindowStatus(mainWindow, "Extraction unitaire arrêtée par l'utilisateur.", Brushes.DarkOrange);
+                    UpdateMainWindowStatus(mainWindow, "Extraction unitaire arrêtée par l'utilisateur.", MainWindow.StatusDefaultBrush);
                     throw;
                 }
                 catch (Exception ex)
@@ -933,7 +955,7 @@ namespace AutoActivator.Gui.Views
                     (step, totalSteps, stepMsg) =>
                     {
                         UpdateBatchProgressDisplay(step, totalSteps, stepMsg, "RUNNING", "EXTRACTION UNITAIRE (ÉTAPES SQL)");
-                        UpdateMainWindowStatus(mainWindow, stepMsg, Brushes.RoyalBlue);
+                        UpdateMainWindowStatus(mainWindow, stepMsg, MainWindow.StatusDefaultBrush);
                     }).ConfigureAwait(false);
 
                 string resolvedPath = !string.IsNullOrEmpty(result.FilePath) ? result.FilePath : Settings.OutputDir;
@@ -1030,6 +1052,10 @@ namespace AutoActivator.Gui.Views
             {
                 _isCustomBatchFileSelected = true;
                 TxtBatchExtCsv.Text = openFileDialog.FileName;
+                if (BtnDefaultQcExt != null)
+                {
+                    BtnDefaultQcExt.Visibility = Visibility.Visible;
+                }
             }
         }
 
@@ -1049,7 +1075,7 @@ namespace AutoActivator.Gui.Views
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
             {
                 MessageBox.Show(
-                    $"Le fichier Batch Excel/CSV sélectionné est introuvable ou inaccessible :\n\n{filePath}\n\nVérifiez le chemin ou la connexion VPN, ou cliquez sur « 📂 Parcourir ».",
+                    $"Le fichier Batch Excel/CSV sélectionné est introuvable ou inaccessible :\n\n{filePath}\n\nVérifiez le chemin ou la connexion VPN, ou cliquez sur Parcourir.",
                     "Fichier Batch introuvable",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -1184,7 +1210,7 @@ namespace AutoActivator.Gui.Views
                         UpdateMainWindowStatus(
                             mainWindow,
                             $"Extraction Batch arrêtée. Snapshot partiel généré : {Path.GetFileName(mergedFilePath)}",
-                            Brushes.DarkOrange);
+                            MainWindow.StatusDefaultBrush);
                     }
                     else
                     {
@@ -1196,20 +1222,20 @@ namespace AutoActivator.Gui.Views
                             "BATCH");
                         UpdateMainWindowStatus(
                             mainWindow,
-                            $"Extraction Batch terminée ! Snapshot généré : {Path.GetFileName(mergedFilePath)}",
-                            Brushes.ForestGreen);
+                            $"Extraction Batch terminée. Snapshot généré : {Path.GetFileName(mergedFilePath)}",
+                            MainWindow.StatusDefaultBrush);
                     }
                 }
                 catch (OperationCanceledException)
                 {
                     UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, "Extraction Batch annulée par l'utilisateur.", "CANCELLED", "BATCH");
-                    UpdateMainWindowStatus(mainWindow, "Extraction Batch arrêtée par l'utilisateur.", Brushes.DarkOrange);
+                    UpdateMainWindowStatus(mainWindow, "Extraction Batch arrêtée par l'utilisateur.", MainWindow.StatusDefaultBrush);
                     throw;
                 }
                 catch (Exception ex)
                 {
                     UpdateBatchProgressDisplay(_batchProcessedCount, _batchPlannedCount, $"Erreur Batch : {ex.Message}", "FAILED", "BATCH");
-                    UpdateMainWindowStatus(mainWindow, $"Erreur Batch : {ex.Message}", Brushes.Crimson);
+                    UpdateMainWindowStatus(mainWindow, $"Erreur Batch : {ex.Message}", MainWindow.StatusErrorBrush);
                     throw;
                 }
                 finally

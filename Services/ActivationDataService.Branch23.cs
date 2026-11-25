@@ -940,9 +940,19 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                 };
             }
 
+            if (!ContractNumberHelper.TryDeriveNoCnt(plan.StartEnd.Start, allowTechnicalShortContract: true, out long verifiedNoCnt, out _) ||
+                verifiedNoCnt <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Sécurité minimale : impossible d'identifier un NO_CNT LISA valide pour '{lookupContract}' (Start='{plan.StartEnd.Start}').");
+            }
+
             var workflow = new Branch23ActivationWorkflow(
                 verifier,
                 orchestrator.CreateUnifiedJobRunner(trace, onProgress));
+
+            bool allowReplayWhenAlreadyActive =
+                bypassBilling || (!effectiveSelection.RunAddPrct && !effectiveSelection.UseSqlPrctInsert);
 
             Branch23ActivationReport report = await workflow.RunAsync(
                     plan,
@@ -950,7 +960,8 @@ WHERE h.IT5HDMDAIDN = @DemandId;";
                     onProgress,
                     token,
                     effectiveSelection,
-                    prepareFundsAndVniAsync)
+                    prepareFundsAndVniAsync,
+                    allowReplayWhenAlreadyActive: allowReplayWhenAlreadyActive)
                 .ConfigureAwait(false);
 
             PublishUnifiedActivationReport(

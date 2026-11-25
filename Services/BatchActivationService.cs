@@ -398,25 +398,34 @@ namespace AutoActivator.Services
                     !jobSelection.RequiresPremelia &&
                     jobSelection.HasAnyBranch23Step;
 
+                bool bypassPrimeAndActiveChecks =
+                    skipPrime ||
+                    onlyRunningPostActivationBranch23Steps ||
+                    (jobSelection != null && !jobSelection.RunAddPrct && !jobSelection.UseSqlPrctInsert);
+
                 if (automaticPlan != null)
                 {
-                    if (automaticPlan.ResumeStrategy == ActivationResumeStrategy.AlreadyActive &&
-                        !onlyRunningPostActivationBranch23Steps)
+                    if ((automaticPlan.ResumeStrategy == ActivationResumeStrategy.AlreadyActive ||
+                         automaticPlan.IsAlreadyActive) &&
+                        !bypassPrimeAndActiveChecks)
                     {
                         PopulateTraceFromLookup(trace, lookup);
                         throw new InvalidOperationException("ALREADY_ACTIVE");
                     }
 
-                    bool bypassPrimeValidation =
-                        skipPrime || onlyRunningPostActivationBranch23Steps;
-
                     IReadOnlyList<ActivationPlanIssue> blockingIssues =
                         automaticPlan.Validate()
                             .Where(issue => issue.IsBlocking &&
-                                            !(onlyRunningPostActivationBranch23Steps && issue.Code == "ALREADY_ACTIVE") &&
-                                            !(bypassPrimeValidation &&
-                                              (issue.Code == "PREMIUM_NOT_POSITIVE" ||
-                                               issue.Code == "PREMIUM_CANDIDATE_COUNT_INVALID")))
+                                            !(bypassPrimeAndActiveChecks &&
+                                              (issue.Code == "ALREADY_ACTIVE" ||
+                                               issue.Code == "PREMIUM_NOT_POSITIVE" ||
+                                               issue.Code == "PREMIUM_CANDIDATE_COUNT_INVALID" ||
+                                               issue.Code == "MULTIPLE_EXISTING_RECEIPTS" ||
+                                               issue.Code == "PAYMENT_CANDIDATE_MISSING" ||
+                                               issue.Code == "BUCP_MISSING" ||
+                                               issue.Code == "CMDPMT_MISSING" ||
+                                               issue.Code == "CHANNEL_NOT_SUPPORTED" ||
+                                               issue.Code == "INVALID_PAYMENT_PAIR")))
                             .ToList();
                     if (blockingIssues.Count > 0)
                     {
@@ -425,6 +434,20 @@ namespace AutoActivator.Services
                         trace.FailureReason = string.Join(
                             " | ",
                             blockingIssues.Select(issue => $"{issue.Code}: {issue.Message}"));
+                        throw new InvalidOperationException(trace.FailureReason);
+                    }
+
+                    if (!ContractNumberHelper.TryDeriveNoCnt(
+                            automaticPlan.MainframeContractNumber,
+                            allowTechnicalShortContract: true,
+                            out long verifiedBatchNoCnt,
+                            out _) ||
+                        verifiedBatchNoCnt <= 0)
+                    {
+                        PopulateTraceFromLookup(trace, lookup);
+                        trace.FailureStage = "CONTRACT_NO_CNT_INVALID";
+                        trace.FailureReason =
+                            $"Sécurité minimale : NO_CNT LISA invalide ou non identifiable pour '{item.RawInput}'.";
                         throw new InvalidOperationException(trace.FailureReason);
                     }
                 }

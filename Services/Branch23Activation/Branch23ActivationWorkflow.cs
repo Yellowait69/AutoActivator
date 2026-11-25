@@ -409,7 +409,8 @@ namespace AutoActivator.Services.Branch23Activation
             Action<string>? onProgress,
             CancellationToken token,
             ActivationJobSelection? jobSelection,
-            Func<DateTime, DateTime, CancellationToken, Task<(IReadOnlyList<string> Funds, string Source, IReadOnlyList<string> NavSummary)>>? prepareFundsAndVniAsync)
+            Func<DateTime, DateTime, CancellationToken, Task<(IReadOnlyList<string> Funds, string Source, IReadOnlyList<string> NavSummary)>>? prepareFundsAndVniAsync,
+            bool allowReplayWhenAlreadyActive = false)
         {
             ArgumentNullException.ThrowIfNull(plan);
             ArgumentNullException.ThrowIfNull(baseVariables);
@@ -429,6 +430,7 @@ namespace AutoActivator.Services.Branch23Activation
                         report,
                         selection,
                         prepareFundsAndVniAsync,
+                        allowReplayWhenAlreadyActive,
                         token)
                     .ConfigureAwait(false);
             }
@@ -455,14 +457,36 @@ namespace AutoActivator.Services.Branch23Activation
             Branch23ActivationReport report,
             ActivationJobSelection selection,
             Func<DateTime, DateTime, CancellationToken, Task<(IReadOnlyList<string> Funds, string Source, IReadOnlyList<string> NavSummary)>>? prepareFundsAndVniAsync,
+            bool allowReplayWhenAlreadyActive,
             CancellationToken token)
         {
             report.IsBranch23 = plan.IsBranch23;
             string logPrefix = plan.IsBranch23 ? "BR23: " : "B21: ";
             void Log(string line) { report.Lines.Add(line); onProgress?.Invoke(logPrefix + line); }
 
-            var variables = BuildVariables(plan, baseVariables);
             string start = plan.StartEnd.Start;
+            if (!Utils.ContractNumberHelper.TryDeriveNoCnt(start, allowTechnicalShortContract: true, out long safetyNoCnt, out _) ||
+                safetyNoCnt <= 0)
+            {
+                Finish(
+                    report,
+                    Branch23FinalDiagnostic.BLOCKED,
+                    "CONTRACT_NO_CNT_INVALID",
+                    $"Sécurité minimale : le numéro interne LISA (NO_CNT='{start}') est invalide ou non identifiable ; aucun job soumis.");
+                return;
+            }
+
+            if (!plan.RunDate.IsResolved || plan.RunDate.RunDate <= new DateTime(1900, 1, 1))
+            {
+                Finish(
+                    report,
+                    Branch23FinalDiagnostic.BLOCKED,
+                    "RUN_DATE_INVALID",
+                    "Sécurité minimale : la RunDate métier est absente ou invalide ; aucun job soumis.");
+                return;
+            }
+
+            var variables = BuildVariables(plan, baseVariables);
             DateTime runDate = plan.RunDate.RunDate.Date;
             DateTime consolidationDate = Branch23ParameterBuilder.GetConsolidationDate(runDate);
 
@@ -584,25 +608,32 @@ namespace AutoActivator.Services.Branch23Activation
 
                 if (before.Count == 1 && IsActiveScnttRow(before[0]))
                 {
-                    alreadyActiveInScntt = true;
-                    report.ScnttFinalStatus = ContractActivationStatus.ACTIVATED;
-                    report.ScnttFinalDetail = "Contrat déjà actif (C_ETAT_CNT=4) et non bloqué dans SCNTT0.";
-                    report.ScnttFinalRow = RowText(before[0]);
-                    report.BeforeAfterComparison = "C_ETAT_CNT déjà à 4";
-
-                    for (int i = 0; i < 5; i++)
+                    if (allowReplayWhenAlreadyActive)
                     {
-                        report.Jobs[i].Status = "SkippedAlreadyActive";
+                        Log("Contrat déjà actif dans SCNTT0 (C_ETAT_CNT=4) — mode Skip Prime / Rejeu actif : exécution effective des étapes sélectionnées.");
                     }
-
-                    if (!plan.IsBranch23 || !selection.HasAnyBranch23Step)
+                    else
                     {
-                        Finish(report, Branch23FinalDiagnostic.ALREADY_ACTIVE, "ALREADY_ACTIVE_IN_SCNTT0",
-                            "Contrat déjà actif dans LV.SCNTT0 (C_ETAT_CNT=4, non bloqué) ; aucun job soumis.");
-                        return;
-                    }
+                        alreadyActiveInScntt = true;
+                        report.ScnttFinalStatus = ContractActivationStatus.ACTIVATED;
+                        report.ScnttFinalDetail = "Contrat déjà actif (C_ETAT_CNT=4) et non bloqué dans SCNTT0.";
+                        report.ScnttFinalRow = RowText(before[0]);
+                        report.BeforeAfterComparison = "C_ETAT_CNT déjà à 4";
 
-                    Log("Contrat déjà actif dans SCNTT0 (C_ETAT_CNT=4) : les jobs PREMELIA sont ignorés, poursuite vers les étapes Branche 23 (LVDQ / VNI).");
+                        for (int i = 0; i < 5; i++)
+                        {
+                            report.Jobs[i].Status = "SkippedAlreadyActive";
+                        }
+
+                        if (!plan.IsBranch23 || !selection.HasAnyBranch23Step)
+                        {
+                            Finish(report, Branch23FinalDiagnostic.ALREADY_ACTIVE, "ALREADY_ACTIVE_IN_SCNTT0",
+                                "Contrat déjà actif dans LV.SCNTT0 (C_ETAT_CNT=4, non bloqué) ; aucun job soumis.");
+                            return;
+                        }
+
+                        Log("Contrat déjà actif dans SCNTT0 (C_ETAT_CNT=4) : les jobs PREMELIA sont ignorés, poursuite vers les étapes Branche 23 (LVDQ / VNI).");
+                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

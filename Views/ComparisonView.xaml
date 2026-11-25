@@ -7,272 +7,228 @@
     <UserControl.Resources>
         <Style x:Key="CardBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="White"/>
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="18,14"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14,10"/>
             <Setter Property="BorderBrush" Value="#E2E8F0"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
-        <Style x:Key="ModernGridHeaderStyle" TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#0F172A"/>
-            <Setter Property="Foreground" Value="#F8FAFC"/>
-            <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="BorderBrush" Value="#1E293B"/>
-            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        <!-- En-tête de tableau léger et sobre (plus de bandeau noir massif) -->
+        <Style x:Key="LightGridHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
         </Style>
 
-        <Style x:Key="PillButtonStyle" TargetType="Button">
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Cursor" Value="Hand"/>
+        <Style x:Key="NeutralButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="PillBorder"
+                        <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6"
+                                CornerRadius="5"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PillBorder" Property="Opacity" Value="0.88"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#F8FAFC"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#94A3B8"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="PillBorder" Property="Opacity" Value="0.5"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#F8FAFC"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#E2E8F0"/>
+                                <Setter Property="Foreground" Value="#94A3B8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="CompactInputBoxStyle" TargetType="TextBox">
+            <Setter Property="Padding" Value="7,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="CompactComboStyle" TargetType="ComboBox">
+            <Setter Property="Padding" Value="7,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
-        <Grid Margin="4">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+    <Grid Margin="2">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-            <!-- EN-TÊTE -->
-            <Grid Grid.Row="0" Margin="0,0,0,12">
-                <StackPanel HorizontalAlignment="Left">
-                    <TextBlock Text="Comparaison Non-Régression LISA &amp; ELIA"
-                               FontSize="22"
-                               FontWeight="Bold"
-                               Foreground="#0F172A"/>
-                    <TextBlock Text="Analyse matricielle SOURCE vs TARGET cellule par cellule, mise en évidence des tables/colonnes en écart et audit dédié des différences ignorées (0% impact score)."
-                               FontSize="12.5"
-                               Foreground="#64748B"
-                               Margin="0,2,0,0"
-                               TextWrapping="Wrap"/>
-                </StackPanel>
+        <!-- EN-TÊTE SOBRE -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <TextBlock Text="Comparaison Non-Régression"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="#0F172A"
+                       VerticalAlignment="Center"/>
 
-                <Button Content="❓ Aide"
-                        Style="{StaticResource PillButtonStyle}"
-                        Background="#EFF6FF"
-                        Foreground="#2563EB"
-                        BorderBrush="#BFDBFE"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Click="BtnHelp_Click"/>
-            </Grid>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="BtnAddBaselineComp"
+                        Content="Ajouter dernière extraction aux Baselines"
+                        Click="BtnAddBaseline_Click"
+                        Style="{StaticResource NeutralButtonStyle}"/>
+            </StackPanel>
+        </Grid>
 
-            <!-- CARTE CONFIGURATION + BARRE DE PROGRESSION TEMPS RÉEL -->
-            <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
-                <StackPanel>
-                    <!-- Smart Baseline Matcher -->
-                    <Border Background="#EFF6FF" CornerRadius="8" Padding="14,10" BorderBrush="#BFDBFE" BorderThickness="1" Margin="0,0,0,12">
+        <!-- CARTE CONFIGURATION COMPACTE (SANS ENCADRÉ FLASHY) -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,8">
+            <StackPanel>
+                <!-- Ligne 1 : Sélecteur rapide Baseline + SOURCE + TARGET -->
+                <Grid Margin="0,0,0,7">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="115"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="210"/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Environnement :" FontSize="11.5" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,3"/>
+                        <ComboBox x:Name="CmbSmartEnv" Style="{StaticResource CompactComboStyle}" SelectionChanged="SmartMatcher_Changed" SelectedIndex="0">
+                            <ComboBoxItem Content="D000 (Env D)" Tag="D"/>
+                            <ComboBoxItem Content="Q000 (Env Q)" Tag="Q"/>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Baseline rapide (auto-match) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,3"/>
+                        <ComboBox x:Name="CmbBaselineSelector" Style="{StaticResource CompactComboStyle}" SelectionChanged="SmartMatcher_Changed"/>
+                    </StackPanel>
+
+                    <!-- SOURCE -->
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="Fichier SOURCE (Baseline CSV) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <Grid Grid.Row="0" Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="💡 Smart Baseline Matcher" FontWeight="Bold" Foreground="#1E40AF" FontSize="13.5"/>
-                                    <TextBlock Text="Sélectionnez l'environnement cible et une Baseline de référence pour apparier automatiquement la dernière extraction correspondante."
-                                               Foreground="#334155" FontSize="12" Margin="0,1,0,0" TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button x:Name="BtnAddBaselineComp"
-                                            Content="➕ Promouvoir dernière Extraction"
-                                            Click="BtnAddBaseline_Click"
-                                            Style="{StaticResource PillButtonStyle}"
-                                            Background="#7C3AED"
-                                            Foreground="White"
-                                            BorderBrush="#6D28D9"
-                                            Margin="0,0,6,0"/>
-                                    <Button x:Name="BtnOpenBaselineComp"
-                                            Content="📂 Dossier Baselines"
-                                            Click="BtnOpenBaselineFolder_Click"
-                                            Style="{StaticResource PillButtonStyle}"
-                                            Background="#2563EB"
-                                            Foreground="White"
-                                            BorderBrush="#1D4ED8"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="165"/>
-                                    <ColumnDefinition Width="12"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <ComboBox x:Name="CmbSmartEnv" Grid.Column="0" Padding="8,5" FontSize="13" FontWeight="SemiBold" BorderBrush="#93C5FD" SelectionChanged="SmartMatcher_Changed" Background="White" SelectedIndex="0">
-                                    <ComboBoxItem Content="D000 (Env D)" Tag="D"/>
-                                    <ComboBoxItem Content="Q000 (Env Q)" Tag="Q"/>
-                                </ComboBox>
-                                <ComboBox x:Name="CmbBaselineSelector" Grid.Column="2" Padding="8,5" FontSize="13" FontWeight="SemiBold" BorderBrush="#93C5FD" SelectionChanged="SmartMatcher_Changed" Background="White"/>
-                            </Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtBaseFile"
+                                     Grid.Column="0"
+                                     IsReadOnly="True"
+                                     Style="{StaticResource CompactInputBoxStyle}"
+                                     Background="#F8FAFC"
+                                     Margin="0,0,4,0"
+                                     ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                            <Button Grid.Column="1"
+                                    Content="Ouvrir"
+                                    Click="BtnOpenBaseFile_Click"
+                                    Style="{StaticResource NeutralButtonStyle}"
+                                    Padding="8,4"
+                                    Margin="0,0,4,0"/>
+                            <Button Grid.Column="2"
+                                    Content="Parcourir"
+                                    Click="BtnBrowseBase_Click"
+                                    Style="{StaticResource NeutralButtonStyle}"
+                                    Padding="8,4"/>
                         </Grid>
-                    </Border>
+                    </StackPanel>
 
-                    <!-- Sélection des fichiers SOURCE et TARGET avec ouverture directe -->
-                    <Grid Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
+                    <Button Grid.Column="5"
+                            Content="&lt;-&gt;"
+                            ToolTip="Inverser Source et Target"
+                            Click="BtnSwapFiles_Click"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Padding="7,4"
+                            Margin="8,18,8,0"
+                            VerticalAlignment="Top"/>
 
-                        <!-- SOURCE / BASELINE -->
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="📘 Fichier SOURCE (Baseline de référence CSV) :" Margin="0,0,0,4" FontWeight="Bold" FontSize="12" Foreground="#1E3A8A"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="TxtBaseFile" IsReadOnly="True" Padding="8,6" FontSize="12.5" BorderBrush="#BFDBFE" Margin="0,0,6,0" Background="#F8FAFC"/>
-                                <Button Grid.Column="1"
-                                        Content="📄 Ouvrir"
-                                        ToolTip="Ouvrir directement le fichier SOURCE sélectionné"
-                                        Click="BtnOpenBaseFile_Click"
-                                        Style="{StaticResource PillButtonStyle}"
-                                        Background="#EFF6FF"
-                                        Foreground="#1D4ED8"
-                                        BorderBrush="#BFDBFE"
-                                        Margin="0,0,6,0"/>
-                                <Button Grid.Column="2"
-                                        Content="📂 Parcourir"
-                                        Click="BtnBrowseBase_Click"
-                                        Style="{StaticResource PillButtonStyle}"
-                                        Background="#334155"
-                                        Foreground="White"
-                                        BorderBrush="#1E293B"/>
-                            </Grid>
-                        </StackPanel>
+                    <!-- TARGET -->
+                    <StackPanel Grid.Column="6">
+                        <TextBlock Text="Fichier TARGET (Extrait CSV) :" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,3"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtTargetFile"
+                                     Grid.Column="0"
+                                     IsReadOnly="True"
+                                     Style="{StaticResource CompactInputBoxStyle}"
+                                     Background="#F8FAFC"
+                                     Margin="0,0,4,0"
+                                     ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                            <Button Grid.Column="1"
+                                    Content="Ouvrir"
+                                    Click="BtnOpenTargetFile_Click"
+                                    Style="{StaticResource NeutralButtonStyle}"
+                                    Padding="8,4"
+                                    Margin="0,0,4,0"/>
+                            <Button Grid.Column="2"
+                                    Content="Parcourir"
+                                    Click="BtnBrowseTarget_Click"
+                                    Style="{StaticResource NeutralButtonStyle}"
+                                    Padding="8,4"/>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
 
-                        <!-- Swap -->
-                        <Button x:Name="BtnSwapFiles"
-                                Grid.Column="1"
-                                Content="⇄"
-                                ToolTip="Inverser les fichiers SOURCE et TARGET"
-                                Click="BtnSwapFiles_Click"
-                                Style="{StaticResource PillButtonStyle}"
-                                VerticalAlignment="Bottom"
-                                Margin="10,0,10,0"
-                                Padding="10,6"
-                                FontSize="13.5"
-                                Background="#EFF6FF"
-                                Foreground="#2563EB"
-                                BorderBrush="#BFDBFE"/>
+                <!-- Ligne 2 : Option audit + Barre de progression fine + Comparer + Stop -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                        <!-- TARGET -->
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="🎯 Fichier TARGET (Extraction à valider CSV) :" Margin="0,0,0,4" FontWeight="Bold" FontSize="12" Foreground="#9F1239"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="TxtTargetFile" IsReadOnly="True" Padding="8,6" FontSize="12.5" BorderBrush="#FECDD3" Margin="0,0,6,0" Background="#F8FAFC"/>
-                                <Button Grid.Column="1"
-                                        Content="📄 Ouvrir"
-                                        ToolTip="Ouvrir directement le fichier TARGET sélectionné"
-                                        Click="BtnOpenTargetFile_Click"
-                                        Style="{StaticResource PillButtonStyle}"
-                                        Background="#FFF1F2"
-                                        Foreground="#BE123C"
-                                        BorderBrush="#FECDD3"
-                                        Margin="0,0,6,0"/>
-                                <Button Grid.Column="2"
-                                        Content="📂 Parcourir"
-                                        Click="BtnBrowseTarget_Click"
-                                        Style="{StaticResource PillButtonStyle}"
-                                        Background="#334155"
-                                        Foreground="White"
-                                        BorderBrush="#1E293B"/>
-                            </Grid>
-                        </StackPanel>
-                    </Grid>
+                    <CheckBox x:Name="ChkIgnoreTechColumns"
+                              Grid.Column="0"
+                              Content="Ignorer colonnes d'audit"
+                              IsChecked="True"
+                              VerticalAlignment="Center"
+                              FontSize="12"
+                              Foreground="#334155"
+                              Cursor="Hand"
+                              Click="ChkIgnoreTechColumns_Click"
+                              ToolTip="Ignore les horodatages techniques supplémentaires ; ils restent visibles dans l'onglet Différences ignorées (0% impact score)"/>
 
-                    <!-- Options & Actions -->
-                    <Grid Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <CheckBox x:Name="ChkIgnoreTechColumns"
-                                  Grid.Column="0"
-                                  IsChecked="True"
-                                  VerticalAlignment="Center"
-                                  FontWeight="SemiBold"
-                                  FontSize="12"
-                                  Foreground="#334155"
-                                  Cursor="Hand"
-                                  Click="ChkIgnoreTechColumns_Click"
-                                  ToolTip="Filtre aussi les colonnes techniques d'audit/horodatage (TSTAMP_*, D_JOB_*, NM_JOB_*, IT5*DTISMAJ*) et les trace dans l'onglet 'Différences ignorées'."
-                                  Content="⚡ Ignorer les colonnes techniques &amp; timestamps d'audit (tracées dans « Différences ignorées »)"/>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button x:Name="BtnOpenComparisonFolder"
-                                    Content="📁 Dossier Rapports"
-                                    Click="BtnOpenFolder_Click"
-                                    Style="{StaticResource PillButtonStyle}"
-                                    Background="#F8FAFC"
-                                    Foreground="#334155"
-                                    BorderBrush="#CBD5E1"
-                                    Padding="12,8"
-                                    Margin="0,0,8,0"/>
-                            <Button x:Name="BtnRunComparison"
-                                    Content="🚀 Lancer la Comparaison"
-                                    Click="BtnRunComparisonAction_Click"
-                                    Style="{DynamicResource ActionButtonStyle}"
-                                    Width="205"
-                                    Margin="0,0,6,0"
-                                    IsEnabled="False"/>
-                            <Button x:Name="BtnCancelComparison"
-                                    Content="🛑 Stop"
-                                    Click="BtnCancelComparison_Click"
-                                    Style="{DynamicResource CancelButtonStyle}"
-                                    Width="96"
-                                    IsEnabled="False"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- Barre de progression déterminée + Timer temps réel -->
-                    <Border Background="#F8FAFC"
+                    <Border Grid.Column="2"
+                            Background="#F8FAFC"
                             BorderBrush="#E2E8F0"
                             BorderThickness="1"
-                            CornerRadius="6"
-                            Padding="10,6">
+                            CornerRadius="5"
+                            Padding="10,4">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -284,20 +240,20 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" FontSize="11.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                                    <Run x:Name="TxtCompProgressDetail" Text="Prêt — sélectionnez SOURCE et TARGET" Foreground="#1E293B" FontWeight="SemiBold"/>
+                                    <Run x:Name="TxtCompProgressDetail" Text="Prêt — sélectionnez SOURCE et TARGET" Foreground="#334155" FontWeight="SemiBold"/>
                                 </TextBlock>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TxtCompProcessedCount" Text="0" FontWeight="Bold" Foreground="#15803D" FontSize="12"/>
-                                    <TextBlock Text="/" Foreground="#64748B" FontSize="12" Margin="2,0"/>
-                                    <TextBlock x:Name="TxtCompPlannedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="12"/>
-                                    <TextBlock x:Name="TxtCompElapsedTime" Text="   ⏱️ 0.0s" FontWeight="SemiBold" Foreground="#475569" FontSize="11.5" Margin="6,0,8,0"/>
-                                    <TextBlock x:Name="TxtCompProgressPercentage" Text="0%" FontWeight="Bold" FontSize="12.5" Foreground="#2563EB"/>
+                                    <TextBlock x:Name="TxtCompProcessedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="11.5"/>
+                                    <TextBlock Text="/" Foreground="#64748B" FontSize="11.5" Margin="2,0"/>
+                                    <TextBlock x:Name="TxtCompPlannedCount" Text="0" FontWeight="Bold" Foreground="#0F172A" FontSize="11.5"/>
+                                    <TextBlock x:Name="TxtCompElapsedTime" Text="  0.0s" FontWeight="SemiBold" Foreground="#64748B" FontSize="11.5" Margin="8,0,8,0"/>
+                                    <TextBlock x:Name="TxtCompProgressPercentage" Text="0%" FontWeight="Bold" FontSize="11.5" Foreground="#2563EB"/>
                                 </StackPanel>
                             </Grid>
                             <ProgressBar x:Name="ProgressComparison"
                                          Grid.Row="1"
-                                         Height="6"
-                                         Margin="0,4,0,0"
+                                         Height="4"
+                                         Margin="0,3,0,0"
                                          Minimum="0"
                                          Maximum="1000"
                                          Value="0"
@@ -305,343 +261,178 @@
                                          Background="#E2E8F0"/>
                         </Grid>
                     </Border>
-                </StackPanel>
-            </Border>
 
-            <!-- BANDEAU KPI SYNTHÉTIQUE -->
-            <Border x:Name="PanelDashboard"
-                    Grid.Row="2"
-                    Style="{StaticResource CardBorderStyle}"
-                    Margin="0,0,0,12"
-                    Visibility="Collapsed">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+                    <Button x:Name="BtnRunComparison"
+                            Grid.Column="4"
+                            Content="Comparer"
+                            Click="BtnRunComparisonAction_Click"
+                            Style="{DynamicResource ActionButtonStyle}"
+                            Width="118"
+                            IsEnabled="False"/>
 
-                    <!-- Jauge circulaire du taux de conformité métier -->
-                    <Grid Grid.Column="0" Width="126" Height="126" Margin="0,0,22,0">
-                        <Ellipse Stroke="#F1F5F9" StrokeThickness="11" Fill="Transparent"/>
-                        <Ellipse x:Name="CircleProgress" Stroke="#10B981" StrokeThickness="11" Fill="Transparent" StrokeDashCap="Round" RenderTransformOrigin="0.5,0.5">
-                            <Ellipse.RenderTransform>
-                                <RotateTransform Angle="-90"/>
-                            </Ellipse.RenderTransform>
-                        </Ellipse>
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock x:Name="TxtScorePercentage" Text="100%" FontSize="24" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Conformité" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtDashboardTitle"
-                                   Text="Analyse terminée"
-                                   FontSize="14.5"
-                                   FontWeight="Bold"
-                                   Foreground="#0F172A"
-                                   Margin="0,0,0,10"
-                                   TextWrapping="Wrap"/>
-
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="1.15*"/>
-                            </Grid.ColumnDefinitions>
-
-                            <!-- 1. Contrats -->
-                            <Border Grid.Column="0" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,4,0">
-                                <StackPanel>
-                                    <TextBlock Text="CONTRATS" FontSize="10" FontWeight="Bold" Foreground="#1E40AF"/>
-                                    <TextBlock x:Name="TxtComparedTests" Text="0" FontSize="18" FontWeight="Bold" Foreground="#1D4ED8" Margin="0,2,0,0"/>
-                                    <TextBlock x:Name="TxtContractsSummary" Text="-" FontSize="10.5" FontWeight="SemiBold" Foreground="#3B82F6" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- 2. Tables Identiques -->
-                            <Border Grid.Column="1" Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="4,0,4,0">
-                                <StackPanel>
-                                    <TextBlock Text="TABLES IDENTIQUES" FontSize="10" FontWeight="Bold" Foreground="#047857"/>
-                                    <TextBlock x:Name="TxtTablesMatched" Text="0 / 0" FontSize="18" FontWeight="Bold" Foreground="#059669" Margin="0,2,0,0"/>
-                                    <TextBlock x:Name="TxtSystemBreakdown" Text="LISA: - | ELIA: -" FontSize="10.5" FontWeight="SemiBold" Foreground="#047857" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- 3. Tables & Colonnes en Écart -->
-                            <Border Grid.Column="2" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="4,0,4,0" Cursor="Hand" MouseLeftButtonDown="CardActiveDiffs_Click" ToolTip="Cliquer pour afficher les tables et colonnes en écart">
-                                <StackPanel>
-                                    <TextBlock Text="TABLES &amp; COL. KO" FontSize="10" FontWeight="Bold" Foreground="#B91C1C"/>
-                                    <TextBlock x:Name="TxtKoTablesCount" Text="0 table(s)" FontSize="17" FontWeight="Bold" Foreground="#DC2626" Margin="0,2,0,0"/>
-                                    <TextBlock x:Name="TxtDiffColsTotal" Text="0 col. • 0 cell." FontSize="10.5" FontWeight="SemiBold" Foreground="#EF4444" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- 4. Branches -->
-                            <Border Grid.Column="3" Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="4,0,4,0">
-                                <StackPanel>
-                                    <TextBlock Text="BRANCHE 21 / 23" FontSize="10" FontWeight="Bold" Foreground="#5B21B6"/>
-                                    <TextBlock x:Name="TxtBranchBreakdown" Text="B21: - | B23: -" FontSize="14.5" FontWeight="Bold" Foreground="#6D28D9" Margin="0,4,0,2"/>
-                                    <TextBlock Text="Tables par branche" FontSize="10.5" FontWeight="SemiBold" Foreground="#7C3AED"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- 5. Lignes -->
-                            <Border Grid.Column="4" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="4,0,4,0">
-                                <StackPanel>
-                                    <TextBlock Text="LIGNES MÉTIER" FontSize="10" FontWeight="Bold" Foreground="#475569"/>
-                                    <TextBlock x:Name="TxtTotalRows" Text="0" FontSize="18" FontWeight="Bold" Foreground="#0F172A" Margin="0,2,0,0"/>
-                                    <TextBlock x:Name="TxtTotalErrors" Text="0 ligne(s) KO" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- 6. Différences ignorées (0% impact score) -->
-                            <Border Grid.Column="5" Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="4,0,0,0" Cursor="Hand" MouseLeftButtonDown="CardIgnoredDiffs_Click" ToolTip="Cliquer pour ouvrir l'onglet « Différences ignorées » (0% impact sur le score)">
-                                <StackPanel>
-                                    <TextBlock Text="🛡️ DIFF. IGNORÉES (0% SCORE)" FontSize="10" FontWeight="Bold" Foreground="#92400E"/>
-                                    <TextBlock x:Name="TxtIgnoredTotalCount" Text="0" FontSize="18" FontWeight="Bold" Foreground="#B45309" Margin="0,2,0,0"/>
-                                    <TextBlock x:Name="TxtIgnoredBreakdown" Text="0 spécifique table → Voir" FontSize="10.5" FontWeight="Bold" Foreground="#D97706" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </StackPanel>
+                    <Button x:Name="BtnCancelComparison"
+                            Grid.Column="6"
+                            Content="Stop"
+                            Click="BtnCancelComparison_Click"
+                            Style="{DynamicResource CancelButtonStyle}"
+                            Width="70"
+                            IsEnabled="False"/>
                 </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- LIGNE DE SYNTHÈSE ÉPURÉE (REMPLACE LA JAUGE ET LES 6 CARTES FLASHY — SEULS LES ÉCARTS EN ROUGE) -->
+        <Border x:Name="PanelDashboard"
+                Grid.Row="2"
+                Style="{StaticResource CardBorderStyle}"
+                Padding="14,8"
+                Margin="0,0,0,8"
+                Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Conformité : " FontSize="12.5" Foreground="#64748B" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtScorePercentage" Text="100%" FontSize="13.5" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
+
+                    <TextBlock Text="   |   Contrats : " FontSize="12.5" Foreground="#64748B" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtComparedTests" Text="0" FontSize="12.5" FontWeight="SemiBold" Foreground="#0F172A" VerticalAlignment="Center"/>
+
+                    <TextBlock Text="   |   Tables identiques : " FontSize="12.5" Foreground="#64748B" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtTablesMatched" Text="0 / 0" FontSize="12.5" FontWeight="SemiBold" Foreground="#0F172A" VerticalAlignment="Center"/>
+
+                    <TextBlock Text="   |   Tables en écart : " FontSize="12.5" Foreground="#64748B" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="CardActiveDiffs_Click"/>
+                    <TextBlock x:Name="TxtKoTablesCount" Text="0" FontSize="13" FontWeight="Bold" Foreground="#DC2626" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="CardActiveDiffs_Click" ToolTip="Cliquer pour filtrer sur les tables en écart"/>
+
+                    <TextBlock Text="   |   Lignes KO : " FontSize="12.5" Foreground="#64748B" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtRowsKoSummary" Text="0 / 0" FontSize="12.5" FontWeight="SemiBold" Foreground="#0F172A" VerticalAlignment="Center"/>
+
+                    <TextBlock Text="   |   Différences ignorées : " FontSize="12.5" Foreground="#64748B" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="CardIgnoredDiffs_Click"/>
+                    <TextBlock x:Name="TxtIgnoredSummary" Text="0 (0% impact)" FontSize="12.5" FontWeight="SemiBold" Foreground="#475569" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="CardIgnoredDiffs_Click" ToolTip="Cliquer pour consulter les différences ignorées"/>
+                </WrapPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnExportComparisonCsv"
+                            Content="Exporter CSV"
+                            Click="BtnExportComparisonCsv_Click"
+                            Style="{StaticResource NeutralButtonStyle}"
+                            Padding="10,3"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ZONE PRINCIPALE MAÎTRE-DÉTAIL (HEIGHT=*, ZÉRO SCROLL DE PAGE) -->
+        <Grid Grid.Row="3">
+            <Border x:Name="PanelWaitingCard" Style="{StaticResource CardBorderStyle}" Padding="32">
+                <TextBlock x:Name="TxtComparisonWaiting"
+                           Text="Sélectionnez les fichiers CSV SOURCE (Baseline) et TARGET ci-dessus, puis cliquez sur Comparer."
+                           Foreground="#64748B"
+                           FontSize="13.5"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"/>
             </Border>
 
-            <!-- ZONE RÉSULTATS : ÉTAT D'ATTENTE OU ONGLETS (ÉCARTS MÉTIER / DIFFÉRENCES IGNORÉES) -->
-            <Grid Grid.Row="3" Margin="0,0,0,8">
-                <Border x:Name="PanelWaitingCard" Style="{StaticResource CardBorderStyle}" Padding="32">
-                    <TextBlock x:Name="TxtComparisonWaiting"
-                               Text="Sélectionnez vos fichiers CSV SOURCE (Baseline) et TARGET ci-dessus, puis cliquez sur « 🚀 Lancer la Comparaison »."
-                               Foreground="#94A3B8"
-                               FontSize="14.5"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"/>
-                </Border>
+            <TabControl x:Name="TabComparisonMain"
+                        Visibility="Collapsed"
+                        Background="White"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        Padding="10,8">
+                <TabControl.Resources>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Padding" Value="14,7"/>
+                        <Setter Property="FontSize" Value="12.5"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Foreground" Value="#64748B"/>
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                        <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="White"/>
+                                <Setter Property="Foreground" Value="#0F172A"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TabControl.Resources>
 
-                <TabControl x:Name="TabComparisonMain"
-                            Visibility="Collapsed"
-                            Background="White"
-                            BorderBrush="#CBD5E1"
-                            BorderThickness="1"
-                            Padding="12,10">
-                    <TabControl.Resources>
-                        <Style TargetType="TabItem">
-                            <Setter Property="Padding" Value="16,9"/>
-                            <Setter Property="FontSize" Value="13"/>
-                            <Setter Property="FontWeight" Value="Bold"/>
-                            <Setter Property="Cursor" Value="Hand"/>
-                        </Style>
-                    </TabControl.Resources>
+                <!-- ========================================================================= -->
+                <!-- ONGLET 1 : ÉCARTS MÉTIER — VUE SCINDÉE GAUCHE (TABLES) / DROITE (DÉTAIL)  -->
+                <!-- ========================================================================= -->
+                <TabItem x:Name="TabActiveDiffs">
+                    <TabItem.Header>
+                        <TextBlock x:Name="TxtTabActiveHeader" Text="Écarts métier"/>
+                    </TabItem.Header>
 
-                    <!-- ========================================================================= -->
-                    <!-- ONGLET 1 : ÉCARTS MÉTIER & TABLES SQL (AVEC VUE CÔTE À CÔTE SOURCE/TARGET) -->
-                    <!-- ========================================================================= -->
-                    <TabItem x:Name="TabActiveDiffs">
-                        <TabItem.Header>
-                            <TextBlock x:Name="TxtTabActiveHeader" Text="📊 Écarts Métier &amp; Tables SQL" Foreground="#0F172A"/>
-                        </TabItem.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="420" MinWidth="280"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="*" MinWidth="360"/>
+                        </Grid.ColumnDefinitions>
 
-                        <StackPanel>
-                            <!-- Bandeau synthèse rapide des Tables & Colonnes présentant des écarts -->
-                            <Border x:Name="PanelHotTablesStrip"
-                                    Background="#FEF2F2"
-                                    BorderBrush="#FECACA"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="12,8"
-                                    Margin="0,0,0,10"
-                                    Visibility="Collapsed">
-                                <StackPanel>
-                                    <Grid Margin="0,0,0,6">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0"
-                                                   Text="🎯 Tables &amp; Colonnes présentant des écarts métier (cliquez sur un badge de table pour filtrer instantanément) :"
-                                                   FontSize="12"
-                                                   FontWeight="Bold"
-                                                   Foreground="#991B1B"
-                                                   VerticalAlignment="Center"/>
-                                        <Button Grid.Column="1"
-                                                Content="↺ Réinitialiser le filtre table"
-                                                Click="BtnResetTableQuickFilter_Click"
-                                                Style="{StaticResource PillButtonStyle}"
-                                                Padding="8,3"
-                                                FontSize="11"
-                                                Background="White"
-                                                Foreground="#991B1B"
-                                                BorderBrush="#FCA5A5"/>
-                                    </Grid>
-                                    <ItemsControl x:Name="ItemsHotTablePills">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel Orientation="Horizontal"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Button Click="BtnHotTablePill_Click"
-                                                        Tag="{Binding CleanTableName}"
-                                                        Style="{StaticResource PillButtonStyle}"
-                                                        Background="White"
-                                                        Foreground="#B91C1C"
-                                                        BorderBrush="#FCA5A5"
-                                                        Padding="9,4"
-                                                        Margin="0,0,6,5"
-                                                        ToolTip="{Binding TooltipText}">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <TextBlock Text="{Binding CleanTableName}" FontFamily="Consolas" FontWeight="Bold" FontSize="12" Foreground="#991B1B"/>
-                                                        <Border Background="#FEE2E2" CornerRadius="4" Padding="5,1" Margin="6,0,0,0">
-                                                            <TextBlock Text="{Binding BadgeSummary}" FontSize="11" FontWeight="Bold" Foreground="#DC2626"/>
-                                                        </Border>
-                                                    </StackPanel>
-                                                </Button>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
+                        <!-- PANNEAU GAUCHE : LISTE DES TABLES SQL -->
+                        <Grid Grid.Column="0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                            <!-- Barre de filtres et d'actions -->
-                            <Border x:Name="PanelFilterBar"
-                                    Background="#F8FAFC"
-                                    BorderBrush="#E2E8F0"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="10,8"
-                                    Margin="0,0,0,10">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
+                            <!-- Barre de filtre simple -->
+                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="6"/>
+                                    <ColumnDefinition Width="150"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtFilterComparison"
+                                         Grid.Column="0"
+                                         Style="{StaticResource CompactInputBoxStyle}"
+                                         ToolTip="Filtrer par nom de table SQL, colonne en écart ou contrat..."
+                                         TextChanged="FilterComparison_Changed"/>
+                                <ComboBox x:Name="CmbFilterCompStatus"
+                                          Grid.Column="2"
+                                          Style="{StaticResource CompactComboStyle}"
+                                          SelectedIndex="1"
+                                          SelectionChanged="CmbFilterCompStatus_SelectionChanged">
+                                    <ComboBoxItem Content="Toutes les tables" Tag="ALL"/>
+                                    <ComboBoxItem Content="Écarts uniquement" Tag="KO"/>
+                                    <ComboBoxItem Content="Identiques (OK)" Tag="OK"/>
+                                </ComboBox>
+                            </Grid>
 
-                                    <Grid Grid.Row="0" Margin="0,0,0,6">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
+                            <!-- Sélecteur de contrat (affiché uniquement si batch > 1 contrat) + compteur -->
+                            <Grid Grid.Row="1" Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="CmbFilterCompContract"
+                                          Grid.Column="0"
+                                          Style="{StaticResource CompactComboStyle}"
+                                          SelectedIndex="0"
+                                          Margin="0,0,8,0"
+                                          Visibility="Collapsed"
+                                          SelectionChanged="FilterComparison_Changed">
+                                    <ComboBoxItem Content="Tous les contrats" Tag="ALL"/>
+                                </ComboBox>
+                                <TextBlock x:Name="TxtFilteredTablesCount"
+                                           Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontSize="11.5"
+                                           Foreground="#64748B"/>
+                            </Grid>
 
-                                        <!-- Boutons rapides KO / Toutes / OK -->
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,10,0">
-                                            <Button x:Name="BtnQuickFilterKo"
-                                                    Content="🔴 Écarts uniquement (KO)"
-                                                    Click="BtnQuickFilterKo_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#DC2626"
-                                                    Foreground="White"
-                                                    BorderBrush="#B91C1C"
-                                                    Margin="0,0,5,0"/>
-                                            <Button x:Name="BtnQuickFilterAll"
-                                                    Content="📋 Toutes les tables"
-                                                    Click="BtnQuickFilterAll_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="White"
-                                                    Foreground="#334155"
-                                                    BorderBrush="#CBD5E1"
-                                                    Margin="0,0,5,0"/>
-                                            <Button x:Name="BtnQuickFilterOk"
-                                                    Content="✔ Identiques (OK)"
-                                                    Click="BtnQuickFilterOk_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="White"
-                                                    Foreground="#047857"
-                                                    BorderBrush="#A7F3D0"/>
-                                        </StackPanel>
-
-                                        <!-- Recherche libre -->
-                                        <TextBox x:Name="TxtFilterComparison"
-                                                 Grid.Column="1"
-                                                 Padding="8,5"
-                                                 FontSize="12.5"
-                                                 BorderBrush="#CBD5E1"
-                                                 Background="White"
-                                                 Margin="0,0,10,0"
-                                                 ToolTip="Rechercher par Table SQL, Colonne modifiée, Contrat, Test ID, Produit ou valeur..."
-                                                 TextChanged="FilterComparison_Changed"/>
-
-                                        <!-- Actions rapides -->
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                            <Button x:Name="BtnInspectCompRow"
-                                                    Content="🔍 Rapport Brut"
-                                                    Click="MenuCompInspect_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#0F172A"
-                                                    Foreground="White"
-                                                    BorderBrush="#0F172A"
-                                                    Margin="0,0,5,0"/>
-                                            <Button x:Name="BtnSendCompToExt"
-                                                    Content="📥 Re-Extraire"
-                                                    Click="MenuCompSendToExtraction_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#ECFDF5"
-                                                    Foreground="#047857"
-                                                    BorderBrush="#A7F3D0"
-                                                    Margin="0,0,5,0"/>
-                                            <Button x:Name="BtnSendCompToAct"
-                                                    Content="⚡ Activer"
-                                                    Click="MenuCompSendToActivation_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#F5F3FF"
-                                                    Foreground="#6D28D9"
-                                                    BorderBrush="#DDD6FE"
-                                                    Margin="0,0,5,0"/>
-                                            <Button x:Name="BtnExportComparisonCsv"
-                                                    Content="📥 Export CSV"
-                                                    Click="BtnExportComparisonCsv_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#EFF6FF"
-                                                    Foreground="#2563EB"
-                                                    BorderBrush="#BFDBFE"/>
-                                        </StackPanel>
-                                    </Grid>
-
-                                    <Grid Grid.Row="1">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="260"/>
-                                            <ColumnDefinition Width="8"/>
-                                            <ColumnDefinition Width="155"/>
-                                            <ColumnDefinition Width="8"/>
-                                            <ColumnDefinition Width="145"/>
-                                            <ColumnDefinition Width="8"/>
-                                            <ColumnDefinition Width="155"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <ComboBox x:Name="CmbFilterCompContract" Grid.Column="0" Padding="7,4" FontSize="12" SelectedIndex="0" SelectionChanged="FilterComparison_Changed" Background="White">
-                                            <ComboBoxItem Content="Tous les Contrats" Tag="ALL"/>
-                                        </ComboBox>
-                                        <ComboBox x:Name="CmbFilterCompSystem" Grid.Column="2" Padding="7,4" FontSize="12" SelectedIndex="0" SelectionChanged="FilterComparison_Changed" Background="White">
-                                            <ComboBoxItem Content="Tous Systèmes (LISA+ELIA)" Tag="ALL"/>
-                                            <ComboBoxItem Content="LISA uniquement (LV.*)" Tag="LISA"/>
-                                            <ComboBoxItem Content="ELIA uniquement (FJ1.*)" Tag="ELIA"/>
-                                        </ComboBox>
-                                        <ComboBox x:Name="CmbFilterCompBranch" Grid.Column="4" Padding="7,4" FontSize="12" SelectedIndex="0" SelectionChanged="FilterComparison_Changed" Background="White">
-                                            <ComboBoxItem Content="Toutes Branches" Tag="ALL"/>
-                                            <ComboBoxItem Content="Branche 21" Tag="Branche 21"/>
-                                            <ComboBoxItem Content="Branche 23" Tag="Branche 23"/>
-                                        </ComboBox>
-                                        <ComboBox x:Name="CmbFilterCompStatus" Grid.Column="6" Padding="7,4" FontSize="12" SelectedIndex="0" SelectionChanged="CmbFilterCompStatus_SelectionChanged" Background="White">
-                                            <ComboBoxItem Content="Tous les résultats" Tag="ALL"/>
-                                            <ComboBoxItem Content="✖ KO uniquement" Tag="KO"/>
-                                            <ComboBoxItem Content="✔ OK uniquement" Tag="OK"/>
-                                        </ComboBox>
-                                        <TextBlock x:Name="TxtFilteredTablesCount" Grid.Column="7" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Foreground="#475569"/>
-                                    </Grid>
-                                </Grid>
-                            </Border>
-
-                            <!-- GRILLE PRINCIPALE DES TABLES -->
+                            <!-- Liste épurée des tables SQL -->
                             <DataGrid x:Name="GridResults"
+                                      Grid.Row="2"
                                       AutoGenerateColumns="False"
                                       IsReadOnly="True"
                                       EnableRowVirtualization="True"
@@ -649,607 +440,442 @@
                                       VirtualizingPanel.IsVirtualizing="True"
                                       VirtualizingPanel.VirtualizationMode="Recycling"
                                       Background="White"
-                                      BorderBrush="#CBD5E1"
+                                      BorderBrush="#E2E8F0"
                                       BorderThickness="1"
                                       HeadersVisibility="Column"
-                                      ColumnHeaderStyle="{StaticResource ModernGridHeaderStyle}"
+                                      ColumnHeaderStyle="{StaticResource LightGridHeaderStyle}"
                                       GridLinesVisibility="Horizontal"
-                                      HorizontalGridLinesBrush="#E2E8F0"
-                                      MinHeight="210"
-                                      MaxHeight="360"
+                                      HorizontalGridLinesBrush="#F1F5F9"
+                                      SelectionMode="Single"
                                       SelectionChanged="GridResults_SelectionChanged"
                                       MouseDoubleClick="GridResults_MouseDoubleClick"
                                       ScrollViewer.CanContentScroll="True"
-                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <DataGrid.RowStyle>
                                     <Style TargetType="DataGridRow">
                                         <Setter Property="Background" Value="White"/>
-                                        <Setter Property="Padding" Value="2"/>
+                                        <Setter Property="Padding" Value="0,2"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsMatch}" Value="False">
-                                                <Setter Property="Background" Value="#FFF1F2"/>
-                                            </DataTrigger>
                                             <Trigger Property="IsSelected" Value="True">
-                                                <Setter Property="Background" Value="#DBEAFE"/>
+                                                <Setter Property="Background" Value="#EFF6FF"/>
                                                 <Setter Property="Foreground" Value="#0F172A"/>
                                             </Trigger>
                                         </Style.Triggers>
                                     </Style>
                                 </DataGrid.RowStyle>
+                                <DataGrid.CellStyle>
+                                    <Style TargetType="DataGridCell">
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="Padding" Value="6,4"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="Foreground" Value="#0F172A"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.CellStyle>
                                 <DataGrid.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="🔍 Ouvrir le rapport brut complet de la table" Click="MenuCompInspect_Click" FontWeight="Bold"/>
+                                        <MenuItem Header="Ouvrir le rapport brut complet de la table" Click="MenuCompInspect_Click" FontWeight="SemiBold"/>
                                         <Separator/>
-                                        <MenuItem Header="📥 Re-Extraire ce contrat" Click="MenuCompSendToExtraction_Click" FontWeight="SemiBold"/>
-                                        <MenuItem Header="⚡ Envoyer ce contrat vers Activation" Click="MenuCompSendToActivation_Click" FontWeight="SemiBold"/>
+                                        <MenuItem Header="Re-extraire ce contrat" Click="MenuCompSendToExtraction_Click"/>
+                                        <MenuItem Header="Envoyer ce contrat vers Activation" Click="MenuCompSendToActivation_Click"/>
                                         <Separator/>
-                                        <MenuItem Header="📋 Copier le N° de Contrat" Click="MenuCompCopyContract_Click"/>
-                                        <MenuItem Header="📋 Copier les écarts de la table" Click="BtnCopyInlineDiff_Click"/>
+                                        <MenuItem Header="Copier le N° de Contrat" Click="MenuCompCopyContract_Click"/>
+                                        <MenuItem Header="Copier les écarts de la table" Click="BtnCopyInlineDiff_Click"/>
                                     </ContextMenu>
                                 </DataGrid.ContextMenu>
                                 <DataGrid.Columns>
-                                    <!-- Statut -->
-                                    <DataGridTemplateColumn Header="Statut" Width="138">
+                                    <!-- Table SQL -->
+                                    <DataGridTemplateColumn Header="Table SQL" Width="138">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <Border Background="{Binding StatusColor}" CornerRadius="5" Padding="8,3" Margin="4,3" HorizontalAlignment="Left">
-                                                    <TextBlock Text="{Binding StatusBadgeText}" Foreground="White" FontWeight="Bold" FontSize="11"/>
-                                                </Border>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-
-                                    <!-- Table SQL mise en évidence -->
-                                    <DataGridTemplateColumn Header="Table SQL" Width="148">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border x:Name="TblBadge" Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="5" Padding="7,2" Margin="4,2" HorizontalAlignment="Left">
-                                                    <TextBlock x:Name="TblText" Text="{Binding CleanTableName}" FontFamily="Consolas" FontWeight="Bold" FontSize="12" Foreground="#0F172A"/>
-                                                </Border>
+                                                <TextBlock x:Name="TblText"
+                                                           Text="{Binding CleanTableName}"
+                                                           FontFamily="Consolas"
+                                                           FontWeight="SemiBold"
+                                                           FontSize="12"
+                                                           Foreground="#0F172A"
+                                                           VerticalAlignment="Center"/>
                                                 <DataTemplate.Triggers>
                                                     <DataTrigger Binding="{Binding IsMatch}" Value="False">
-                                                        <Setter TargetName="TblBadge" Property="Background" Value="#FEE2E2"/>
-                                                        <Setter TargetName="TblBadge" Property="BorderBrush" Value="#FCA5A5"/>
-                                                        <Setter TargetName="TblText" Property="Foreground" Value="#991B1B"/>
+                                                        <Setter TargetName="TblText" Property="Foreground" Value="#DC2626"/>
+                                                        <Setter TargetName="TblText" Property="FontWeight" Value="Bold"/>
                                                     </DataTrigger>
                                                 </DataTemplate.Triggers>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
 
-                                    <!-- Système -->
-                                    <DataGridTemplateColumn Header="Système" Width="74">
+                                    <!-- Contrat (affiché uniquement si batch multi-contrats) -->
+                                    <DataGridTextColumn x:Name="ColCompContract"
+                                                        Header="Contrat"
+                                                        Binding="{Binding ContractNumber}"
+                                                        Width="112"
+                                                        FontFamily="Consolas"
+                                                        FontSize="11.5"
+                                                        Visibility="Collapsed"/>
+
+                                    <!-- Lignes Src -> Tgt -->
+                                    <DataGridTextColumn Header="Lignes"
+                                                        Binding="{Binding VolumeDisplay}"
+                                                        Width="74"
+                                                        FontFamily="Consolas"
+                                                        FontSize="11.5"
+                                                        Foreground="#475569"/>
+
+                                    <!-- Résumé écarts (Rouge uniquement si KO) -->
+                                    <DataGridTemplateColumn Header="Statut / Écarts" Width="*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <Border x:Name="SysBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="5" Padding="6,2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                    <TextBlock x:Name="SysText" Text="{Binding FileType}" FontWeight="Bold" FontSize="11" Foreground="#1D4ED8"/>
-                                                </Border>
-                                                <DataTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding FileType}" Value="ELIA">
-                                                        <Setter TargetName="SysBadge" Property="Background" Value="#ECFDF5"/>
-                                                        <Setter TargetName="SysBadge" Property="BorderBrush" Value="#A7F3D0"/>
-                                                        <Setter TargetName="SysText" Property="Foreground" Value="#047857"/>
-                                                    </DataTrigger>
-                                                </DataTemplate.Triggers>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-
-                                    <!-- Contrat & Test -->
-                                    <DataGridTextColumn Header="Row" Binding="{Binding ExcelRowDisplay}" Width="54" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Test ID" Binding="{Binding TestId}" Width="74" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Contrat" Binding="{Binding ContractNumber}" Width="125" FontWeight="Bold"/>
-
-                                    <!-- Branche -->
-                                    <DataGridTemplateColumn Header="Branche" Width="94">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border x:Name="CompBranchBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8" Padding="7,2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                    <TextBlock x:Name="CompBranchText" Text="{Binding BranchDisplay}" FontWeight="Bold" FontSize="11" Foreground="#1D4ED8"/>
-                                                </Border>
-                                                <DataTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding IsBranch23}" Value="True">
-                                                        <Setter TargetName="CompBranchBadge" Property="Background" Value="#F5F3FF"/>
-                                                        <Setter TargetName="CompBranchBadge" Property="BorderBrush" Value="#DDD6FE"/>
-                                                        <Setter TargetName="CompBranchText" Property="Foreground" Value="#6D28D9"/>
-                                                    </DataTrigger>
-                                                </DataTemplate.Triggers>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-
-                                    <DataGridTextColumn Header="Produit" Binding="{Binding ProductCode}" Width="66" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Volume (Src➔Tgt)" Binding="{Binding VolumeDisplay}" Width="108" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="OK/Total" Binding="{Binding RowsSummary}" Width="82"/>
-
-                                    <!-- Badge Nb Colonnes KO -->
-                                    <DataGridTemplateColumn Header="Col. KO" Width="76">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border x:Name="ColCntBadge" Background="#FEE2E2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="6" Padding="7,2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                    <TextBlock x:Name="ColCntTxt" Text="{Binding DiffColsBadge}" FontWeight="Bold" FontSize="11" Foreground="#B91C1C"/>
-                                                </Border>
-                                                <DataTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding IsMatch}" Value="True">
-                                                        <Setter TargetName="ColCntBadge" Property="Background" Value="#F1F5F9"/>
-                                                        <Setter TargetName="ColCntBadge" Property="BorderBrush" Value="#E2E8F0"/>
-                                                        <Setter TargetName="ColCntTxt" Property="Foreground" Value="#64748B"/>
-                                                    </DataTrigger>
-                                                </DataTemplate.Triggers>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-
-                                    <!-- Liste des colonnes modifiées -->
-                                    <DataGridTemplateColumn Header="Colonnes Métier en Écart" Width="*">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock x:Name="ColsSummaryTxt"
-                                                           Text="{Binding DifferingColumnsSummary}"
-                                                           FontFamily="Consolas"
-                                                           FontSize="12"
-                                                           FontWeight="Bold"
-                                                           Foreground="#B91C1C"
+                                                <TextBlock x:Name="DiffSummaryTxt"
+                                                           Text="{Binding CompactStatusSummary}"
+                                                           FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#DC2626"
                                                            VerticalAlignment="Center"
-                                                           Margin="6,2"
                                                            TextTrimming="CharacterEllipsis"
                                                            ToolTip="{Binding DifferingColumnsSummary}"/>
                                                 <DataTemplate.Triggers>
                                                     <DataTrigger Binding="{Binding IsMatch}" Value="True">
-                                                        <Setter TargetName="ColsSummaryTxt" Property="Foreground" Value="#059669"/>
-                                                        <Setter TargetName="ColsSummaryTxt" Property="FontWeight" Value="SemiBold"/>
+                                                        <Setter TargetName="DiffSummaryTxt" Property="Foreground" Value="#64748B"/>
+                                                        <Setter TargetName="DiffSummaryTxt" Property="FontWeight" Value="Normal"/>
                                                     </DataTrigger>
                                                 </DataTemplate.Triggers>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-
-                                    <!-- Compteur neutre de différences ignorées sur la table -->
-                                    <DataGridTemplateColumn Header="Ignorées" Width="82">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding IgnoredBadgeText}"
-                                                           FontSize="11.5"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="#92400E"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           ToolTip="Nombre d'écarts sur colonnes exclues pour cette table (0% impact sur le score)"/>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
+                        </Grid>
 
-                            <!-- INSPECTEUR CÔTE À CÔTE SOURCE (BASELINE) vs TARGET (EXTRAIT) -->
-                            <Border x:Name="PanelInlineDiffInspector"
-                                    Background="White"
-                                    BorderBrush="#CBD5E1"
-                                    BorderThickness="1"
-                                    CornerRadius="10"
-                                    Padding="14,12"
-                                    Margin="0,12,0,0">
-                                <StackPanel>
-                                    <!-- En-tête de la table sélectionnée -->
-                                    <Grid Margin="0,0,0,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock x:Name="TxtInlineDiffHeader"
-                                                       Text="🔎 Comparateur Côte à Côte SOURCE vs TARGET — Sélectionnez une table ci-dessus"
-                                                       FontSize="14"
-                                                       FontWeight="Bold"
-                                                       Foreground="#0F172A"/>
-                                            <TextBlock x:Name="TxtInlineDiffSubHeader"
-                                                       Text="-"
-                                                       FontSize="12"
-                                                       Foreground="#475569"
-                                                       Margin="0,2,0,0"
-                                                       TextWrapping="Wrap"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Button x:Name="BtnJumpToTableIgnored"
-                                                    Content="🛡️ Voir diff. ignorées de cette table"
-                                                    Click="BtnJumpToTableIgnored_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#FFFBEB"
-                                                    Foreground="#92400E"
-                                                    BorderBrush="#FDE68A"
-                                                    Margin="0,0,6,0"
-                                                    Visibility="Collapsed"/>
-                                            <Button Content="📋 Copier"
-                                                    Click="BtnCopyInlineDiff_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#F8FAFC"
-                                                    Foreground="#334155"
-                                                    BorderBrush="#CBD5E1"
-                                                    Margin="0,0,6,0"/>
-                                            <Button Content="🔍 Plein Écran"
-                                                    Click="MenuCompInspect_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#2563EB"
-                                                    Foreground="White"
-                                                    BorderBrush="#1D4ED8"/>
-                                        </StackPanel>
-                                    </Grid>
+                        <!-- SÉPARATEUR REDIMENSIONNABLE -->
+                        <GridSplitter Grid.Column="1"
+                                      Width="6"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Stretch"
+                                      Background="Transparent"
+                                      Cursor="SizeWE"/>
 
-                                    <!-- Filtres par puces de colonnes modifiées -->
-                                    <ItemsControl x:Name="ItemsDiffColumnChips" Margin="0,0,0,8" Visibility="Collapsed">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel Orientation="Horizontal"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Button Click="BtnDiffColumnChip_Click"
-                                                        Tag="{Binding ColumnFilterKey}"
-                                                        Style="{StaticResource PillButtonStyle}"
-                                                        Background="{Binding ChipBackground}"
-                                                        Foreground="{Binding ChipForeground}"
-                                                        BorderBrush="{Binding ChipBorder}"
-                                                        Padding="9,3"
-                                                        Margin="0,0,6,4">
-                                                    <TextBlock Text="{Binding DisplayLabel}" FontFamily="Consolas" FontSize="11.5" FontWeight="Bold"/>
-                                                </Button>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                        <!-- PANNEAU DROIT : DÉTAIL CÔTE À CÔTE SOURCE vs TARGET DE LA TABLE SÉLECTIONNÉE -->
+                        <Border Grid.Column="2"
+                                Background="White"
+                                BorderBrush="#E2E8F0"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="12,10">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
 
-                                    <!-- Bandeau table 100% identique -->
-                                    <Border x:Name="PanelSelectedTableMatchBanner"
-                                            Background="#ECFDF5"
-                                            BorderBrush="#A7F3D0"
-                                            BorderThickness="1"
-                                            CornerRadius="8"
-                                            Padding="14,12"
-                                            Visibility="Collapsed">
-                                        <TextBlock x:Name="TxtSelectedTableMatchMessage"
-                                                   Text="✓ Toutes les colonnes métier actives de cette table sont strictement identiques entre SOURCE (Baseline) et TARGET."
+                                <!-- En-tête de la table sélectionnée -->
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock x:Name="TxtInlineDiffHeader"
+                                                   Text="Sélectionnez une table à gauche"
+                                                   FontSize="13.5"
                                                    FontWeight="Bold"
-                                                   FontSize="12.5"
-                                                   Foreground="#047857"
+                                                   Foreground="#0F172A"/>
+                                        <TextBlock x:Name="TxtInlineDiffSubHeader"
+                                                   Text="-"
+                                                   FontSize="11.5"
+                                                   Foreground="#64748B"
+                                                   Margin="0,2,0,0"
                                                    TextWrapping="Wrap"/>
-                                    </Border>
-
-                                    <!-- Grille Côte à Côte SOURCE vs TARGET -->
-                                    <DataGrid x:Name="GridCellDiffs"
-                                              AutoGenerateColumns="False"
-                                              IsReadOnly="True"
-                                              EnableRowVirtualization="True"
-                                              EnableColumnVirtualization="False"
-                                              VirtualizingPanel.IsVirtualizing="True"
-                                              VirtualizingPanel.VirtualizationMode="Recycling"
-                                              Background="White"
-                                              BorderBrush="#CBD5E1"
-                                              BorderThickness="1"
-                                              HeadersVisibility="Column"
-                                              ColumnHeaderStyle="{StaticResource ModernGridHeaderStyle}"
-                                              RowBackground="White"
-                                              AlternatingRowBackground="#F8FAFC"
-                                              GridLinesVisibility="All"
-                                              HorizontalGridLinesBrush="#E2E8F0"
-                                              VerticalGridLinesBrush="#E2E8F0"
-                                              MinHeight="150"
-                                              MaxHeight="340"
-                                              ScrollViewer.CanContentScroll="True"
-                                              ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Ligne" Binding="{Binding RowLabel}" Width="82" FontFamily="Consolas" FontWeight="Bold"/>
-                                            <DataGridTextColumn Header="Clé / Contexte Métier" Binding="{Binding RowContextKey}" Width="210" FontFamily="Consolas" FontSize="11.5"/>
-
-                                            <!-- Colonne SQL en écart -->
-                                            <DataGridTemplateColumn Header="Colonne SQL" Width="175">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1" CornerRadius="5" Padding="7,2" Margin="4,2" HorizontalAlignment="Left">
-                                                            <TextBlock Text="{Binding ColumnName}" FontFamily="Consolas" FontWeight="Bold" FontSize="12" Foreground="#92400E"/>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-
-                                            <DataGridTextColumn Header="Nature" Binding="{Binding DiffKindBadge}" Width="118" FontWeight="SemiBold" FontSize="11.5"/>
-
-                                            <!-- Valeur SOURCE (Baseline) -->
-                                            <DataGridTemplateColumn Header="📘 Valeur SOURCE (Baseline)" Width="*">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="5" Padding="8,4" Margin="4,2">
-                                                            <TextBlock Text="{Binding SourceDisplay}"
-                                                                       FontFamily="Consolas"
-                                                                       FontSize="12.5"
-                                                                       FontWeight="Bold"
-                                                                       Foreground="#1E3A8A"
-                                                                       TextWrapping="Wrap"
-                                                                       ToolTip="{Binding SourceDisplay}"/>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-
-                                            <DataGridTemplateColumn Header="➔" Width="36">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="➔" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-
-                                            <!-- Valeur TARGET (Extrait) -->
-                                            <DataGridTemplateColumn Header="🎯 Valeur TARGET (Extrait)" Width="*">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="#FFF1F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="5" Padding="8,4" Margin="4,2">
-                                                            <TextBlock Text="{Binding TargetDisplay}"
-                                                                       FontFamily="Consolas"
-                                                                       FontSize="12.5"
-                                                                       FontWeight="Bold"
-                                                                       Foreground="#BE123C"
-                                                                       TextWrapping="Wrap"
-                                                                       ToolTip="{Binding TargetDisplay}"/>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </TabItem>
-
-                    <!-- ========================================================================= -->
-                    <!-- ONGLET 2 : PAGE DÉDIÉE DES DIFFÉRENCES IGNORÉES (0% IMPACT SCORE)         -->
-                    <!-- ========================================================================= -->
-                    <TabItem x:Name="TabIgnoredDiffs">
-                        <TabItem.Header>
-                            <TextBlock x:Name="TxtTabIgnoredHeader" Text="🛡️ Différences ignorées (0)" Foreground="#92400E"/>
-                        </TabItem.Header>
-
-                        <StackPanel>
-                            <!-- Bandeau d'information & garantie 0% impact sur le score -->
-                            <Border Background="#FFFBEB"
-                                    BorderBrush="#FDE68A"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="14,10"
-                                    Margin="0,0,0,10">
-                                <StackPanel>
-                                    <TextBlock Text="🛡️ Audit de Transparence des Différences Ignorées — Règle Stricte : 0 % d'impact sur le Score et le Statut OK/KO"
-                                               FontWeight="Bold"
-                                               FontSize="13"
-                                               Foreground="#92400E"/>
-                                    <TextBlock Text="Cette vue répertorie côte à côte (SOURCE vs TARGET) tous les écarts filtrés par les règles d'exclusion afin de vérifier d'un seul coup d'œil qu'aucune donnée métier critique n'a été ignorée par erreur. Les exclusions « ⚠️ Spécifique Table » (ex: M_CAP_VIE, D_EFF_CNT sur certaines tables LISA) sont mises en évidence en ambre."
-                                               FontSize="12"
-                                               Foreground="#78350F"
-                                               Margin="0,3,0,0"
-                                               TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- Barre de filtres dédiée aux différences ignorées -->
-                            <Border Background="#F8FAFC"
-                                    BorderBrush="#E2E8F0"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="10,8"
-                                    Margin="0,0,0,10">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-
-                                    <Grid Grid.Row="0" Margin="0,0,0,6">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,10,0">
-                                            <Button x:Name="BtnIgnoredCatAll"
-                                                    Content="📋 Toutes (0)"
-                                                    Click="BtnIgnoredCatAll_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#0F172A"
-                                                    Foreground="White"
-                                                    BorderBrush="#0F172A"
-                                                    Margin="0,0,5,0"/>
-                                            <Button x:Name="BtnIgnoredCatSpecific"
-                                                    Content="⚠️ Spécifiques Table (0)"
-                                                    Click="BtnIgnoredCatSpecific_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="#FEF3C7"
-                                                    Foreground="#92400E"
-                                                    BorderBrush="#F59E0B"
-                                                    Margin="0,0,5,0"
-                                                    ToolTip="Exclusions définies spécifiquement par table dans Exclusions.SpecificExclusions"/>
-                                            <Button x:Name="BtnIgnoredCatGlobal"
-                                                    Content="🌐 Globales (0)"
-                                                    Click="BtnIgnoredCatGlobal_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="White"
-                                                    Foreground="#1D4ED8"
-                                                    BorderBrush="#BFDBFE"
-                                                    Margin="0,0,5,0"
-                                                    ToolTip="Identifiants techniques et colonnes de Exclusions.IgnoreColumns"/>
-                                            <Button x:Name="BtnIgnoredCatAudit"
-                                                    Content="⏱️ Audit / Timestamps (0)"
-                                                    Click="BtnIgnoredCatAudit_Click"
-                                                    Style="{StaticResource PillButtonStyle}"
-                                                    Background="White"
-                                                    Foreground="#475569"
-                                                    BorderBrush="#CBD5E1"
-                                                    ToolTip="Colonnes techniques d'horodatage et d'audit"/>
-                                        </StackPanel>
-
-                                        <TextBox x:Name="TxtFilterIgnored"
-                                                 Grid.Column="1"
-                                                 Padding="8,5"
-                                                 FontSize="12.5"
-                                                 BorderBrush="#CBD5E1"
-                                                 Background="White"
-                                                 Margin="0,0,10,0"
-                                                 ToolTip="Rechercher par Table SQL, Colonne ignorée, Contrat, Clé ou valeur Source/Target..."
-                                                 TextChanged="FilterIgnored_Changed"/>
-
-                                        <Button x:Name="BtnExportIgnoredCsv"
-                                                Grid.Column="2"
-                                                Content="📥 Exporter CSV Ignorées"
-                                                Click="BtnExportIgnoredCsv_Click"
-                                                Style="{StaticResource PillButtonStyle}"
-                                                Background="#EFF6FF"
-                                                Foreground="#2563EB"
-                                                BorderBrush="#BFDBFE"/>
-                                    </Grid>
-
-                                    <Grid Grid.Row="1">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="260"/>
-                                            <ColumnDefinition Width="8"/>
-                                            <ColumnDefinition Width="165"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <ComboBox x:Name="CmbFilterIgnoredContract" Grid.Column="0" Padding="7,4" FontSize="12" SelectedIndex="0" SelectionChanged="FilterIgnored_Changed" Background="White">
-                                            <ComboBoxItem Content="Tous les Contrats" Tag="ALL"/>
-                                        </ComboBox>
-                                        <ComboBox x:Name="CmbFilterIgnoredSystem" Grid.Column="2" Padding="7,4" FontSize="12" SelectedIndex="0" SelectionChanged="FilterIgnored_Changed" Background="White">
-                                            <ComboBoxItem Content="Tous Systèmes" Tag="ALL"/>
-                                            <ComboBoxItem Content="LISA uniquement" Tag="LISA"/>
-                                            <ComboBoxItem Content="ELIA uniquement" Tag="ELIA"/>
-                                        </ComboBox>
-                                        <TextBlock x:Name="TxtFilteredIgnoredCount" Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Foreground="#475569"/>
-                                    </Grid>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                        <Button x:Name="BtnJumpToTableIgnored"
+                                                Content="Ignorées (0)"
+                                                Click="BtnJumpToTableIgnored_Click"
+                                                Style="{StaticResource NeutralButtonStyle}"
+                                                Padding="8,3"
+                                                Margin="0,0,5,0"
+                                                Visibility="Collapsed"/>
+                                        <Button Content="Copier"
+                                                Click="BtnCopyInlineDiff_Click"
+                                                Style="{StaticResource NeutralButtonStyle}"
+                                                Padding="8,3"
+                                                Margin="0,0,5,0"/>
+                                        <Button Content="Rapport brut"
+                                                Click="MenuCompInspect_Click"
+                                                Style="{StaticResource NeutralButtonStyle}"
+                                                Padding="8,3"/>
+                                    </StackPanel>
                                 </Grid>
-                            </Border>
 
-                            <!-- GRILLE CÔTE À CÔTE DES DIFFÉRENCES IGNORÉES -->
-                            <DataGrid x:Name="GridIgnoredDiffs"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True"
-                                      EnableRowVirtualization="True"
-                                      EnableColumnVirtualization="False"
-                                      VirtualizingPanel.IsVirtualizing="True"
-                                      VirtualizingPanel.VirtualizationMode="Recycling"
-                                      Background="White"
-                                      BorderBrush="#CBD5E1"
-                                      BorderThickness="1"
-                                      HeadersVisibility="Column"
-                                      ColumnHeaderStyle="{StaticResource ModernGridHeaderStyle}"
-                                      GridLinesVisibility="All"
-                                      HorizontalGridLinesBrush="#E2E8F0"
-                                      VerticalGridLinesBrush="#E2E8F0"
-                                      MinHeight="280"
-                                      MaxHeight="560"
-                                      ScrollViewer.CanContentScroll="True"
-                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                <DataGrid.RowStyle>
-                                    <Style TargetType="DataGridRow">
-                                        <Setter Property="Background" Value="White"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsSpecificTableRule}" Value="True">
-                                                <Setter Property="Background" Value="#FFFBEB"/>
-                                            </DataTrigger>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter Property="Background" Value="#DBEAFE"/>
-                                            </Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </DataGrid.RowStyle>
-                                <DataGrid.Columns>
-                                    <!-- Catégorie de règle d'exclusion -->
-                                    <DataGridTemplateColumn Header="Règle d'exclusion" Width="158">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border x:Name="CatBadge" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="5" Padding="7,2" Margin="4,2" HorizontalAlignment="Left">
-                                                    <TextBlock x:Name="CatTxt" Text="{Binding CategoryBadge}" FontWeight="Bold" FontSize="11" Foreground="#1D4ED8"/>
-                                                </Border>
-                                                <DataTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding IsSpecificTableRule}" Value="True">
-                                                        <Setter TargetName="CatBadge" Property="Background" Value="#FEF3C7"/>
-                                                        <Setter TargetName="CatBadge" Property="BorderBrush" Value="#F59E0B"/>
-                                                        <Setter TargetName="CatTxt" Property="Foreground" Value="#92400E"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding IsTechnicalAuditRule}" Value="True">
-                                                        <Setter TargetName="CatBadge" Property="Background" Value="#F1F5F9"/>
-                                                        <Setter TargetName="CatBadge" Property="BorderBrush" Value="#CBD5E1"/>
-                                                        <Setter TargetName="CatTxt" Property="Foreground" Value="#475569"/>
-                                                    </DataTrigger>
-                                                </DataTemplate.Triggers>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
+                                <!-- Message table identique -->
+                                <Border x:Name="PanelSelectedTableMatchBanner"
+                                        Grid.Row="1"
+                                        Background="#F8FAFC"
+                                        BorderBrush="#E2E8F0"
+                                        BorderThickness="1"
+                                        CornerRadius="5"
+                                        Padding="16"
+                                        Visibility="Collapsed">
+                                    <TextBlock x:Name="TxtSelectedTableMatchMessage"
+                                               Text="Aucune différence métier active sur cette table."
+                                               FontSize="12.5"
+                                               Foreground="#475569"
+                                               VerticalAlignment="Top"
+                                               TextWrapping="Wrap"/>
+                                </Border>
 
-                                    <DataGridTextColumn Header="Contrat [Test ID]" Binding="{Binding ContractAndTestDisplay}" Width="168" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Syst." Binding="{Binding SystemType}" Width="62" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Table SQL" Binding="{Binding CleanTableName}" Width="130" FontFamily="Consolas" FontWeight="Bold"/>
+                                <!-- Grille Côte à Côte SOURCE vs TARGET (Fond blanc pur, SEUL TARGET en rouge) -->
+                                <DataGrid x:Name="GridCellDiffs"
+                                          Grid.Row="1"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="False"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          Background="White"
+                                          BorderBrush="#E2E8F0"
+                                          BorderThickness="1"
+                                          HeadersVisibility="Column"
+                                          ColumnHeaderStyle="{StaticResource LightGridHeaderStyle}"
+                                          RowBackground="White"
+                                          GridLinesVisibility="All"
+                                          HorizontalGridLinesBrush="#F1F5F9"
+                                          VerticalGridLinesBrush="#F1F5F9"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <DataGrid.CellStyle>
+                                        <Style TargetType="DataGridCell">
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Padding" Value="8,5"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                                    <Setter Property="Foreground" Value="#0F172A"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGrid.CellStyle>
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Ligne / Clé"
+                                                            Binding="{Binding RowAndKeyDisplay}"
+                                                            Width="185"
+                                                            FontFamily="Consolas"
+                                                            FontSize="11.5"
+                                                            Foreground="#475569"/>
 
-                                    <!-- Colonne ignorée -->
-                                    <DataGridTemplateColumn Header="Colonne Ignorée" Width="165">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="5" Padding="7,2" Margin="4,2" HorizontalAlignment="Left">
-                                                    <TextBlock Text="{Binding ColumnName}" FontFamily="Consolas" FontWeight="Bold" FontSize="12" Foreground="#0F172A"/>
-                                                </Border>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="Colonne"
+                                                            Binding="{Binding ColumnName}"
+                                                            Width="155"
+                                                            FontFamily="Consolas"
+                                                            FontWeight="SemiBold"
+                                                            FontSize="12"
+                                                            Foreground="#0F172A"/>
 
-                                    <DataGridTextColumn Header="Ligne" Binding="{Binding RowNumber}" Width="56" FontFamily="Consolas" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Clé / Contexte" Binding="{Binding RowContextKey}" Width="185" FontFamily="Consolas" FontSize="11.5"/>
-
-                                    <!-- SOURCE -->
-                                    <DataGridTemplateColumn Header="📘 Valeur SOURCE (Baseline)" Width="*">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="5" Padding="7,3" Margin="4,2">
+                                        <!-- Valeur SOURCE (Baseline) : neutre -->
+                                        <DataGridTemplateColumn Header="Valeur SOURCE (Baseline)" Width="*">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
                                                     <TextBlock Text="{Binding SourceDisplay}"
                                                                FontFamily="Consolas"
                                                                FontSize="12"
-                                                               FontWeight="SemiBold"
-                                                               Foreground="#1E3A8A"
+                                                               Foreground="#334155"
                                                                TextWrapping="Wrap"
                                                                ToolTip="{Binding SourceDisplay}"/>
-                                                </Border>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                    <DataGridTemplateColumn Header="➔" Width="34">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="➔" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-
-                                    <!-- TARGET -->
-                                    <DataGridTemplateColumn Header="🎯 Valeur TARGET (Extrait)" Width="*">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="5" Padding="7,3" Margin="4,2">
+                                        <!-- Valeur TARGET (Extrait) : ROUGE UNIQUEMENT SUR LA DIFFÉRENCE -->
+                                        <DataGridTemplateColumn Header="Valeur TARGET (Extrait)" Width="*">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
                                                     <TextBlock Text="{Binding TargetDisplay}"
                                                                FontFamily="Consolas"
                                                                FontSize="12"
-                                                               FontWeight="SemiBold"
-                                                               Foreground="#334155"
+                                                               FontWeight="Bold"
+                                                               Foreground="#DC2626"
                                                                TextWrapping="Wrap"
                                                                ToolTip="{Binding TargetDisplay}"/>
-                                                </Border>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </StackPanel>
-                    </TabItem>
-                </TabControl>
-            </Grid>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- ========================================================================= -->
+                <!-- ONGLET 2 : DIFFÉRENCES IGNORÉES (0% IMPACT SUR LE SCORE)                  -->
+                <!-- ========================================================================= -->
+                <TabItem x:Name="TabIgnoredDiffs">
+                    <TabItem.Header>
+                        <TextBlock x:Name="TxtTabIgnoredHeader" Text="Différences ignorées (0)"/>
+                    </TabItem.Header>
+
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Barre de filtres sobre sur 1 ligne -->
+                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="195"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="210"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox x:Name="TxtFilterIgnored"
+                                     Grid.Column="0"
+                                     Style="{StaticResource CompactInputBoxStyle}"
+                                     ToolTip="Rechercher par table SQL, colonne ignorée, contrat, clé ou valeur..."
+                                     TextChanged="FilterIgnored_Changed"/>
+
+                            <ComboBox x:Name="CmbFilterIgnoredCategory"
+                                      Grid.Column="2"
+                                      Style="{StaticResource CompactComboStyle}"
+                                      SelectedIndex="0"
+                                      SelectionChanged="CmbFilterIgnoredCategory_SelectionChanged">
+                                <ComboBoxItem Content="Toutes les règles" Tag="ALL"/>
+                                <ComboBoxItem Content="Spécifiques table" Tag="SPECIFIC"/>
+                                <ComboBoxItem Content="Exclusions globales" Tag="GLOBAL"/>
+                                <ComboBoxItem Content="Audit / Timestamps" Tag="AUDIT"/>
+                            </ComboBox>
+
+                            <ComboBox x:Name="CmbFilterIgnoredContract"
+                                      Grid.Column="4"
+                                      Style="{StaticResource CompactComboStyle}"
+                                      SelectedIndex="0"
+                                      SelectionChanged="FilterIgnored_Changed">
+                                <ComboBoxItem Content="Tous les contrats" Tag="ALL"/>
+                            </ComboBox>
+
+                            <TextBlock x:Name="TxtFilteredIgnoredCount"
+                                       Grid.Column="6"
+                                       VerticalAlignment="Center"
+                                       FontSize="11.5"
+                                       Foreground="#64748B"/>
+
+                            <Button x:Name="BtnExportIgnoredCsv"
+                                    Grid.Column="8"
+                                    Content="Exporter CSV"
+                                    Click="BtnExportIgnoredCsv_Click"
+                                    Style="{StaticResource NeutralButtonStyle}"/>
+                        </Grid>
+
+                        <!-- Grille sobre des différences ignorées -->
+                        <DataGrid x:Name="GridIgnoredDiffs"
+                                  Grid.Row="1"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="False"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  Background="White"
+                                  BorderBrush="#E2E8F0"
+                                  BorderThickness="1"
+                                  HeadersVisibility="Column"
+                                  ColumnHeaderStyle="{StaticResource LightGridHeaderStyle}"
+                                  RowBackground="White"
+                                  GridLinesVisibility="All"
+                                  HorizontalGridLinesBrush="#F1F5F9"
+                                  VerticalGridLinesBrush="#F1F5F9"
+                                  ScrollViewer.CanContentScroll="True"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <DataGrid.CellStyle>
+                                <Style TargetType="DataGridCell">
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="Padding" Value="8,5"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#EFF6FF"/>
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.CellStyle>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Table SQL"
+                                                    Binding="{Binding CleanTableName}"
+                                                    Width="135"
+                                                    FontFamily="Consolas"
+                                                    FontWeight="SemiBold"
+                                                    FontSize="12"
+                                                    Foreground="#0F172A"/>
+
+                                <DataGridTextColumn Header="Colonne ignorée"
+                                                    Binding="{Binding ColumnName}"
+                                                    Width="165"
+                                                    FontFamily="Consolas"
+                                                    FontWeight="SemiBold"
+                                                    FontSize="12"
+                                                    Foreground="#334155"/>
+
+                                <DataGridTextColumn Header="Règle"
+                                                    Binding="{Binding CategoryBadge}"
+                                                    Width="135"
+                                                    FontSize="11.5"
+                                                    Foreground="#475569"/>
+
+                                <DataGridTextColumn Header="Contrat"
+                                                    Binding="{Binding ContractAndTestDisplay}"
+                                                    Width="150"
+                                                    FontFamily="Consolas"
+                                                    FontSize="11.5"
+                                                    Foreground="#475569"/>
+
+                                <DataGridTextColumn Header="Ligne / Clé"
+                                                    Binding="{Binding RowAndKeyDisplay}"
+                                                    Width="175"
+                                                    FontFamily="Consolas"
+                                                    FontSize="11.5"
+                                                    Foreground="#64748B"/>
+
+                                <DataGridTemplateColumn Header="Valeur SOURCE" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding SourceDisplay}"
+                                                       FontFamily="Consolas"
+                                                       FontSize="12"
+                                                       Foreground="#334155"
+                                                       TextWrapping="Wrap"
+                                                       ToolTip="{Binding SourceDisplay}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="Valeur TARGET" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding TargetDisplay}"
+                                                       FontFamily="Consolas"
+                                                       FontSize="12"
+                                                       Foreground="#DC2626"
+                                                       TextWrapping="Wrap"
+                                                       ToolTip="{Binding TargetDisplay}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </TabItem>
+            </TabControl>
         </Grid>
-    </ScrollViewer>
+    </Grid>
 </UserControl>

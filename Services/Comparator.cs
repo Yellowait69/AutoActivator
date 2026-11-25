@@ -122,7 +122,7 @@ namespace AutoActivator.Services
                     ErrorRows = 0,
                     BaseRowCount = 0,
                     TargetRowCount = 0,
-                    DifferingColumnsSummary = "✓ Vide (0/0)"
+                    DifferingColumnsSummary = "Vide (0/0)"
                 };
             }
 
@@ -215,69 +215,87 @@ namespace AutoActivator.Services
 
             var missingSb = new StringBuilder();
             missingSb.AppendLine(
-                $"⚠️ ÉCART DE PRÉSENCE DE DONNÉES : BASELINE = {baseCount} ligne(s) vs TARGET = {targetCount} ligne(s) pour {tableName}.");
+                $"ECART DE PRESENCE DE DONNEES : SOURCE = {baseCount} ligne(s) vs TARGET = {targetCount} ligne(s) pour {tableName}.");
             missingSb.AppendLine(presentInBaseOnly
-                ? "📘 Lignes présentes uniquement dans SOURCE / BASELINE (absentes de TARGET) :"
-                : "🎯 Lignes présentes uniquement dans TARGET (absentes de SOURCE / BASELINE) :");
+                ? "Enregistrement(s) present(s) dans SOURCE mais absent(s) de TARGET :"
+                : "Enregistrement(s) ajoute(s) dans TARGET (absent(s) de SOURCE) :");
 
-            var cellItems = new List<CellDifferenceItem>();
-            var activeColNames = new List<string>();
-            foreach (DataColumn col in populated.Columns)
-            {
-                if (!Exclusions.TryGetExclusionCategory(tableName, col.ColumnName, ignoreTechnicalColumns, out _))
-                {
-                    activeColNames.Add(col.ColumnName);
-                }
-            }
+            var cellItems = new List<CellDifferenceItem>(Math.Min(MAX_CELL_ITEMS_PER_TABLE, populated.Rows.Count));
+            int rowLimit = Math.Min(MAX_CELL_ITEMS_PER_TABLE, populated.Rows.Count);
 
-            int previewCount = Math.Min(15, populated.Rows.Count);
-            for (int r = 0; r < previewCount; r++)
+            for (int r = 0; r < rowLimit; r++)
             {
                 DataRow row = populated.Rows[r];
-                var nonEmptyCells = new List<string>();
                 string contextKey = ExtractDataRowContextKey(row, populated.Columns);
+                var previewFields = new List<string>(6);
 
                 foreach (DataColumn col in populated.Columns)
                 {
+                    if (previewFields.Count >= 6)
+                    {
+                        break;
+                    }
+
+                    if (Exclusions.TryGetExclusionCategory(tableName, col.ColumnName, ignoreTechnicalColumns, out _))
+                    {
+                        continue;
+                    }
+
                     string val = NormalizeSingleCell(row[col]);
                     if (!string.IsNullOrWhiteSpace(val))
                     {
-                        if (nonEmptyCells.Count < 8)
-                        {
-                            nonEmptyCells.Add($"{col.ColumnName}='{val}'");
-                        }
+                        previewFields.Add($"{col.ColumnName}={val}");
+                    }
+                }
 
-                        if (cellItems.Count < MAX_CELL_ITEMS_PER_TABLE &&
-                            !Exclusions.TryGetExclusionCategory(tableName, col.ColumnName, ignoreTechnicalColumns, out _))
+                if (previewFields.Count == 0)
+                {
+                    foreach (DataColumn col in populated.Columns)
+                    {
+                        if (previewFields.Count >= 4)
                         {
-                            cellItems.Add(new CellDifferenceItem
-                            {
-                                RowNumber = r + 1,
-                                RowLabel = $"#{r + 1}",
-                                RowContextKey = contextKey,
-                                ColumnName = col.ColumnName,
-                                SourceValue = presentInBaseOnly ? val : "(ligne absente dans Source)",
-                                TargetValue = presentInBaseOnly ? "(ligne absente dans Target)" : val,
-                                DiffKind = presentInBaseOnly ? "MISSING_IN_TARGET" : "EXTRA_IN_TARGET"
-                            });
+                            break;
+                        }
+                        string val = NormalizeSingleCell(row[col]);
+                        if (!string.IsNullOrWhiteSpace(val))
+                        {
+                            previewFields.Add($"{col.ColumnName}={val}");
                         }
                     }
                 }
 
-                if (r < 5)
+                string rowSummary = previewFields.Count > 0
+                    ? string.Join(" | ", previewFields)
+                    : "(enregistrement présent)";
+
+                cellItems.Add(new CellDifferenceItem
                 {
-                    missingSb.AppendLine($"  • Ligne #{r + 1} : {string.Join(" | ", nonEmptyCells)}");
+                    RowNumber = r + 1,
+                    RowLabel = presentInBaseOnly ? $"Source #{r + 1}" : $"Target #{r + 1}",
+                    RowContextKey = contextKey,
+                    ColumnName = "(Enregistrement complet)",
+                    SourceValue = presentInBaseOnly ? rowSummary : "(absent dans Source)",
+                    TargetValue = presentInBaseOnly ? "(absent dans Target)" : rowSummary,
+                    DiffKind = presentInBaseOnly ? "MISSING_IN_TARGET" : "EXTRA_IN_TARGET"
+                });
+
+                if (r < 10)
+                {
+                    string keyPrefix = string.IsNullOrWhiteSpace(contextKey) || contextKey == "-"
+                        ? string.Empty
+                        : $" [{contextKey}]";
+                    missingSb.AppendLine($"  - Ligne #{r + 1}{keyPrefix} : {rowSummary}");
                 }
             }
 
-            if (populated.Rows.Count > 5)
+            if (populated.Rows.Count > 10)
             {
-                missingSb.AppendLine($"  ... (+{populated.Rows.Count - 5} autre(s) ligne(s))");
+                missingSb.AppendLine($"  ... (+{populated.Rows.Count - 10} autre(s) enregistrement(s))");
             }
 
-            string summary = baseCount == 0
-                ? $"Absent de Source (0 vs {targetCount} lig.)"
-                : $"Absent de Target ({baseCount} vs 0 lig.)";
+            string summary = presentInBaseOnly
+                ? $"Absent dans Target ({baseCount} -> 0)"
+                : $"Ajouté dans Target (0 -> {targetCount})";
 
             return new TableComparisonDetail
             {
@@ -286,9 +304,9 @@ namespace AutoActivator.Services
                 ErrorRows = missingRows,
                 BaseRowCount = baseCount,
                 TargetRowCount = targetCount,
-                DifferingColumns = activeColNames,
+                DifferingColumns = new List<string>(),
                 DifferingColumnsSummary = summary,
-                ActiveCellDifferencesCount = Math.Max(cellItems.Count, missingRows),
+                ActiveCellDifferencesCount = missingRows,
                 ActiveDifferences = cellItems
             };
         }
@@ -347,7 +365,7 @@ namespace AutoActivator.Services
                         if (rowDiffs != null)
                         {
                             rowDiffs.AppendLine(
-                                $"    🔸 [{colName}] : 📘 SOURCE = '{val1}'  |  🎯 TARGET = '{val2}'");
+                                $"    - [{colName}] : SOURCE = '{val1}'  |  TARGET = '{val2}'");
                         }
                     }
                 }
@@ -360,8 +378,8 @@ namespace AutoActivator.Services
                         lazyRowContext ??= BuildRowContextKey(rRow, nRow, activeCols, excludedCols);
                         bodyReport.AppendLine(
                             string.IsNullOrWhiteSpace(lazyRowContext) || lazyRowContext == "-"
-                                ? $"  ▶ Ligne #{i + 1} en écart :"
-                                : $"  ▶ Ligne #{i + 1} ({lazyRowContext}) :");
+                                ? $"  > Ligne #{i + 1} en écart :"
+                                : $"  > Ligne #{i + 1} ({lazyRowContext}) :");
                         bodyReport.Append(rowDiffs);
                         bodyReport.AppendLine();
                     }
@@ -390,7 +408,7 @@ namespace AutoActivator.Services
                     ErrorRows = 0,
                     BaseRowCount = refRows.Count,
                     TargetRowCount = newRows.Count,
-                    DifferingColumnsSummary = "✓ Identique",
+                    DifferingColumnsSummary = "Identique",
                     ActiveCellDifferencesCount = 0,
                     ActiveDifferences = activeCellItems,
                     IgnoredDifferences = ignoredCellItems
@@ -404,9 +422,9 @@ namespace AutoActivator.Services
 
             var finalReport = new StringBuilder();
             finalReport.AppendLine(
-                $"📊 SYNTHÈSE : {totalDiffRows} ligne(s) en écart sur {refRows.Count} | " +
+                $"SYNTHESE : {totalDiffRows} ligne(s) en écart sur {refRows.Count} | " +
                 $"{orderedDiffCols.Count} colonne(s) métier impactée(s) ({totalActiveCellDiffs} cellule(s) différente(s))");
-            finalReport.AppendLine($"📋 Colonnes modifiées : {string.Join(", ", orderedDiffCols)}");
+            finalReport.AppendLine($"Colonnes modifiées : {string.Join(", ", orderedDiffCols)}");
             finalReport.AppendLine("--------------------------------------------------------------------------------");
             finalReport.Append(bodyReport);
 
@@ -499,7 +517,7 @@ namespace AutoActivator.Services
 
             var countReport = new StringBuilder();
             countReport.AppendLine(
-                $"⚠️ ÉCART DE VOLUME DE LIGNES : SOURCE = {refRows.Count} ligne(s) vs TARGET = {newRows.Count} ligne(s) " +
+                $"ECART DE VOLUME DE LIGNES : SOURCE = {refRows.Count} ligne(s) vs TARGET = {newRows.Count} ligne(s) " +
                 $"(Écart volume : {rowVolumeDelta} ligne(s), Lignes communes identiques : {matchedPairNumber}).");
 
             for (int m = 0; m < pairedModifiedCount; m++)
@@ -511,7 +529,7 @@ namespace AutoActivator.Services
 
                 if (m < 25)
                 {
-                    countReport.AppendLine($"  ▶ Ligne modifiée #{displayRowNo} ({ctx}) :");
+                    countReport.AppendLine($"  > Ligne modifiée #{displayRowNo} ({ctx}) :");
                 }
 
                 for (int j = 0; j < activeCols.Count; j++)
@@ -540,7 +558,7 @@ namespace AutoActivator.Services
 
                         if (m < 25)
                         {
-                            countReport.AppendLine($"    🔸 [{colName}] : 📘 SOURCE = '{val1}'  |  🎯 TARGET = '{val2}'");
+                            countReport.AppendLine($"    - [{colName}] : SOURCE = '{val1}'  |  TARGET = '{val2}'");
                         }
                     }
                 }
@@ -570,16 +588,17 @@ namespace AutoActivator.Services
                         RowNumber = displayRowNo,
                         RowLabel = $"Source #{extraBase.SourceRowIndex + 1}",
                         RowContextKey = ctx,
-                        ColumnName = "(Ligne entière)",
+                        ColumnName = "(Enregistrement complet)",
                         SourceValue = summaryValues,
-                        TargetValue = "(absente dans Target)",
+                        TargetValue = "(absent dans Target)",
                         DiffKind = "MISSING_IN_TARGET"
                     });
                 }
 
                 if (m - pairedModifiedCount < 15)
                 {
-                    countReport.AppendLine($"  • 📘 Absente de TARGET (Source #{extraBase.SourceRowIndex + 1}) : {summaryValues}");
+                    string keyNote = string.IsNullOrWhiteSpace(ctx) || ctx == "-" ? string.Empty : $" [{ctx}]";
+                    countReport.AppendLine($"  - Absent de TARGET (Source #{extraBase.SourceRowIndex + 1}{keyNote}) : {summaryValues}");
                 }
             }
 
@@ -598,8 +617,8 @@ namespace AutoActivator.Services
                         RowNumber = displayRowNo,
                         RowLabel = $"Target #{extraTarget.SourceRowIndex + 1}",
                         RowContextKey = ctx,
-                        ColumnName = "(Ligne entière)",
-                        SourceValue = "(absente dans Source)",
+                        ColumnName = "(Enregistrement complet)",
+                        SourceValue = "(absent dans Source)",
                         TargetValue = summaryValues,
                         DiffKind = "EXTRA_IN_TARGET"
                     });
@@ -607,7 +626,8 @@ namespace AutoActivator.Services
 
                 if (m - pairedModifiedCount < 15)
                 {
-                    countReport.AppendLine($"  • 🎯 Ajoutée dans TARGET (Target #{extraTarget.SourceRowIndex + 1}) : {summaryValues}");
+                    string keyNote = string.IsNullOrWhiteSpace(ctx) || ctx == "-" ? string.Empty : $" [{ctx}]";
+                    countReport.AppendLine($"  - Ajouté dans TARGET (Target #{extraTarget.SourceRowIndex + 1}{keyNote}) : {summaryValues}");
                 }
             }
 
@@ -909,6 +929,22 @@ namespace AutoActivator.Services
                     if (keys.Count >= 3)
                     {
                         break;
+                    }
+                }
+            }
+
+            if (keys.Count == 0)
+            {
+                foreach (DataColumn col in columns)
+                {
+                    string val = NormalizeSingleCell(row[col]);
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        keys.Add($"{col.ColumnName}={val}");
+                        if (keys.Count >= 2)
+                        {
+                            break;
+                        }
                     }
                 }
             }

@@ -71,14 +71,41 @@ namespace AutoActivator.Models
 
         public bool IsGreen => !IsFailed;
 
+        public string ShortBranchDisplay => IsBranch23 ? "B23" : "B21";
+
         public string StatusBadgeText => Status switch
         {
-            "SUCCESS" => "🟢 ACTIVÉ",
-            "ALREADY ACTIVE" => "🟢 DÉJÀ ACTIF",
-            "PENDING ASYNC LISA CREATION" => "🟢 DÉJÀ ACTIF",
-            "CANCELLED" => "🔴 ANNULÉ",
-            _ => "🔴 ÉCHEC"
+            "SUCCESS" => "ACTIVÉ",
+            "ALREADY ACTIVE" => "DÉJÀ ACTIF",
+            "PENDING ASYNC LISA CREATION" => "EN COURS LISA",
+            "CANCELLED" => "ANNULÉ",
+            _ => "ÉCHEC"
         };
+
+        public string LisaAndDemandDisplay
+        {
+            get
+            {
+                bool hasLisa = !string.IsNullOrWhiteSpace(LisaId) && LisaId != "-" && LisaId != "N/A";
+                bool hasDem = !string.IsNullOrWhiteSpace(DemandId) && DemandId != "-" && DemandId != "N/A";
+                if (hasLisa && hasDem) return $"{LisaId} / {DemandId}";
+                if (hasLisa) return LisaId;
+                if (hasDem) return DemandId;
+                return "-";
+            }
+        }
+
+        public string CompactProductChannelDisplay
+        {
+            get
+            {
+                string prod = ProductProcessDisplay;
+                string chan = ChannelPaymentDisplay;
+                if (prod != "-" && chan != "-") return $"{prod} · {chan}";
+                if (prod != "-") return prod;
+                return chan;
+            }
+        }
 
         public string ProductProcessDisplay
         {

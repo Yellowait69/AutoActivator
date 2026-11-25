@@ -239,12 +239,43 @@ namespace AutoActivator.Models
 
         public bool IsFailed => !IsGreen;
 
+        public string ShortBranchDisplay => IsBranch23 ? "B23" : "B21";
+
         public string StatusBadgeText =>
             string.Equals(Status, "OK", StringComparison.OrdinalIgnoreCase)
-                ? "🟢 ACTIF"
+                ? "ACTIF"
                 : string.Equals(Status, "ELIA ONLY", StringComparison.OrdinalIgnoreCase)
-                    ? "🔴 ELIA ONLY"
-                    : "🔴 KO";
+                    ? "ELIA SEUL"
+                    : "ÉCHEC";
+
+        public string LisaAndDemandDisplay
+        {
+            get
+            {
+                bool hasLisa = !string.IsNullOrWhiteSpace(InternalId) && InternalId != "-" && InternalId != "Not found" && InternalId != "Error";
+                bool hasDem = !string.IsNullOrWhiteSpace(Hdmd) && Hdmd != "-" && Hdmd != "Not found" && Hdmd != "N/A" && Hdmd != "Error";
+                if (hasLisa && hasDem) return $"{InternalId} / {Hdmd}";
+                if (hasLisa) return InternalId;
+                if (hasDem) return Hdmd;
+                return "-";
+            }
+        }
+
+        public string CompactProductChannelDisplay
+        {
+            get
+            {
+                string prod = ProductProcessDisplay;
+                string chan = ChannelPaymentDisplay;
+                if (!string.IsNullOrWhiteSpace(prod) && prod != "-" && !string.IsNullOrWhiteSpace(chan) && chan != "-")
+                {
+                    return $"{prod} · {chan}";
+                }
+                if (!string.IsNullOrWhiteSpace(prod) && prod != "-") return prod;
+                if (!string.IsNullOrWhiteSpace(chan) && chan != "-") return chan;
+                return "-";
+            }
+        }
 
         public string ProductProcessDisplay =>
             !string.IsNullOrWhiteSpace(ProcessCode) && ProcessCode != "-"

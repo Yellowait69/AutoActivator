@@ -242,33 +242,55 @@ namespace AutoActivator.Utils
 
         /// <summary>
         /// Parses all tables contained in a contract block in a single streaming pass (O(N) instead of O(N * T)).
+        /// Includes full backward compatibility for legacy files where an EXTRACTION ERROR block had no '---' separator
+        /// or where another '### TABLE :' marker appeared immediately on the same or next line.
         /// </summary>
         public static Dictionary<string, DataTable> LoadAllTablesFromContent(string fileContent)
         {
             var tables = new Dictionary<string, DataTable>(StringComparer.OrdinalIgnoreCase);
             if (string.IsNullOrEmpty(fileContent)) return tables;
 
-            using (var reader = new StringReader(fileContent))
-            {
-                string? line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (line.StartsWith("### TABLE : ", StringComparison.Ordinal))
-                    {
-                        int startIndex = 12;
-                        int endIndex = line.IndexOf(" |", startIndex, StringComparison.Ordinal);
-                        if (endIndex > startIndex)
-                        {
-                            string tableName = line.Substring(startIndex, endIndex - startIndex).Trim();
-                            // Consume the separator line "---..." immediately following the header
-                            reader.ReadLine();
+            using var reader = new StringReader(fileContent);
+            string? pendingLine = null;
 
-                            var dt = new DataTable(tableName);
-                            ParseCurrentTableFromReader(reader, dt);
-                            tables[tableName] = dt;
-                        }
-                    }
+            while (true)
+            {
+                string? line = pendingLine ?? reader.ReadLine();
+                pendingLine = null;
+                if (line == null)
+                {
+                    break;
                 }
+
+                int markerIdx = line.IndexOf("### TABLE : ", StringComparison.Ordinal);
+                if (markerIdx < 0)
+                {
+                    continue;
+                }
+
+                string headerLine = markerIdx == 0 ? line : line.Substring(markerIdx);
+                if (!TryExtractTableHeader(headerLine, out string tableName, out bool isExtractionError, out string? trailingTableHeader))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(trailingTableHeader))
+                {
+                    tables[tableName] = new DataTable(tableName);
+                    pendingLine = trailingTableHeader;
+                    continue;
+                }
+
+                if (isExtractionError)
+                {
+                    tables[tableName] = new DataTable(tableName);
+                    pendingLine = SkipUntilNextTableMarker(reader);
+                    continue;
+                }
+
+                var dt = new DataTable(tableName);
+                pendingLine = ParseCurrentTableLines(reader, dt);
+                tables[tableName] = dt;
             }
 
             return tables;
@@ -294,118 +316,205 @@ namespace AutoActivator.Utils
             }
         }
 
-        /// <summary>
-        /// Extracts a table using a text stream (file or memory), which prevents
-        /// RAM saturation when parsing very large files.
-        /// </summary>
         private static DataTable LoadTableFromReader(TextReader reader, string tableName)
         {
             var dt = new DataTable(tableName);
-            string searchString = $"### TABLE : {tableName} |";
-            string? line;
-            bool tableFound = false;
+            string? pendingLine = null;
 
-            while ((line = reader.ReadLine()) != null)
+            while (true)
             {
-                if (line.StartsWith(searchString, StringComparison.OrdinalIgnoreCase))
+                string? line = pendingLine ?? reader.ReadLine();
+                pendingLine = null;
+                if (line == null)
                 {
-                    tableFound = true;
-                    reader.ReadLine();
-                    break;
+                    return dt;
                 }
+
+                int markerIdx = line.IndexOf("### TABLE : ", StringComparison.OrdinalIgnoreCase);
+                if (markerIdx < 0)
+                {
+                    continue;
+                }
+
+                string headerLine = markerIdx == 0 ? line : line.Substring(markerIdx);
+                if (!TryExtractTableHeader(headerLine, out string parsedName, out bool isExtractionError, out string? trailingHeader))
+                {
+                    continue;
+                }
+
+                if (!string.Equals(parsedName, tableName, StringComparison.OrdinalIgnoreCase))
+                {
+                    pendingLine = trailingHeader;
+                    continue;
+                }
+
+                if (isExtractionError || !string.IsNullOrEmpty(trailingHeader))
+                {
+                    return dt;
+                }
+
+                ParseCurrentTableLines(reader, dt);
+                return dt;
             }
-
-            if (!tableFound) return dt;
-
-            ParseCurrentTableFromReader(reader, dt);
-            return dt;
         }
 
-        private static void ParseCurrentTableFromReader(TextReader reader, DataTable dt)
+        private static bool TryExtractTableHeader(
+            string headerLine,
+            out string tableName,
+            out bool isExtractionError,
+            out string? trailingTableHeader)
         {
-            bool isHeader = true;
-            bool inQuotes = false;
-            StringBuilder currentField = new StringBuilder();
-            List<string> currentLine = new List<string>();
+            tableName = string.Empty;
+            isExtractionError = false;
+            trailingTableHeader = null;
 
-            int intChar;
-            while ((intChar = reader.Read()) != -1)
+            const string prefix = "### TABLE : ";
+            if (!headerLine.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
-                char c = (char)intChar;
-                int peek = reader.Peek();
-                char nextC = peek != -1 ? (char)peek : '\0';
+                return false;
+            }
 
-                if (c == '"')
+            int secondMarker = headerLine.IndexOf("### TABLE : ", prefix.Length, StringComparison.OrdinalIgnoreCase);
+            string currentHeader = secondMarker > 0 ? headerLine.Substring(0, secondMarker).TrimEnd() : headerLine;
+            if (secondMarker > 0)
+            {
+                trailingTableHeader = headerLine.Substring(secondMarker);
+            }
+
+            int pipeIndex = currentHeader.IndexOf('|', prefix.Length);
+            if (pipeIndex <= prefix.Length)
+            {
+                return false;
+            }
+
+            tableName = currentHeader.Substring(prefix.Length, pipeIndex - prefix.Length).Trim();
+            isExtractionError = currentHeader.IndexOf("EXTRACTION ERROR", pipeIndex, StringComparison.OrdinalIgnoreCase) >= 0;
+            return tableName.Length > 0;
+        }
+
+        private static string? SkipUntilNextTableMarker(TextReader reader)
+        {
+            string? line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                int markerIdx = line.IndexOf("### TABLE : ", StringComparison.Ordinal);
+                if (markerIdx >= 0)
                 {
-                    if (inQuotes && nextC == '"')
-                    {
-                        currentField.Append('"');
-                        reader.Read();
-                    }
-                    else
-                    {
-                        inQuotes = !inQuotes;
-                    }
+                    return markerIdx == 0 ? line : line.Substring(markerIdx);
                 }
-                else if (c == ';' && !inQuotes)
+            }
+            return null;
+        }
+
+        private static string? ParseCurrentTableLines(TextReader reader, DataTable dt)
+        {
+            string? firstLine = reader.ReadLine();
+            if (firstLine == null)
+            {
+                return null;
+            }
+
+            int immediateMarker = firstLine.IndexOf("### TABLE : ", StringComparison.Ordinal);
+            if (immediateMarker >= 0)
+            {
+                return immediateMarker == 0 ? firstLine : firstLine.Substring(immediateMarker);
+            }
+
+            // Standard separator "---..." right under "### TABLE : ..."
+            bool consumedSeparator = firstLine.TrimStart().StartsWith("---", StringComparison.Ordinal);
+            string? bufferedFirstDataLine = consumedSeparator ? null : firstLine;
+
+            bool isHeader = true;
+            var logicalRecord = new StringBuilder();
+
+            while (true)
+            {
+                string? rawLine = bufferedFirstDataLine ?? reader.ReadLine();
+                bufferedFirstDataLine = null;
+
+                if (rawLine == null)
                 {
-                    currentLine.Add(currentField.ToString());
-                    currentField.Clear();
+                    break;
                 }
-                else if ((c == '\r' || c == '\n') && !inQuotes)
+
+                if (logicalRecord.Length == 0)
                 {
-                    if (c == '\r' && nextC == '\n') reader.Read();
+                    int embeddedMarker = rawLine.IndexOf("### TABLE : ", StringComparison.Ordinal);
+                    if (embeddedMarker >= 0)
+                    {
+                        return embeddedMarker == 0 ? rawLine : rawLine.Substring(embeddedMarker);
+                    }
 
-                    currentLine.Add(currentField.ToString());
-                    currentField.Clear();
-
-                    if (currentLine.Count == 1 && (string.IsNullOrWhiteSpace(currentLine[0]) || currentLine[0].StartsWith("---", StringComparison.Ordinal) || currentLine[0] == "NO DATA FOUND"))
+                    string trimmed = rawLine.Trim();
+                    if (trimmed.Length == 0 ||
+                        trimmed.StartsWith("---", StringComparison.Ordinal) ||
+                        trimmed.StartsWith("===", StringComparison.Ordinal) ||
+                        string.Equals(trimmed, "NO DATA FOUND", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("SQL Error:", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("Details:", StringComparison.OrdinalIgnoreCase))
                     {
                         break;
                     }
-
-                    if (isHeader)
-                    {
-                        foreach (var field in currentLine)
-                        {
-                            string colName = field.Trim();
-                            int suffix = 1;
-                            while (dt.Columns.Contains(colName)) colName = $"{field.Trim()}_{suffix++}";
-                            dt.Columns.Add(colName);
-                        }
-                        isHeader = false;
-                    }
-                    else if (currentLine.Any(x => !string.IsNullOrWhiteSpace(x)))
-                    {
-                        var row = dt.NewRow();
-                        for (int j = 0; j < currentLine.Count && j < dt.Columns.Count; j++)
-                        {
-                            row[j] = currentLine[j];
-                        }
-                        dt.Rows.Add(row);
-                    }
-
-                    currentLine.Clear();
                 }
-                else
-                {
-                    currentField.Append(c);
-                }
-            }
 
-            if (currentField.Length > 0 || currentLine.Count > 0)
-            {
-                currentLine.Add(currentField.ToString());
-                if (!isHeader && currentLine.Any(x => !string.IsNullOrWhiteSpace(x)))
+                if (logicalRecord.Length > 0)
                 {
-                    var row = dt.NewRow();
-                    for (int j = 0; j < currentLine.Count && j < dt.Columns.Count; j++)
+                    logicalRecord.Append('\n');
+                }
+                logicalRecord.Append(rawLine);
+
+                if (!HasBalancedQuotes(logicalRecord))
+                {
+                    continue;
+                }
+
+                List<string> fields = ParseCsvLine(logicalRecord.ToString(), ';');
+                logicalRecord.Clear();
+
+                if (isHeader)
+                {
+                    foreach (string field in fields)
                     {
-                        row[j] = currentLine[j];
+                        string baseColName = field.Trim();
+                        if (string.IsNullOrEmpty(baseColName))
+                        {
+                            baseColName = "COL";
+                        }
+                        string colName = baseColName;
+                        int suffix = 1;
+                        while (dt.Columns.Contains(colName))
+                        {
+                            colName = $"{baseColName}_{suffix++}";
+                        }
+                        dt.Columns.Add(colName);
+                    }
+                    isHeader = false;
+                }
+                else if (fields.Any(x => !string.IsNullOrWhiteSpace(x)))
+                {
+                    DataRow row = dt.NewRow();
+                    for (int j = 0; j < fields.Count && j < dt.Columns.Count; j++)
+                    {
+                        row[j] = fields[j];
                     }
                     dt.Rows.Add(row);
                 }
             }
+
+            return null;
+        }
+
+        private static bool HasBalancedQuotes(StringBuilder text)
+        {
+            int quoteCount = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '"')
+                {
+                    quoteCount++;
+                }
+            }
+            return (quoteCount & 1) == 0;
         }
     }
 }
